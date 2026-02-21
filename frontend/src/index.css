@@ -1,0 +1,257 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* === Dear Body Beauty Brand Palette === */
+    /* Primary: Warm rose/blush */
+    --primary: 350 42% 52%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 350 50% 72%;
+
+    /* Secondary: Warm champagne cream */
+    --secondary: 30 30% 94%;
+    --secondary-foreground: 20 25% 18%;
+
+    /* Accent: Deep burgundy wine */
+    --accent: 340 45% 32%;
+    --accent-foreground: 0 0% 98%;
+
+    /* Muted: Soft warm gray */
+    --muted: 25 18% 93%;
+    --muted-foreground: 20 10% 46%;
+
+    /* Background: Warm off-white */
+    --background: 30 25% 98%;
+    --foreground: 20 25% 12%;
+
+    /* Card */
+    --card: 0 0% 100%;
+    --card-foreground: 20 25% 12%;
+
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 25% 12%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Success */
+    --success: 152 55% 42%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning */
+    --warning: 38 92% 50%;
+    --warning-foreground: 20 25% 12%;
+
+    /* Border & Input */
+    --border: 25 20% 88%;
+    --input: 25 20% 88%;
+    --ring: 350 42% 52%;
+
+    /* Charts */
+    --chart-1: 350 42% 52%;
+    --chart-2: 340 45% 32%;
+    --chart-3: 30 30% 60%;
+    --chart-4: 25 60% 50%;
+    --chart-5: 200 45% 55%;
+
+    /* Radius */
+    --radius: 0.625rem;
+
+    /* === Custom Design Tokens === */
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(30 25% 97%), hsl(350 30% 95%), hsl(25 35% 95%));
+    --gradient-card-hover: linear-gradient(180deg, hsl(350 30% 97%), hsl(30 25% 98%));
+    --gradient-accent: linear-gradient(135deg, hsl(350 42% 52%), hsl(340 45% 40%));
+    --gradient-warm: linear-gradient(180deg, hsl(30 30% 97%), hsl(30 25% 98%));
+    --gradient-subtle: linear-gradient(180deg, hsl(30 25% 98%), hsl(0 0% 100%));
+
+    /* Shadows */
+    --shadow-soft: 0 2px 15px -3px hsl(20 25% 12% / 0.06);
+    --shadow-card: 0 4px 20px -4px hsl(20 25% 12% / 0.08);
+    --shadow-elevated: 0 10px 40px -10px hsl(20 25% 12% / 0.12);
+    --shadow-glow: 0 0 30px hsl(350 42% 52% / 0.15);
+    --shadow-product: 0 8px 30px -8px hsl(20 25% 12% / 0.1);
+
+    /* Transitions */
+    --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-elegant: 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  .dark {
+    --primary: 350 45% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 350 40% 45%;
+
+    --secondary: 25 15% 15%;
+    --secondary-foreground: 30 20% 90%;
+
+    --accent: 340 40% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 20 10% 18%;
+    --muted-foreground: 25 15% 60%;
+
+    --background: 20 15% 8%;
+    --foreground: 30 20% 92%;
+
+    --card: 20 12% 11%;
+    --card-foreground: 30 20% 92%;
+
+    --popover: 20 12% 11%;
+    --popover-foreground: 30 20% 92%;
+
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 50% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 80% 45%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 20 10% 20%;
+    --input: 20 10% 20%;
+    --ring: 350 45% 60%;
+
+    --chart-1: 350 45% 60%;
+    --chart-2: 340 40% 55%;
+    --chart-3: 30 30% 50%;
+    --chart-4: 25 50% 45%;
+    --chart-5: 200 40% 50%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(20 15% 10%), hsl(350 20% 12%), hsl(20 12% 10%));
+    --gradient-card-hover: linear-gradient(180deg, hsl(20 12% 13%), hsl(20 12% 11%));
+    --gradient-accent: linear-gradient(135deg, hsl(350 45% 55%), hsl(340 40% 45%));
+    --gradient-warm: linear-gradient(180deg, hsl(20 12% 10%), hsl(20 15% 8%));
+    --gradient-subtle: linear-gradient(180deg, hsl(20 15% 8%), hsl(20 12% 10%));
+
+    --shadow-soft: 0 2px 15px -3px hsl(0 0% 0% / 0.2);
+    --shadow-card: 0 4px 20px -4px hsl(0 0% 0% / 0.3);
+    --shadow-elevated: 0 10px 40px -10px hsl(0 0% 0% / 0.4);
+    --shadow-glow: 0 0 30px hsl(350 45% 60% / 0.2);
+    --shadow-product: 0 8px 30px -8px hsl(0 0% 0% / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+  }
+
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+  [data-debug-wrapper="true"] > * {
+    margin-left: inherit;
+    margin-right: inherit;
+    margin-top: inherit;
+    margin-bottom: inherit;
+    padding-left: inherit;
+    padding-right: inherit;
+    padding-top: inherit;
+    padding-bottom: inherit;
+    column-gap: inherit;
+    row-gap: inherit;
+    gap: inherit;
+    border-left-width: inherit;
+    border-right-width: inherit;
+    border-top-width: inherit;
+    border-bottom-width: inherit;
+    border-left-style: inherit;
+    border-right-style: inherit;
+    border-top-style: inherit;
+    border-bottom-style: inherit;
+    border-left-color: inherit;
+    border-right-color: inherit;
+    border-top-color: inherit;
+    border-bottom-color: inherit;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: 'Cormorant Garamond', serif;
+  }
+  .font-body {
+    font-family: 'Inter', sans-serif;
+  }
+  .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(350 42% 52%), hsl(340 45% 35%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+  .shadow-product {
+    box-shadow: var(--shadow-product);
+  }
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+  .bg-gradient-warm {
+    background: var(--gradient-warm);
+  }
+  .bg-gradient-subtle {
+    background: var(--gradient-subtle);
+  }
+  .bg-gradient-accent {
+    background: var(--gradient-accent);
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* Line clamp utilities */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}

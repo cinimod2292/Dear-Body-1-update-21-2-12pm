@@ -146,6 +146,19 @@ enum EmailTemplateCategory {
   SYSTEM
 }
 
+
+enum AccountingSyncStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum AccountingEntityType {
+  CUSTOMER
+  ORDER
+  INVOICE
+}
+
 model StaffUser {
   id             String             @id @default(cuid())
   email          String             @unique
@@ -847,6 +860,28 @@ model EmailTemplate {
   updatedAt       DateTime              @updatedAt
 
   @@index([category, isEnabled])
+}
+
+
+model AccountingSyncRecord {
+  id               String               @id @default(cuid())
+  provider         String
+  entityType       AccountingEntityType
+  entityId         String
+  status           AccountingSyncStatus @default(PENDING)
+  action           String
+  attempts         Int                  @default(0)
+  externalId       String?
+  payload          Json?
+  lastError        String?
+  lastSyncedAt     DateTime?
+  nextRetryAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([provider, entityType, entityId])
+  @@index([status, nextRetryAt])
+  @@index([createdAt])
 }
 
 model NotificationLog {

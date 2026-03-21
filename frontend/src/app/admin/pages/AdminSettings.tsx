@@ -25,6 +25,29 @@ interface StitchSettings {
   apiBaseUrl: string;
 }
 
+interface XeroSettings {
+  enabled: boolean;
+  clientId: string;
+  clientSecretConfigured: boolean;
+  redirectUri: string;
+  tenantId: string;
+  scopes: string[];
+  connectionStatus: "connected" | "disconnected" | "expired";
+  tokenExpiresAt: string | null;
+}
+
+interface XeroSyncRecord {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  status: string;
+  attempts: number;
+  externalId?: string | null;
+  lastError?: string | null;
+  updatedAt: string;
+}
+
 export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
@@ -45,16 +68,29 @@ export default function AdminSettings() {
   const [webhookConfigured, setWebhookConfigured] = useState(false);
   const [paymentEvents, setPaymentEvents] = useState<PaymentEvent[]>([]);
 
+  const [xeroEnabled, setXeroEnabled] = useState(false);
+  const [xeroClientId, setXeroClientId] = useState("");
+  const [xeroClientSecret, setXeroClientSecret] = useState("");
+  const [xeroRedirectUri, setXeroRedirectUri] = useState("");
+  const [xeroTenantId, setXeroTenantId] = useState("");
+  const [xeroScopes, setXeroScopes] = useState("openid profile email accounting.contacts accounting.transactions");
+  const [xeroConnectionStatus, setXeroConnectionStatus] = useState<"connected" | "disconnected" | "expired">("disconnected");
+  const [xeroTokenExpiresAt, setXeroTokenExpiresAt] = useState<string | null>(null);
+  const [xeroSecretConfigured, setXeroSecretConfigured] = useState(false);
+  const [xeroSyncRecords, setXeroSyncRecords] = useState<XeroSyncRecord[]>([]);
+
   const load = async () => {
     if (!session?.accessToken) return;
     try {
       setLoading(true);
       setError(null);
 
-      const [settingsRes, stitchRes, eventsRes] = await Promise.all([
+      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes] = await Promise.all([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
+        apiRequest<{ data: XeroSettings }>("/admin/integrations/xero/settings", {}, session.accessToken),
+        apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
       ]);
 
       const map = new Map(settingsRes.data.items.map((s) => [s.key, s.value]));
@@ -69,7 +105,17 @@ export default function AdminSettings() {
       setApiBaseUrl(stitchRes.data.apiBaseUrl || "");
       setApiKeyConfigured(stitchRes.data.apiKeyConfigured);
       setWebhookConfigured(stitchRes.data.webhookSecretConfigured);
-      setPaymentEvents(eventsRes.data.items);
+      setPaymentEvents(paymentEventsRes.data.items);
+
+      setXeroEnabled(xeroSettingsRes.data.enabled);
+      setXeroClientId(xeroSettingsRes.data.clientId || "");
+      setXeroRedirectUri(xeroSettingsRes.data.redirectUri || "");
+      setXeroTenantId(xeroSettingsRes.data.tenantId || "");
+      setXeroScopes((xeroSettingsRes.data.scopes || []).join(" "));
+      setXeroConnectionStatus(xeroSettingsRes.data.connectionStatus);
+      setXeroTokenExpiresAt(xeroSettingsRes.data.tokenExpiresAt);
+      setXeroSecretConfigured(xeroSettingsRes.data.clientSecretConfigured);
+      setXeroSyncRecords(xeroSyncRes.data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -84,7 +130,6 @@ export default function AdminSettings() {
   const saveStore = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken) return;
-
     try {
       setSaving(true);
       await Promise.all([
@@ -102,7 +147,6 @@ export default function AdminSettings() {
   const saveStitch = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken) return;
-
     try {
       setSaving(true);
       const payload = {
@@ -115,18 +159,13 @@ export default function AdminSettings() {
         callbackUrl: callbackUrl || undefined,
         apiBaseUrl: apiBaseUrl || undefined,
       };
-
-      const res = await apiRequest<{ data: StitchSettings }>(
-        "/admin/payments/settings/stitch",
-        { method: "PUT", body: JSON.stringify(payload) },
-        session.accessToken,
-      );
-
+      const res = await apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
       setApiKey("");
       setWebhookSecret("");
       setApiKeyConfigured(res.data.apiKeyConfigured);
       setWebhookConfigured(res.data.webhookSecretConfigured);
       toast.success("Stitch settings saved");
+      await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save Stitch settings");
     } finally {
@@ -134,17 +173,61 @@ export default function AdminSettings() {
     }
   };
 
+  const saveXero = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken) return;
+    try {
+      setSaving(true);
+      const payload = {
+        enabled: xeroEnabled,
+        clientId: xeroClientId,
+        clientSecret: xeroClientSecret || undefined,
+        redirectUri: xeroRedirectUri,
+        tenantId: xeroTenantId || undefined,
+        scopes: xeroScopes.split(/\s+/).filter(Boolean),
+      };
+      const res = await apiRequest<{ data: XeroSettings }>("/admin/integrations/xero/settings", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
+      setXeroClientSecret("");
+      setXeroSecretConfigured(res.data.clientSecretConfigured);
+      setXeroConnectionStatus(res.data.connectionStatus);
+      setXeroTokenExpiresAt(res.data.tokenExpiresAt);
+      toast.success("Xero settings saved");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save Xero settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const connectXero = async () => {
+    if (!session?.accessToken) return;
+    try {
+      const res = await apiRequest<{ data: { url: string } }>("/admin/integrations/xero/connect-url", {}, session.accessToken);
+      window.open(res.data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start Xero connect flow");
+    }
+  };
+
+  const retryXeroSync = async (id: string) => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest(`/admin/integrations/xero/sync-records/${id}/retry`, { method: "POST", body: JSON.stringify({ force: true }) }, session.accessToken);
+      toast.success("Retry started");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Retry failed");
+    }
+  };
+
   if (loading) return <LoadingState label="Loading settings..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
       <form onSubmit={saveStore} className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-black text-gray-900">Store Settings</h2>
-          <p className="text-sm text-gray-500">Core settings used across the storefront and admin portal.</p>
-        </div>
-
+        <h2 className="text-2xl font-black text-gray-900">Store Settings</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
@@ -155,68 +238,23 @@ export default function AdminSettings() {
             <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} required />
           </div>
         </div>
-
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">
-          {saving ? "Saving..." : "Save Store Settings"}
-        </button>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
       </form>
 
       <form onSubmit={saveStitch} className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-black text-gray-900">Stitch Payments</h2>
-          <p className="text-sm text-gray-500">Manage Stitch credentials, mode, and callback configuration.</p>
-        </div>
-
+        <h2 className="text-2xl font-black text-gray-900">Stitch Payments</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <input id="stitch-enabled" type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />
-            <label htmlFor="stitch-enabled" className="text-sm font-medium text-gray-700">Enable Stitch</label>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Mode</label>
-            <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production") }>
-              <option value="sandbox">Sandbox</option>
-              <option value="production">Production</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Merchant ID</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">API Key {apiKeyConfigured ? "(configured)" : "(required)"}</label>
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Enter new key to rotate" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Webhook Secret {webhookConfigured ? "(configured)" : "(optional)"}</label>
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Enter new secret to rotate" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Redirect URL</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Webhook Callback URL</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Custom API Base URL (optional)</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
-          </div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />Enable Stitch</label>
+          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production") }><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Merchant ID" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${apiKeyConfigured ? "(configured)" : "(required)"}`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Webhook Secret ${webhookConfigured ? "(configured)" : "(optional)"}`} value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URL" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Callback URL" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
         </div>
-
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">
-          {saving ? "Saving..." : "Save Stitch Settings"}
-        </button>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
       </form>
-
 
       <section className="space-y-3">
         <h3 className="text-lg font-bold text-gray-900">Recent Payment Events</h3>
@@ -226,6 +264,40 @@ export default function AdminSettings() {
               <p className="font-medium">{event.gateway.toUpperCase()} · {event.eventType} · {event.status}</p>
               <p className="text-xs text-gray-500">{event.order?.orderNumber ? `Order #${event.order.orderNumber} · ` : ""}{new Date(event.createdAt).toLocaleString()}</p>
               {event.error ? <p className="text-xs text-red-600 mt-1">{event.error}</p> : null}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <form onSubmit={saveXero} className="space-y-4">
+        <h2 className="text-2xl font-black text-gray-900">Xero Accounting</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={xeroEnabled} onChange={(e) => setXeroEnabled(e.target.checked)} />Enable Xero</label>
+            <span className={`text-xs px-2 py-1 rounded ${xeroConnectionStatus === "connected" ? "bg-emerald-100 text-emerald-700" : xeroConnectionStatus === "expired" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"}`}>{xeroConnectionStatus.toUpperCase()}</span>
+          </div>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Client ID" value={xeroClientId} onChange={(e) => setXeroClientId(e.target.value)} required />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Client Secret ${xeroSecretConfigured ? "(configured)" : "(required)"}`} value={xeroClientSecret} onChange={(e) => setXeroClientSecret(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URI" value={xeroRedirectUri} onChange={(e) => setXeroRedirectUri(e.target.value)} required />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Tenant ID" value={xeroTenantId} onChange={(e) => setXeroTenantId(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Scopes (space separated)" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
+          <p className="text-xs text-gray-500">Token expiry: {xeroTokenExpiresAt ? new Date(xeroTokenExpiresAt).toLocaleString() : "Not connected"}</p>
+          <button type="button" onClick={connectXero} className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm">Connect / Reconnect Xero</button>
+        </div>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Xero Settings"}</button>
+      </form>
+
+      <section className="space-y-3">
+        <h3 className="text-lg font-bold text-gray-900">Xero Sync History</h3>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+          {xeroSyncRecords.length === 0 ? <p className="text-sm text-gray-500">No sync records yet.</p> : xeroSyncRecords.map((record) => (
+            <div key={record.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">{record.entityType} · {record.action} · {record.status}</p>
+                <p className="text-xs text-gray-500">Entity: {record.entityId} · Attempts: {record.attempts} · {new Date(record.updatedAt).toLocaleString()}</p>
+                {record.lastError ? <p className="text-xs text-red-600 mt-1">{record.lastError}</p> : null}
+              </div>
+              <button type="button" onClick={() => retryXeroSync(record.id)} className="px-2 py-1 rounded border border-gray-300 text-xs">Retry</button>
             </div>
           ))}
         </div>

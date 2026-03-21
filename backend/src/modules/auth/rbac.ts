@@ -8,10 +8,14 @@ export const rolePermissions: Record<StaffRole, string[]> = {
     "settings:write",
     "media:read",
     "media:write",
+    "catalog:read",
+    "catalog:write",
+    "inventory:read",
+    "inventory:write",
     "audit:read",
   ],
-  CONTENT_EDITOR: ["dashboard:read", "media:read", "media:write", "settings:read"],
-  SUPPORT_AGENT: ["dashboard:read", "audit:read", "settings:read"],
+  CONTENT_EDITOR: ["dashboard:read", "media:read", "media:write", "settings:read", "catalog:read"],
+  SUPPORT_AGENT: ["dashboard:read", "audit:read", "settings:read", "inventory:read"],
   ANALYST: ["dashboard:read", "audit:read"],
 };
 

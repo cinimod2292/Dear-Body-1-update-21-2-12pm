@@ -11,6 +11,9 @@ import { webhookRoutes } from "./modules/webhooks/webhook.routes.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { auditRoutes } from "./modules/audit/audit.routes.js";
 import { writeAuditLog } from "./modules/audit/audit.service.js";
+import { taxonomyRoutes } from "./modules/taxonomy/taxonomy.routes.js";
+import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
+import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -59,6 +62,9 @@ export function buildApp() {
     await api.register(authRoutes);
     await api.register(settingsRoutes);
     await api.register(mediaRoutes);
+    await api.register(taxonomyRoutes);
+    await api.register(catalogRoutes);
+    await api.register(inventoryRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });

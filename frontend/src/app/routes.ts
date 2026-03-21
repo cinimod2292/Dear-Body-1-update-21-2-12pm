@@ -13,6 +13,8 @@ import AdminDashboard from "./admin/pages/AdminDashboard";
 import AdminProducts from "./admin/pages/AdminProducts";
 import AdminMedia from "./admin/pages/AdminMedia";
 import AdminSettings from "./admin/pages/AdminSettings";
+import AdminCatalogSetup from "./admin/pages/AdminCatalogSetup";
+import AdminProductEditor from "./admin/pages/AdminProductEditor";
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +42,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: AdminDashboard },
           { path: "products", Component: AdminProducts },
+          { path: "products/:productId", Component: AdminProductEditor },
+          { path: "catalog-setup", Component: AdminCatalogSetup },
           { path: "media", Component: AdminMedia },
           { path: "settings", Component: AdminSettings },
         ],

@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { AdminPagination } from "../components/AdminPagination";
@@ -15,22 +16,22 @@ export default function AdminProducts() {
   const { session } = useAdminAuth();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
+  const [sortBy, setSortBy] = useState("updatedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [featuredOnly, setFeaturedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<PaginatedResult<AdminProduct> | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", status: "DRAFT", visibility: "PUBLIC" });
-
   const params = useMemo(() => {
-    const sp = new URLSearchParams({ page: String(page), perPage: "12", sortBy: "updatedAt", sortDir: "desc" });
+    const sp = new URLSearchParams({ page: String(page), perPage: "12", sortBy, sortDir });
     if (query) sp.set("q", query);
     if (status !== "ALL") sp.set("status", status);
+    if (featuredOnly) sp.set("featured", "true");
     return sp.toString();
-  }, [page, query, status]);
+  }, [page, query, status, sortBy, sortDir, featuredOnly]);
 
   const loadProducts = async () => {
     if (!session?.accessToken) return;
@@ -47,30 +48,7 @@ export default function AdminProducts() {
     }
   };
 
-  useEffect(() => {
-    loadProducts();
-  }, [session?.accessToken, params]);
-
-  const createProduct = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!session?.accessToken) return;
-
-    try {
-      setCreating(true);
-      await apiRequest("/admin/products", {
-        method: "POST",
-        body: JSON.stringify(form),
-      }, session.accessToken);
-      toast.success("Product created");
-      setShowCreate(false);
-      setForm({ name: "", slug: "", status: "DRAFT", visibility: "PUBLIC" });
-      await loadProducts();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create product");
-    } finally {
-      setCreating(false);
-    }
-  };
+  useEffect(() => { loadProducts(); }, [session?.accessToken, params]);
 
   const applyBulk = async (action: "set_status" | "set_featured", extra: Record<string, unknown>) => {
     if (!session?.accessToken || selected.length === 0) return;
@@ -94,35 +72,34 @@ export default function AdminProducts() {
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-gray-900">Products</h2>
-          <p className="text-sm text-gray-500">Manage product catalog, statuses, and visibility.</p>
+          <h2 className="text-2xl font-black text-gray-900">Product Management</h2>
+          <p className="text-sm text-gray-500">Daily operations for catalog, status, visibility, featured and inventory access.</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm">Add Product</button>
+        <div className="flex items-center gap-2">
+          <Link to="/admin/catalog-setup" className="px-4 py-2 rounded-lg border border-gray-200 text-sm">Manage Brands/Categories</Link>
+          <Link to="/admin/products/new" className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm">Create Product</Link>
+        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-3 md:p-4 flex flex-col md:flex-row gap-3 md:items-center">
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Search by name or slug"
-          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
-        />
-        <select
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
-        >
+      <div className="bg-white border border-gray-200 rounded-xl p-3 md:p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+        <input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Search name or slug" className="md:col-span-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
           <option value="ALL">All Statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="ACTIVE">Active</option>
           <option value="ARCHIVED">Archived</option>
         </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+          <option value="updatedAt">Updated</option>
+          <option value="name">Name</option>
+          <option value="createdAt">Created</option>
+          <option value="publishedAt">Published</option>
+        </select>
+        <button onClick={() => setSortDir((d) => d === "desc" ? "asc" : "desc")} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">Sort {sortDir === "desc" ? "↓" : "↑"}</button>
+        <label className="md:col-span-5 inline-flex items-center gap-2 text-sm text-gray-600">
+          <input type="checkbox" checked={featuredOnly} onChange={(e) => { setFeaturedOnly(e.target.checked); setPage(1); }} />
+          Show featured products only
+        </label>
       </div>
 
       {selected.length > 0 && (
@@ -131,29 +108,22 @@ export default function AdminProducts() {
           <button className="px-3 py-1.5 rounded-lg bg-white border border-pink-200 text-xs" onClick={() => applyBulk("set_status", { status: "ACTIVE" })}>Set Active</button>
           <button className="px-3 py-1.5 rounded-lg bg-white border border-pink-200 text-xs" onClick={() => applyBulk("set_status", { status: "ARCHIVED" })}>Set Archived</button>
           <button className="px-3 py-1.5 rounded-lg bg-white border border-pink-200 text-xs" onClick={() => applyBulk("set_featured", { featured: true })}>Feature</button>
+          <button className="px-3 py-1.5 rounded-lg bg-white border border-pink-200 text-xs" onClick={() => applyBulk("set_featured", { featured: false })}>Unfeature</button>
         </div>
       )}
 
       {payload.items.length === 0 ? (
-        <EmptyState label="No products found for the selected filters." />
+        <EmptyState label="No products found for current filters." />
       ) : (
         <AdminTable
           rows={payload.items}
           columns={[
-            {
-              key: "select",
-              header: "",
-              render: (item) => (
-                <input
-                  type="checkbox"
-                  checked={selected.includes(item.id)}
-                  onChange={(e) => setSelected((prev) => (e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)))}
-                />
-              ),
-            },
+            { key: "select", header: "", render: (item) => <input type="checkbox" checked={selected.includes(item.id)} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id))} /> },
             { key: "name", header: "Product", render: (item) => <div><p className="font-semibold">{item.name}</p><p className="text-xs text-gray-500">/{item.slug}</p></div> },
             { key: "status", header: "Status", render: (item) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{item.status}</span> },
             { key: "visibility", header: "Visibility", render: (item) => <span className="text-xs">{item.visibility}</span> },
+            { key: "featured", header: "Featured", render: (item) => <span className={`text-xs ${item.featured ? "text-pink-600" : "text-gray-400"}`}>{item.featured ? "Yes" : "No"}</span> },
+            { key: "brand", header: "Brand", render: (item) => <span className="text-xs">{item.brand?.name || "—"}</span> },
             {
               key: "pricing",
               header: "Pricing",
@@ -165,47 +135,18 @@ export default function AdminProducts() {
             },
             {
               key: "stock",
-              header: "Stock",
+              header: "Total Stock",
               render: (item) => {
                 const total = (item.variants ?? []).reduce((sum, v) => sum + (v.inventoryLevel?.quantityOnHand ?? 0), 0);
                 return <span className={`text-xs font-medium ${total <= 0 ? "text-red-600" : "text-gray-700"}`}>{total}</span>;
               },
             },
+            { key: "actions", header: "Actions", render: (item) => <Link to={`/admin/products/${item.id}`} className="text-xs text-blue-600 hover:underline">Edit</Link> },
           ]}
         />
       )}
 
       <AdminPagination page={payload.page} totalPages={payload.totalPages} onChange={setPage} />
-
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-40">
-          <form onSubmit={createProduct} className="w-full max-w-lg bg-white rounded-2xl p-6 shadow-xl border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-900">Create Product</h3>
-            <p className="text-sm text-gray-500 mb-4">Create a new catalog product. Variants can be added next.</p>
-            <div className="space-y-3">
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Slug" value={form.slug} onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))} required />
-              <div className="grid grid-cols-2 gap-3">
-                <select className="rounded-lg border border-gray-200 px-3 py-2" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-                  <option value="DRAFT">Draft</option>
-                  <option value="ACTIVE">Active</option>
-                  <option value="ARCHIVED">Archived</option>
-                </select>
-                <select className="rounded-lg border border-gray-200 px-3 py-2" value={form.visibility} onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}>
-                  <option value="PUBLIC">Public</option>
-                  <option value="HIDDEN">Hidden</option>
-                  <option value="PRIVATE">Private</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg border border-gray-200">Cancel</button>
-              <button type="submit" disabled={creating} className="px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-70">{creating ? "Creating..." : "Create"}</button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }

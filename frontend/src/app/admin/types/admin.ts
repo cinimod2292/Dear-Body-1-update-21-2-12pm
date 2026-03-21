@@ -24,6 +24,8 @@ export interface AdminProduct {
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   visibility: "PUBLIC" | "HIDDEN" | "PRIVATE";
   featured: boolean;
+  brandId?: string | null;
+  categoryId?: string | null;
   brand?: { id: string; name: string } | null;
   category?: { id: string; name: string } | null;
   variants?: Array<{ id: string; sku: string; price: number; salePrice?: number | null; inventoryLevel?: { quantityOnHand: number; lowStockThreshold: number } | null }>;

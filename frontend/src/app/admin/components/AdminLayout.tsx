@@ -12,6 +12,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/admin", label: "Dashboard", permission: "dashboard:read" },
   { to: "/admin/products", label: "Products", permission: "catalog:read" },
+  { to: "/admin/catalog-setup", label: "Catalog Setup", permission: "catalog:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
 ];
@@ -35,7 +36,7 @@ export default function AdminLayout() {
         </div>
         <nav className="space-y-1">
           {navItems.map((item) => {
-            const active = location.pathname === item.to;
+            const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
             return (
               <Link
                 key={item.to}

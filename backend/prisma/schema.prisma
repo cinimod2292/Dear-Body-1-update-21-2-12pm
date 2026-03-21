@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  SUPER_ADMIN
+  STORE_MANAGER
+  CONTENT_EDITOR
+  SUPPORT_AGENT
+  ANALYST
+}
+
+enum StaffStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+model StaffUser {
+  id             String             @id @default(cuid())
+  email          String             @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  status         StaffStatus        @default(ACTIVE)
+  role           StaffRole          @default(STORE_MANAGER)
+  lastLoginAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        StaffUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  scope       String
+  key         String
+  value       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([scope, key])
+  @@index([scope])
+}
+
+model SeoMetadata {
+  id             String   @id @default(cuid())
+  title          String?
+  description    String?
+  canonicalUrl   String?
+  noIndex        Boolean  @default(false)
+  noFollow       Boolean  @default(false)
+  ogTitle        String?
+  ogDescription  String?
+  ogImageUrl     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MediaAsset {
+  id            String    @id @default(cuid())
+  filename      String
+  mimeType      String
+  kind          MediaKind
+  byteSize      Int
+  storageKey    String    @unique
+  publicUrl     String?
+  altText       String?
+  uploadedById  String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model AuditLog {
+  id            String    @id @default(cuid())
+  actorUserId   String?
+  actorEmail    String?
+  action        String
+  resourceType  String
+  resourceId    String?
+  details       Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  actorUser     StaffUser? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+model NotificationLog {
+  id          String             @id @default(cuid())
+  channel     NotificationChannel
+  recipient   String
+  subject     String?
+  payload     Json
+  status      NotificationStatus @default(PENDING)
+  provider    String
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime           @default(now())
+
+  @@index([status])
+}
+
+model WebhookEvent {
+  id            String        @id @default(cuid())
+  source        String
+  eventType     String
+  payload       Json
+  signature     String?
+  status        WebhookStatus @default(RECEIVED)
+  processedAt   DateTime?
+  error         String?
+  createdAt     DateTime      @default(now())
+
+  @@index([source, eventType])
+  @@index([status])
+}

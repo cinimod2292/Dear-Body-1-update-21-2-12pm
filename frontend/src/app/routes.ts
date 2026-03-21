@@ -20,6 +20,7 @@ import AdminCustomerDetail from "./admin/pages/AdminCustomerDetail";
 import AdminOrders from "./admin/pages/AdminOrders";
 import AdminOrderDetail from "./admin/pages/AdminOrderDetail";
 import AdminCmsEditor from "./admin/pages/AdminCmsEditor";
+import AdminOperations from "./admin/pages/AdminOperations";
 
 export const router = createBrowserRouter([
   {
@@ -62,31 +63,7 @@ export const router = createBrowserRouter([
           { path: "media", Component: AdminMedia },
           { path: "settings", Component: AdminSettings },
           { path: "cms", Component: AdminCmsEditor },
-        ],
-      },
-    ],
-  },
-  {
-    path: "/admin/login",
-    Component: AdminLogin,
-  },
-  {
-    path: "/admin",
-    Component: AdminProtectedRoute,
-    children: [
-      {
-        Component: AdminLayout,
-        children: [
-          { index: true, Component: AdminDashboard },
-          { path: "products", Component: AdminProducts },
-          { path: "products/:productId", Component: AdminProductEditor },
-          { path: "catalog-setup", Component: AdminCatalogSetup },
-          { path: "customers", Component: AdminCustomers },
-          { path: "customers/:customerId", Component: AdminCustomerDetail },
-          { path: "orders", Component: AdminOrders },
-          { path: "orders/:orderId", Component: AdminOrderDetail },
-          { path: "media", Component: AdminMedia },
-          { path: "settings", Component: AdminSettings },
+          { path: "operations", Component: AdminOperations },
         ],
       },
     ],

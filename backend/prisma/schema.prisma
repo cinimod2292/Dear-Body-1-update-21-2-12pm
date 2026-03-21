@@ -206,6 +206,19 @@ model Setting {
   @@index([scope])
 }
 
+
+model NewsletterSubscriber {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  source      String   @default("storefront")
+  status      String   @default("active")
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
 model SeoMetadata {
   id             String   @id @default(cuid())
   title          String?

@@ -135,6 +135,17 @@ enum RefundStatus {
   PROCESSED
 }
 
+enum EmailTemplateCategory {
+  ACCOUNT
+  ORDER
+  PAYMENT
+  SHIPPING
+  SECURITY
+  SUPPORT
+  MARKETING
+  SYSTEM
+}
+
 model StaffUser {
   id             String             @id @default(cuid())
   email          String             @unique
@@ -788,6 +799,24 @@ model AuditLog {
   @@index([actorUserId])
   @@index([resourceType, resourceId])
   @@index([createdAt])
+}
+
+
+model EmailTemplate {
+  id              String                @id @default(cuid())
+  key             String                @unique
+  name            String
+  category        EmailTemplateCategory
+  subject         String
+  htmlBody        String
+  textBody        String?
+  placeholderKeys Json?
+  isEnabled       Boolean               @default(true)
+  isSystemDefault Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([category, isEnabled])
 }
 
 model NotificationLog {

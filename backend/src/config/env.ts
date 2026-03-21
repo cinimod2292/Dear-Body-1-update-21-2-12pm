@@ -22,6 +22,7 @@ const envSchema = z.object({
   EMAIL_PROVIDER: z.enum(["console", "smtp", "resend"]).default("console"),
   EMAIL_FROM: z.string().email(),
   WEBHOOK_SIGNING_SECRET: z.string().min(8),
+  PAYMENTS_ENCRYPTION_SECRET: z.string().min(16).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

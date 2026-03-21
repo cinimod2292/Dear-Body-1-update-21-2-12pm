@@ -17,6 +17,7 @@ import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
 import { crmRoutes } from "./modules/crm/crm.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { emailTemplateRoutes } from "./modules/email-templates/email-template.routes.js";
+import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -71,6 +72,7 @@ export function buildApp() {
     await api.register(crmRoutes);
     await api.register(ordersRoutes);
     await api.register(emailTemplateRoutes);
+    await api.register(paymentsRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });

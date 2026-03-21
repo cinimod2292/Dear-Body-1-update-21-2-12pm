@@ -676,6 +676,7 @@ model Order {
   notes            OrderNote[]
   events           OrderEvent[]
   payments         PaymentTransaction[]
+  paymentEvents    PaymentEventLog[]
   refunds          Refund[]
   cancellation     OrderCancellation?
 
@@ -730,16 +731,45 @@ model OrderEvent {
 }
 
 model PaymentTransaction {
-  id               String        @id @default(cuid())
+  id               String            @id @default(cuid())
   orderId          String
   provider         String
   referenceId      String?
-  amount           Decimal       @db.Decimal(12, 2)
+  amount           Decimal           @db.Decimal(12, 2)
   status           PaymentStatus
-  createdAt        DateTime      @default(now())
-  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  metadata         Json?
+  idempotencyKey   String?           @unique
+  errorCode        String?
+  errorMessage     String?
+  processedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentEvents    PaymentEventLog[]
 
   @@index([orderId, createdAt])
+  @@index([provider, referenceId])
+}
+
+model PaymentEventLog {
+  id               String              @id @default(cuid())
+  orderId          String?
+  transactionId    String?
+  gateway          String
+  eventType        String
+  status           String
+  externalEventId  String?
+  idempotencyKey   String?
+  payload          Json?
+  error            String?
+  createdAt        DateTime            @default(now())
+  order            Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  transaction      PaymentTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([transactionId, createdAt])
+  @@index([gateway, status, createdAt])
+  @@unique([gateway, externalEventId])
+  @@unique([gateway, idempotencyKey])
 }
 
 model Refund {

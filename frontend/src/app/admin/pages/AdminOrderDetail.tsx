@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -23,6 +23,7 @@ interface OrderDetail {
   notes: Array<{ id: string; note: string; isInternal: boolean; createdAt: string; author?: { email?: string } }>;
   events: Array<{ id: string; eventType: string; previousValue?: string; nextValue?: string; createdAt: string; actor?: { email?: string } }>;
   refunds: Array<{ id: string; amount: number; reason?: string; status: string; createdAt: string }>;
+  payments: Array<{ id: string; provider: string; referenceId?: string; status: string; amount: number; createdAt: string; errorMessage?: string }>;
   cancellation?: { reason?: string; createdAt: string } | null;
 }
 
@@ -39,6 +40,10 @@ export default function AdminOrderDetail() {
   const [note, setNote] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
+  const [verificationReference, setVerificationReference] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const latestPaymentReference = useMemo(() => order?.payments?.[0]?.referenceId ?? "", [order?.payments]);
 
   const load = async () => {
     if (!session?.accessToken || !orderId) return;
@@ -51,6 +56,7 @@ export default function AdminOrderDetail() {
       setPaymentValue(res.data.paymentStatus);
       setFulfillmentValue(res.data.fulfillmentStatus);
       setRefundAmount(String(Number(res.data.totalAmount).toFixed(2)));
+      setVerificationReference(res.data.payments?.[0]?.referenceId ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load order");
     } finally {
@@ -58,7 +64,9 @@ export default function AdminOrderDetail() {
     }
   };
 
-  useEffect(() => { load(); }, [session?.accessToken, orderId]);
+  useEffect(() => {
+    load();
+  }, [session?.accessToken, orderId]);
 
   const post = async (path: string, body: object) => {
     if (!session?.accessToken || !orderId) return;
@@ -72,6 +80,48 @@ export default function AdminOrderDetail() {
   const addNote = async (e: FormEvent) => { e.preventDefault(); if (!note) return; try { await post(`/admin/orders/${orderId}/notes`, { note, isInternal: true }); setNote(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Note failed"); } };
   const cancelOrder = async (e: FormEvent) => { e.preventDefault(); if (!cancelReason) return; try { await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason }); setCancelReason(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Cancel failed"); } };
   const createRefund = async (e: FormEvent) => { e.preventDefault(); const amount = Number(refundAmount); if (!amount) return; try { await post(`/admin/orders/${orderId}/refunds`, { amount, reason: "Manual refund" }); } catch (err) { toast.error(err instanceof Error ? err.message : "Refund failed"); } };
+
+  const initiateStitchPayment = async () => {
+    if (!session?.accessToken || !orderId) return;
+    try {
+      setActionLoading(true);
+      const res = await apiRequest<{ data: { checkoutUrl?: string; referenceId?: string; reused: boolean } }>(
+        `/admin/orders/${orderId}/payments/initiate`,
+        { method: "POST", body: JSON.stringify({ gateway: "stitch" }) },
+        session.accessToken,
+      );
+      if (res.data.referenceId) setVerificationReference(res.data.referenceId);
+      if (res.data.checkoutUrl) {
+        window.open(res.data.checkoutUrl, "_blank", "noopener,noreferrer");
+      }
+      toast.success(res.data.reused ? "Reused existing payment intent" : "Stitch payment initiated");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to initiate Stitch payment");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const verifyStitchPayment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || !orderId || !verificationReference) return;
+
+    try {
+      setActionLoading(true);
+      await apiRequest(
+        `/admin/orders/${orderId}/payments/verify`,
+        { method: "POST", body: JSON.stringify({ gateway: "stitch", referenceId: verificationReference }) },
+        session.accessToken,
+      );
+      toast.success("Payment verification complete");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Payment verification failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   if (loading) return <LoadingState label="Loading order..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
@@ -118,6 +168,26 @@ export default function AdminOrderDetail() {
           <form onSubmit={cancelOrder} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancellation reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /><button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm">Cancel Order</button></form>
         </section>
       </div>
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+        <h3 className="font-bold">Payments</h3>
+        <div className="flex gap-2">
+          <button type="button" onClick={initiateStitchPayment} disabled={actionLoading} className="px-3 py-2 bg-indigo-700 text-white rounded-lg text-sm disabled:opacity-60">Initiate Stitch Payment</button>
+        </div>
+        <form onSubmit={verifyStitchPayment} className="flex gap-2">
+          <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" value={verificationReference} onChange={(e) => setVerificationReference(e.target.value)} placeholder={latestPaymentReference || "Payment reference"} />
+          <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm" disabled={actionLoading}>Verify Payment</button>
+        </form>
+        <div className="space-y-2">
+          {order.payments.map((p) => (
+            <div key={p.id} className="text-sm border border-gray-100 rounded-lg p-2">
+              <p className="font-medium">{p.provider.toUpperCase()} · {p.status}</p>
+              <p className="text-xs text-gray-500">Ref: {p.referenceId || "-"} · {new Date(p.createdAt).toLocaleString()} · {order.currency} {Number(p.amount).toFixed(2)}</p>
+              {p.errorMessage ? <p className="text-xs text-red-600 mt-1">{p.errorMessage}</p> : null}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="bg-white border border-gray-200 rounded-xl p-5"><h3 className="font-bold mb-2">Notes</h3><div className="space-y-2">{order.notes.map((n) => <div key={n.id} className="text-sm border border-gray-100 rounded-lg p-2"><p>{n.note}</p><p className="text-xs text-gray-400">{n.author?.email || "System"} · {new Date(n.createdAt).toLocaleString()}</p></div>)}</div></section>

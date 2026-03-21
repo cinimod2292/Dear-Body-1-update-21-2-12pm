@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/products", label: "Products", permission: "catalog:read" },
   { to: "/admin/catalog-setup", label: "Catalog Setup", permission: "catalog:read" },
   { to: "/admin/customers", label: "Customers", permission: "crm:read" },
+  { to: "/admin/orders", label: "Orders", permission: "orders:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
 ];

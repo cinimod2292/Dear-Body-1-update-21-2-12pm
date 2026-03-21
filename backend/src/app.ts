@@ -15,6 +15,7 @@ import { taxonomyRoutes } from "./modules/taxonomy/taxonomy.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
 import { crmRoutes } from "./modules/crm/crm.routes.js";
+import { ordersRoutes } from "./modules/orders/orders.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -67,6 +68,7 @@ export function buildApp() {
     await api.register(catalogRoutes);
     await api.register(inventoryRoutes);
     await api.register(crmRoutes);
+    await api.register(ordersRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });

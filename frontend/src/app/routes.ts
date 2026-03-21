@@ -17,6 +17,8 @@ import AdminCatalogSetup from "./admin/pages/AdminCatalogSetup";
 import AdminProductEditor from "./admin/pages/AdminProductEditor";
 import AdminCustomers from "./admin/pages/AdminCustomers";
 import AdminCustomerDetail from "./admin/pages/AdminCustomerDetail";
+import AdminOrders from "./admin/pages/AdminOrders";
+import AdminOrderDetail from "./admin/pages/AdminOrderDetail";
 
 export const router = createBrowserRouter([
   {
@@ -48,6 +50,8 @@ export const router = createBrowserRouter([
           { path: "catalog-setup", Component: AdminCatalogSetup },
           { path: "customers", Component: AdminCustomers },
           { path: "customers/:customerId", Component: AdminCustomerDetail },
+          { path: "orders", Component: AdminOrders },
+          { path: "orders/:orderId", Component: AdminOrderDetail },
           { path: "media", Component: AdminMedia },
           { path: "settings", Component: AdminSettings },
         ],

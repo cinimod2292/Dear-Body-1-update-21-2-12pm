@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/orders", label: "Orders", permission: "orders:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
+  { to: "/admin/cms", label: "Website CMS", permission: "settings:read" },
 ];
 
 export default function AdminLayout() {

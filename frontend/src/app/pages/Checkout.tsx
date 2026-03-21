@@ -1,0 +1,353 @@
+import { useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { Check, CreditCard, Lock, ArrowLeft, Truck } from "lucide-react";
+import { useCart } from "../context/CartContext";
+import logoImage from "figma:asset/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
+
+type Step = "contact" | "shipping" | "payment" | "confirm";
+
+export default function Checkout() {
+  const { cartItems, cartTotal, cartCount, clearCart } = useCart();
+  const navigate = useNavigate();
+  const [step, setStep] = useState<Step>("contact");
+  const [orderPlaced, setOrderPlaced] = useState(false);
+  const [orderNumber] = useState(() => Math.floor(Math.random() * 900000) + 100000);
+
+  const shipping = cartTotal >= 50 ? 0 : 5.99;
+  const total = cartTotal + shipping;
+
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", phone: "",
+    address: "", city: "", state: "", zip: "", country: "United States",
+    cardName: "", cardNumber: "", expiry: "", cvv: "",
+    sameAsShipping: true,
+  });
+
+  const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
+
+  const steps: { key: Step; label: string }[] = [
+    { key: "contact", label: "Contact" },
+    { key: "shipping", label: "Shipping" },
+    { key: "payment", label: "Payment" },
+  ];
+
+  const stepIndex = steps.findIndex(s => s.key === step);
+
+  const handlePlaceOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    setOrderPlaced(true);
+    clearCart();
+  };
+
+  if (cartCount === 0 && !orderPlaced) {
+    navigate("/shop");
+    return null;
+  }
+
+  if (orderPlaced) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
+        <div className="max-w-md w-full text-center">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-green-200">
+            <Check size={44} className="text-white" strokeWidth={3} />
+          </div>
+          <div className="h-2 bg-gradient-to-r from-pink-500 via-orange-400 to-yellow-400 rounded-full mb-8" />
+          <h1 className="text-gray-900 mb-3" style={{ fontSize: "2rem", fontWeight: 900 }}>Order Confirmed! 🎉</h1>
+          <p className="text-gray-500 mb-2">
+            Thank you for your order! We're getting your goodies ready.
+          </p>
+          <p className="text-gray-400 text-sm mb-8">
+            Order #{orderNumber} · Confirmation sent to <strong>{form.email || "your email"}</strong>
+          </p>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm mb-8 text-left">
+            <div className="flex items-center gap-3 mb-4">
+              <Truck size={20} className="text-pink-500" />
+              <div>
+                <p className="font-bold text-gray-900">Estimated Delivery</p>
+                <p className="text-gray-500 text-sm">3–5 business days</p>
+              </div>
+            </div>
+            <p className="text-gray-500 text-sm">
+              Your order will be shipped to: {form.address || "your address"}, {form.city}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Link
+              to="/shop"
+              className="w-full py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold flex items-center justify-center hover:opacity-90 transition-opacity"
+            >
+              Continue Shopping
+            </Link>
+            <Link to="/" className="text-sm text-gray-400 hover:text-pink-500 transition-colors">
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-100 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between">
+          <Link to="/cart" className="flex items-center gap-2 text-gray-500 hover:text-pink-500 text-sm font-medium transition-colors">
+            <ArrowLeft size={16} /> Back to Cart
+          </Link>
+          <div className="flex items-center gap-2">
+            <img
+              src={logoImage}
+              alt="Dear Body"
+              className="h-9 w-auto object-contain"
+            />
+          </div>
+          <div className="flex items-center gap-1 text-gray-400 text-sm">
+            <Lock size={14} />
+            <span className="hidden sm:inline">Secure Checkout</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Step Indicator */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-4">
+        <div className="flex items-center gap-2">
+          {steps.map((s, i) => (
+            <div key={s.key} className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 ${i <= stepIndex ? "text-pink-500" : "text-gray-400"}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${i < stepIndex ? "bg-green-500 text-white" : i === stepIndex ? "bg-gradient-to-br from-pink-500 to-orange-400 text-white" : "bg-gray-200 text-gray-500"}`}>
+                  {i < stepIndex ? <Check size={13} /> : i + 1}
+                </div>
+                <span className="font-bold text-sm hidden sm:inline">{s.label}</span>
+              </div>
+              {i < steps.length - 1 && <div className={`h-0.5 flex-1 min-w-6 ${i < stepIndex ? "bg-green-400" : "bg-gray-200"}`} />}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+          {/* Form */}
+          <div className="lg:col-span-2">
+
+            {/* CONTACT */}
+            {step === "contact" && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h2 className="font-black text-gray-900 text-xl mb-6">Contact Information</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },
+                    { key: "lastName", label: "Last Name", placeholder: "Doe", type: "text" },
+                    { key: "email", label: "Email Address", placeholder: "jane@example.com", type: "email", full: true },
+                    { key: "phone", label: "Phone Number", placeholder: "+1 (555) 000-0000", type: "tel" },
+                  ].map(field => (
+                    <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
+                      <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>
+                      <input
+                        type={field.type}
+                        value={(form as any)[field.key]}
+                        onChange={e => update(field.key, e.target.value)}
+                        placeholder={field.placeholder}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setStep("shipping")}
+                  className="mt-6 w-full py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold hover:opacity-90 transition-opacity"
+                >
+                  Continue to Shipping
+                </button>
+              </div>
+            )}
+
+            {/* SHIPPING */}
+            {step === "shipping" && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h2 className="font-black text-gray-900 text-xl mb-6">Shipping Address</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { key: "address", label: "Street Address", placeholder: "123 Main St", full: true },
+                    { key: "city", label: "City", placeholder: "Miami" },
+                    { key: "state", label: "State / Province", placeholder: "FL" },
+                    { key: "zip", label: "ZIP / Postal Code", placeholder: "33101" },
+                    { key: "country", label: "Country", placeholder: "United States" },
+                  ].map(field => (
+                    <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
+                      <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>
+                      <input
+                        type="text"
+                        value={(form as any)[field.key]}
+                        onChange={e => update(field.key, e.target.value)}
+                        placeholder={field.placeholder}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Shipping Method */}
+                <div className="mt-6">
+                  <h3 className="font-bold text-gray-900 mb-3">Shipping Method</h3>
+                  <div className="space-y-3">
+                    {[
+                      { label: "Standard Shipping", time: "5–7 business days", price: shipping === 0 ? "FREE" : "$5.99" },
+                      { label: "Express Shipping", time: "2–3 business days", price: "$9.99" },
+                    ].map(opt => (
+                      <label key={opt.label} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
+                        <div className="flex items-center gap-3">
+                          <input type="radio" name="shipping" defaultChecked={opt.label === "Standard Shipping"} className="accent-pink-500" />
+                          <div>
+                            <p className="font-bold text-gray-900 text-sm">{opt.label}</p>
+                            <p className="text-gray-400 text-xs">{opt.time}</p>
+                          </div>
+                        </div>
+                        <span className="font-bold text-gray-700">{opt.price}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setStep("contact")}
+                    className="px-6 py-4 border-2 border-gray-200 rounded-full font-bold text-gray-700 hover:border-pink-300 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setStep("payment")}
+                    className="flex-1 py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold hover:opacity-90 transition-opacity"
+                  >
+                    Continue to Payment
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* PAYMENT */}
+            {step === "payment" && (
+              <form onSubmit={handlePlaceOrder} className="bg-white rounded-2xl p-6 shadow-sm">
+                <h2 className="font-black text-gray-900 text-xl mb-2">Payment Details</h2>
+                <p className="text-gray-400 text-sm mb-6 flex items-center gap-1.5">
+                  <Lock size={13} /> Your payment information is secure and encrypted
+                </p>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Name on Card</label>
+                    <input
+                      type="text"
+                      value={form.cardName}
+                      onChange={e => update("cardName", e.target.value)}
+                      placeholder="Jane Doe"
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-2">
+                      Card Number <CreditCard size={14} className="text-gray-400" />
+                    </label>
+                    <input
+                      type="text"
+                      value={form.cardNumber}
+                      onChange={e => update("cardNumber", e.target.value.replace(/\D/g, "").slice(0, 16).replace(/(\d{4})/g, "$1 ").trim())}
+                      placeholder="1234 5678 9012 3456"
+                      required
+                      maxLength={19}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 font-mono tracking-wider transition-colors"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1.5">Expiry Date</label>
+                      <input
+                        type="text"
+                        value={form.expiry}
+                        onChange={e => update("expiry", e.target.value)}
+                        placeholder="MM / YY"
+                        required
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1.5">CVV</label>
+                      <input
+                        type="text"
+                        value={form.cvv}
+                        onChange={e => update("cvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="•••"
+                        required
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setStep("shipping")}
+                    className="px-6 py-4 border-2 border-gray-200 rounded-full font-bold text-gray-700 hover:border-pink-300 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
+                  >
+                    <Lock size={16} />
+                    Place Order · R{total.toFixed(2)}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          {/* Order Summary */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-28">
+              <h3 className="font-black text-gray-900 mb-5">Order Summary</h3>
+              <div className="flex flex-col gap-3 mb-5">
+                {cartItems.map(({ product, quantity }) => (
+                  <div key={product.id} className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <div className="w-14 h-14 rounded-xl overflow-hidden" style={{ backgroundColor: product.bgColor }}>
+                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="absolute -top-2 -right-2 w-5 h-5 bg-pink-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{quantity}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-900 text-sm truncate">{product.name}</p>
+                      <p className="text-gray-400 text-xs">{product.size}</p>
+                    </div>
+                    <span className="font-bold text-gray-900 text-sm shrink-0">R{(product.price * quantity).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-gray-100 pt-4 flex flex-col gap-2 text-sm">
+                <div className="flex justify-between text-gray-500">
+                  <span>Subtotal</span><span>R{cartTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-500">
+                  <span>Shipping</span>
+                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : `R${shipping.toFixed(2)}`}</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
+                <span className="font-black text-gray-900">Total</span>
+                <span className="font-black text-xl text-pink-500">R{total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

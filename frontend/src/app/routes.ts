@@ -66,4 +66,29 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  {
+    path: "/admin/login",
+    Component: AdminLogin,
+  },
+  {
+    path: "/admin",
+    Component: AdminProtectedRoute,
+    children: [
+      {
+        Component: AdminLayout,
+        children: [
+          { index: true, Component: AdminDashboard },
+          { path: "products", Component: AdminProducts },
+          { path: "products/:productId", Component: AdminProductEditor },
+          { path: "catalog-setup", Component: AdminCatalogSetup },
+          { path: "customers", Component: AdminCustomers },
+          { path: "customers/:customerId", Component: AdminCustomerDetail },
+          { path: "orders", Component: AdminOrders },
+          { path: "orders/:orderId", Component: AdminOrderDetail },
+          { path: "media", Component: AdminMedia },
+          { path: "settings", Component: AdminSettings },
+        ],
+      },
+    ],
+  },
 ]);

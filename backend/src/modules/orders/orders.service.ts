@@ -350,7 +350,7 @@ export async function resolveStorefrontItems(rawBody: unknown) {
     }
 
     if (!variant && item.productName) {
-      variant = await prisma.productVariant.findFirst({
+      const matches = await prisma.productVariant.findMany({
         where: {
           isActive: true,
           product: {
@@ -360,7 +360,16 @@ export async function resolveStorefrontItems(rawBody: unknown) {
           },
         },
         orderBy: { createdAt: "asc" },
+        select: { id: true, productId: true },
+        take: 2,
       });
+
+      if (matches.length > 1 && matches[0].productId !== matches[1].productId) {
+        throw new AppError(400, `Ambiguous product name mapping for ${item.productName}`, "CHECKOUT_VARIANT_AMBIGUOUS");
+      }
+      if (matches.length === 1) {
+        variant = await prisma.productVariant.findUnique({ where: { id: matches[0].id } });
+      }
     }
 
     if (!variant) {

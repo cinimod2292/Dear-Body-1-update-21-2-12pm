@@ -170,7 +170,7 @@ export default function Checkout() {
     }
   };
 
-  if (cartCount === 0 && !orderPlaced) {
+  if (cartCount === 0 && !orderPlaced && !searchParams.get("orderId")) {
     navigate("/shop");
     return null;
   }

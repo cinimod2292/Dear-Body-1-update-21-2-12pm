@@ -21,6 +21,15 @@ import {
 import { initiateOrderPayment, verifyOrderPayment } from "../payments/payments.service.js";
 
 export async function ordersRoutes(app: FastifyInstance) {
+  const withOrderId = (url: string | undefined, orderId: string) => {
+    if (!url) return undefined;
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("orderId")) {
+      parsed.searchParams.set("orderId", orderId);
+    }
+    return parsed.toString();
+  };
+
   app.post("/store/cart", async (request, reply) => reply.status(201).send({ data: await createCart(request.body) }));
   app.get("/store/cart/:cartId", async (request, reply) => {
     const { cartId } = request.params as { cartId: string };
@@ -50,8 +59,8 @@ export async function ordersRoutes(app: FastifyInstance) {
     if (body.payment?.gateway === "stitch") {
       const payment = await initiateOrderPayment(order!.id, {
         gateway: "stitch",
-        returnUrl: body.payment.returnUrl,
-        cancelUrl: body.payment.cancelUrl,
+        returnUrl: withOrderId(body.payment.returnUrl, order.id),
+        cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
 
       return reply.status(201).send({ data: { order, payment } });

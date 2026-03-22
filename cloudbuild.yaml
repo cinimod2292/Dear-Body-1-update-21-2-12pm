@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/k8s-skaffold/pack'
+    args:
+      - build
+      - '--builder=gcr.io/buildpacks/builder:latest'
+      - '--path=backend'
+      - '--env=GOOGLE_RUNTIME=nodejs'
+      - '--env=GOOGLE_ENTRYPOINT=npm start'
+      - 'gcr.io/$PROJECT_ID/$SERVICE_NAME:$COMMIT_SHA'
+
+images:
+  - 'gcr.io/$PROJECT_ID/$SERVICE_NAME:$COMMIT_SHA'

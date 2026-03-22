@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 
 export interface AuditEventInput {
@@ -19,7 +20,7 @@ export async function writeAuditLog(event: AuditEventInput) {
       action: event.action,
       resourceType: event.resourceType,
       resourceId: event.resourceId,
-      details: event.details,
+      details: event.details as Prisma.InputJsonValue | undefined,
       ipAddress: event.ipAddress,
       userAgent: event.userAgent,
     },

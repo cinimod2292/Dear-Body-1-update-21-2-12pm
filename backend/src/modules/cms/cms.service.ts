@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import {
@@ -112,8 +113,8 @@ async function readSetting<T>(key: string, fallback: T): Promise<T> {
 async function writeSetting(key: string, value: unknown) {
   return prisma.setting.upsert({
     where: { scope_key: { scope: CMS_SCOPE, key } },
-    update: { value },
-    create: { scope: CMS_SCOPE, key, value },
+    update: { value: value as Prisma.InputJsonValue },
+    create: { scope: CMS_SCOPE, key, value: value as Prisma.InputJsonValue },
   });
 }
 

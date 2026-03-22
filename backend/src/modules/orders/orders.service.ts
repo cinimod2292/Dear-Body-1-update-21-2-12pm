@@ -13,6 +13,7 @@ import {
 } from "./orders.schemas.js";
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
+import { z } from "zod";
 
 async function recalcCart(cartId: string) {
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
@@ -299,6 +300,121 @@ export async function getOrder(orderId: string) {
 
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
   return order;
+}
+
+const storefrontItemResolverSchema = z.object({
+  items: z.array(z.object({
+    variantId: z.string().cuid().optional(),
+    productId: z.string().cuid().optional(),
+    slug: z.string().min(1).optional(),
+    productName: z.string().min(1).optional(),
+    quantity: z.number().int().positive(),
+  })).min(1),
+});
+
+export async function resolveStorefrontItems(rawBody: unknown) {
+  const body = storefrontItemResolverSchema.parse(rawBody);
+  const resolved = [];
+
+  for (const item of body.items) {
+    let variant = null;
+    if (item.variantId) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          id: item.variantId,
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC" },
+        },
+      });
+    }
+
+    if (!variant && item.productId) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          productId: item.productId,
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC" },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
+    if (!variant && item.slug) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC", slug: item.slug },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
+    if (!variant && item.productName) {
+      const matches = await prisma.productVariant.findMany({
+        where: {
+          isActive: true,
+          product: {
+            status: "ACTIVE",
+            visibility: "PUBLIC",
+            name: { equals: item.productName, mode: "insensitive" },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, productId: true },
+        take: 2,
+      });
+
+      if (matches.length > 1 && matches[0].productId !== matches[1].productId) {
+        throw new AppError(400, `Ambiguous product name mapping for ${item.productName}`, "CHECKOUT_VARIANT_AMBIGUOUS");
+      }
+      if (matches.length === 1) {
+        variant = await prisma.productVariant.findUnique({ where: { id: matches[0].id } });
+      }
+    }
+
+    if (!variant) {
+      throw new AppError(400, `No active variant found for checkout item`, "CHECKOUT_VARIANT_NOT_FOUND");
+    }
+
+    resolved.push({
+      productName: item.productName ?? null,
+      quantity: item.quantity,
+      variantId: variant.id,
+    });
+  }
+
+  return { items: resolved };
+}
+
+export async function getStoreOrderById(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: true,
+      payments: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    fulfillmentStatus: order.fulfillmentStatus,
+    currency: order.currency,
+    totalAmount: order.totalAmount,
+    createdAt: order.createdAt,
+    items: order.items,
+    payments: order.payments.map((p) => ({
+      id: p.id,
+      provider: p.provider,
+      referenceId: p.referenceId,
+      status: p.status,
+      amount: p.amount,
+      createdAt: p.createdAt,
+    })),
+  };
 }
 
 export async function updateOrderStatus(orderId: string, rawBody: unknown, actorId?: string) {

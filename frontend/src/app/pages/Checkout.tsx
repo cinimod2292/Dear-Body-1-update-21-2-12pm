@@ -1,16 +1,21 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Check, CreditCard, Lock, ArrowLeft, Truck } from "lucide-react";
 import { useCart } from "../context/CartContext";
-import logoImage from "figma:asset/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
+import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
+import { API_BASE } from "../admin/api/client";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
 export default function Checkout() {
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>("contact");
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
   const [orderNumber] = useState(() => Math.floor(Math.random() * 900000) + 100000);
 
   const shipping = cartTotal >= 50 ? 0 : 5.99;
@@ -33,13 +38,139 @@ export default function Checkout() {
 
   const stepIndex = steps.findIndex(s => s.key === step);
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    setOrderPlaced(true);
-    clearCart();
+  const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
+
+  const loadExistingOrder = async (orderId: string) => {
+    const res = await fetch(`${API_BASE}/store/orders/${orderId}`);
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload?.data) throw new Error(payload?.error?.message || "Failed to load order");
+    const o = payload.data;
+    setOrderInfo({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      paymentStatus: o.paymentStatus,
+      status: o.status,
+      checkoutUrl: null,
+    });
+    setOrderPlaced(["PAID", "AUTHORIZED", "PENDING", "FAILED"].includes(o.paymentStatus));
   };
 
-  if (cartCount === 0 && !orderPlaced) {
+  useEffect(() => {
+    const orderId = searchParams.get("orderId");
+    if (!orderId) return;
+    loadExistingOrder(orderId).catch(() => undefined);
+  }, [searchParams]);
+
+  const handlePlaceOrder = async (e: FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setCheckoutError(null);
+
+    try {
+      setSubmitting(true);
+
+      const resolveRes = await fetch(`${API_BASE}/store/checkout/resolve-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: cartItems.map(({ product, quantity }) => ({
+            variantId: product.backendVariantId,
+            productId: product.backendProductId,
+            slug: product.slug ?? product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+            productName: product.name,
+            quantity,
+          })),
+        }),
+      });
+      const resolvePayload = await resolveRes.json().catch(() => null);
+      if (!resolveRes.ok) throw new Error(resolvePayload?.error?.message || "Unable to resolve product variants for checkout");
+
+      const cartRes = await fetch(`${API_BASE}/store/cart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currency: "USD" }),
+      });
+      const cartPayload = await cartRes.json().catch(() => null);
+      if (!cartRes.ok) throw new Error(cartPayload?.error?.message || "Failed to create checkout cart");
+      const cartId = cartPayload?.data?.id as string | undefined;
+      if (!cartId) throw new Error("Checkout cart missing");
+
+      for (const item of resolvePayload.data.items as Array<{ variantId: string; quantity: number }>) {
+        const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ variantId: item.variantId, quantity: item.quantity }),
+        });
+        if (!addRes.ok) {
+          const payload = await addRes.json().catch(() => null);
+          throw new Error(payload?.error?.message || "Failed to add item to checkout cart");
+        }
+      }
+
+      const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email,
+          shippingAddress: {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            phone: form.phone,
+            line1: form.address,
+            city: form.city,
+            state: form.state,
+            postalCode: form.zip,
+            country: form.country,
+          },
+          payment: {
+            gateway: "stitch",
+            returnUrl,
+            cancelUrl: `${returnUrl}?cancelled=1`,
+          },
+        }),
+      });
+      const checkoutPayload = await checkoutRes.json().catch(() => null);
+      if (!checkoutRes.ok) throw new Error(checkoutPayload?.error?.message || "Checkout failed");
+
+      const order = checkoutPayload?.data?.order;
+      const payment = checkoutPayload?.data?.payment;
+      if (!order?.id) throw new Error("Order creation failed");
+
+      const finalReturnUrl = `${window.location.origin}/checkout?orderId=${order.id}`;
+      if (payment && !payment.checkoutUrl) {
+        const retryRes = await fetch(`${API_BASE}/store/orders/${order.id}/payments/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gateway: "stitch", returnUrl: finalReturnUrl, cancelUrl: `${window.location.origin}/checkout?orderId=${order.id}&cancelled=1` }),
+        });
+        const retryPayload = await retryRes.json().catch(() => null);
+        if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
+          window.location.href = retryPayload.data.checkoutUrl;
+          return;
+        }
+      }
+
+      setOrderInfo({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        paymentStatus: order.paymentStatus,
+        status: order.status,
+        checkoutUrl: payment?.checkoutUrl ?? null,
+      });
+      setOrderPlaced(true);
+      clearCart();
+
+      if (payment?.checkoutUrl) {
+        window.location.href = payment.checkoutUrl;
+      }
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (cartCount === 0 && !orderPlaced && !searchParams.get("orderId")) {
     navigate("/shop");
     return null;
   }
@@ -57,7 +188,10 @@ export default function Checkout() {
             Thank you for your order! We're getting your goodies ready.
           </p>
           <p className="text-gray-400 text-sm mb-8">
-            Order #{orderNumber} · Confirmation sent to <strong>{form.email || "your email"}</strong>
+            Order #{orderInfo?.orderNumber || orderNumber} · Confirmation sent to <strong>{form.email || "your email"}</strong>
+          </p>
+          <p className="text-sm mb-4">
+            Payment status: <strong>{orderInfo?.paymentStatus || "PENDING"}</strong>
           </p>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm mb-8 text-left">
@@ -298,14 +432,16 @@ export default function Checkout() {
                   >
                     Back
                   </button>
-                  <button
+              <button
                     type="submit"
+                    disabled={submitting}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
                   >
                     <Lock size={16} />
-                    Place Order · R{total.toFixed(2)}
+                    {submitting ? "Processing..." : `Place Order · R${total.toFixed(2)}`}
                   </button>
                 </div>
+                {checkoutError ? <p className="text-red-500 text-sm mt-3">{checkoutError}</p> : null}
               </form>
             )}
           </div>

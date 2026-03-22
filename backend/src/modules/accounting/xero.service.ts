@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
@@ -109,8 +110,8 @@ async function refreshTokenIfNeeded() {
 
   await prisma.setting.upsert({
     where: { scope_key: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY } },
-    update: { value: next },
-    create: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY, value: next },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
 
   return next;
@@ -160,7 +161,7 @@ async function writeSyncRecord(input: {
       action: input.action,
       status: input.status,
       externalId: input.externalId,
-      payload: input.payload,
+      payload: input.payload as Prisma.InputJsonValue | undefined,
       lastError: input.lastError,
       attempts: (latest?.attempts ?? 0) + (input.attempts ?? 1),
       lastSyncedAt: input.status === "SUCCESS" ? new Date() : undefined,
@@ -204,8 +205,8 @@ export async function upsertXeroSettings(rawBody: unknown) {
 
   await prisma.setting.upsert({
     where: { scope_key: { scope: XERO_SCOPE, key: XERO_CONFIG_KEY } },
-    update: { value: next },
-    create: { scope: XERO_SCOPE, key: XERO_CONFIG_KEY, value: next },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { scope: XERO_SCOPE, key: XERO_CONFIG_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
 
   return getXeroSettings();
@@ -247,8 +248,8 @@ export async function handleXeroCallback(code: string, state: string) {
 
   await prisma.setting.upsert({
     where: { scope_key: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY } },
-    update: { value: tokens },
-    create: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY, value: tokens },
+    update: { value: tokens as unknown as Prisma.InputJsonValue },
+    create: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY, value: tokens as unknown as Prisma.InputJsonValue },
   });
 
   return { connected: true, expiresAt: tokens.expiresAt };

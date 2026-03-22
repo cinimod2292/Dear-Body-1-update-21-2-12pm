@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { createUploadSchema, finalizeUploadSchema } from "./media.schemas.js";
 import { prepareUpload } from "./upload.service.js";
@@ -30,7 +31,7 @@ export async function mediaRoutes(app: FastifyInstance) {
           publicUrl: body.publicUrl,
           altText: body.altText,
           uploadedById: request.user.sub,
-          metadata: body.metadata,
+          metadata: body.metadata as Prisma.InputJsonValue | undefined,
         },
       });
 

@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { bulkProductAction, createProduct, createVariant, listProducts, updateProduct, updateVariant } from "./catalog.service.js";
+import { bulkProductAction, createProduct, createVariant, getProductById, listProducts, updateProduct, updateVariant } from "./catalog.service.js";
 
 export async function catalogRoutes(app: FastifyInstance) {
   app.get("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
@@ -10,6 +10,12 @@ export async function catalogRoutes(app: FastifyInstance) {
   app.post("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
     const product = await createProduct(request.body);
     return reply.status(201).send({ data: product });
+  });
+
+  app.get("/admin/products/:productId", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
+    const params = request.params as { productId: string };
+    const product = await getProductById(params.productId);
+    return reply.send({ data: product });
   });
 
   app.patch("/admin/products/:productId", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {

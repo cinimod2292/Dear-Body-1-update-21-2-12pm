@@ -23,12 +23,28 @@ export interface CmsBootstrap {
 }
 
 let cache: CmsBootstrap | null = null;
+const fallbackBootstrap: CmsBootstrap = {
+  siteConfig: {
+    navigation: { items: [] },
+    header: {},
+    footer: { socialLinks: [] },
+    branding: {},
+    seoDefaults: {},
+    contactInfo: {},
+  },
+  homeSections: [],
+  staticPages: [],
+};
 
 export async function fetchCmsBootstrap(): Promise<CmsBootstrap> {
   if (cache) return cache;
   const response = await fetch(`${API_BASE}/store/cms/bootstrap`);
-  const payload = await response.json();
-  cache = payload.data as CmsBootstrap;
+  if (!response.ok) {
+    throw new Error(`Failed to load CMS bootstrap (${response.status})`);
+  }
+
+  const payload = await response.json().catch(() => null);
+  cache = (payload?.data as CmsBootstrap | undefined) ?? fallbackBootstrap;
   return cache;
 }
 

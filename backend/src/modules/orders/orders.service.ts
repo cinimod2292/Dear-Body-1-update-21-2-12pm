@@ -13,6 +13,7 @@ import {
 } from "./orders.schemas.js";
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
+import { z } from "zod";
 
 async function recalcCart(cartId: string) {
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
@@ -299,6 +300,75 @@ export async function getOrder(orderId: string) {
 
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
   return order;
+}
+
+const storefrontItemResolverSchema = z.object({
+  items: z.array(z.object({
+    productName: z.string().min(1),
+    quantity: z.number().int().positive(),
+  })).min(1),
+});
+
+export async function resolveStorefrontItems(rawBody: unknown) {
+  const body = storefrontItemResolverSchema.parse(rawBody);
+  const resolved = [];
+
+  for (const item of body.items) {
+    const variant = await prisma.productVariant.findFirst({
+      where: {
+        isActive: true,
+        product: {
+          status: "ACTIVE",
+          visibility: "PUBLIC",
+          name: { equals: item.productName, mode: "insensitive" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!variant) {
+      throw new AppError(400, `No active variant found for ${item.productName}`, "CHECKOUT_VARIANT_NOT_FOUND");
+    }
+
+    resolved.push({
+      productName: item.productName,
+      quantity: item.quantity,
+      variantId: variant.id,
+    });
+  }
+
+  return { items: resolved };
+}
+
+export async function getStoreOrderById(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: true,
+      payments: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    fulfillmentStatus: order.fulfillmentStatus,
+    currency: order.currency,
+    totalAmount: order.totalAmount,
+    createdAt: order.createdAt,
+    items: order.items,
+    payments: order.payments.map((p) => ({
+      id: p.id,
+      provider: p.provider,
+      referenceId: p.referenceId,
+      status: p.status,
+      amount: p.amount,
+      createdAt: p.createdAt,
+    })),
+  };
 }
 
 export async function updateOrderStatus(orderId: string, rawBody: unknown, actorId?: string) {

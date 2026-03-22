@@ -107,9 +107,8 @@ export default function AdminProductEditor() {
       setAttributes(attrsRes.data);
 
       if (!isNew && productId) {
-        const productsRes = await apiRequest<{ data: { items: Product[] } }>("/admin/products?page=1&perPage=500", {}, session.accessToken);
-        const found = productsRes.data.items.find((p) => p.id === productId);
-        if (!found) throw new Error("Product not found");
+        const productRes = await apiRequest<{ data: Product }>(`/admin/products/${productId}`, {}, session.accessToken);
+        const found = productRes.data;
         setProduct({ ...found, brandId: found.brandId ?? "", categoryId: found.categoryId ?? "", seoMetadata: found.seoMetadata ?? {}, tags: found.tags ?? [], galleries: found.galleries ?? [], variants: found.variants ?? [] });
       }
     } catch (err) {

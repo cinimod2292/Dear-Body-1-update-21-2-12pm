@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
@@ -56,7 +57,7 @@ async function writePaymentEventLog(data: {
         transactionId: data.transactionId,
         externalEventId: data.externalEventId,
         idempotencyKey: data.idempotencyKey,
-        payload: data.payload,
+        payload: data.payload as Prisma.InputJsonValue | undefined,
         error: data.error,
       },
     });
@@ -101,7 +102,7 @@ export async function upsertStitchSettings(rawBody: unknown) {
   const body = stitchSettingsSchema.parse(rawBody);
 
   const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
-  const existingValue = (existing?.value ?? {}) as StitchStoredConfig;
+  const existingValue = (existing?.value ?? {}) as unknown as StitchStoredConfig;
 
   const next: StitchStoredConfig = {
     enabled: body.enabled,
@@ -122,8 +123,8 @@ export async function upsertStitchSettings(rawBody: unknown) {
 
   const saved = await prisma.setting.upsert({
     where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } },
-    update: { value: next },
-    create: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
 
   return {
@@ -162,7 +163,7 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
     where: { id: transactionId },
     data: {
       status,
-      metadata: details,
+      metadata: details as Prisma.InputJsonValue,
       processedAt: new Date(),
       errorMessage: status === "FAILED" ? "Payment marked as failed" : null,
     },
@@ -183,7 +184,7 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
       orderId,
       eventType: "PAYMENT_STATUS_SYNCED",
       nextValue: status,
-      details,
+      details: details as Prisma.InputJsonValue,
     },
   });
 }
@@ -227,7 +228,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       metadata: {
         checkoutUrl: result.checkoutUrl,
         raw: result.raw,
-      },
+      } as Prisma.InputJsonValue,
       idempotencyKey,
       processedAt: new Date(),
     },
@@ -249,7 +250,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       actorId,
       eventType: "PAYMENT_INITIATED",
       nextValue: result.status,
-      details: { provider: gateway.name, referenceId: result.referenceId },
+      details: { provider: gateway.name, referenceId: result.referenceId } as Prisma.InputJsonValue,
     },
   });
 

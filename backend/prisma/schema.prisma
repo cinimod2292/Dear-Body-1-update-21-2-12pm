@@ -402,6 +402,7 @@ model ProductVariant {
   attributeValues   ProductVariantAttributeValue[]
   inventoryLevel    InventoryLevel?
   stockMovements    StockMovement[]
+  cartItems         CartItem[]
 
   @@index([productId])
   @@index([isActive])

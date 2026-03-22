@@ -24,9 +24,11 @@ export async function prepareUpload(filename: string, mimeType: string): Promise
     };
   }
 
+  const localBaseUrl = env.PUBLIC_BASE_URL ?? `http://localhost:${env.PORT}`;
+
   return {
     storageKey,
-    uploadUrl: `http://localhost:${env.PORT}/local-upload/${storageKey}`,
+    uploadUrl: `${localBaseUrl}/local-upload/${storageKey}`,
     method: "PUT",
     headers: {
       "content-type": mimeType,

@@ -39,6 +39,23 @@ export async function listProducts(rawQuery: unknown) {
   return toPaginatedResponse(items, total, query);
 }
 
+export async function getProductById(productId: string) {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      brand: true,
+      category: true,
+      seoMetadata: true,
+      tags: { include: { tag: true } },
+      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
+    },
+  });
+
+  if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
+  return product;
+}
+
 export async function createProduct(rawBody: unknown) {
   const body = createProductSchema.parse(rawBody);
 

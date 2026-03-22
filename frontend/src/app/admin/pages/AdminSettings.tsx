@@ -84,8 +84,7 @@ export default function AdminSettings() {
     try {
       setLoading(true);
       setError(null);
-
-      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes] = await Promise.all([
+      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
@@ -93,29 +92,38 @@ export default function AdminSettings() {
         apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
       ]);
 
-      const map = new Map(settingsRes.data.items.map((s) => [s.key, s.value]));
-      setStoreName((map.get("storeName") as string) ?? "Dear Body");
-      setStoreEmail((map.get("storeEmail") as string) ?? "hello@dearbody.com");
+      if (settingsRes.status === "fulfilled") {
+        const map = new Map(settingsRes.value.data.items.map((s) => [s.key, s.value]));
+        setStoreName((map.get("storeName") as string) ?? "Dear Body");
+        setStoreEmail((map.get("storeEmail") as string) ?? "hello@dearbody.com");
+      }
+      if (stitchRes.status === "fulfilled") {
+        setStitchEnabled(stitchRes.value.data.enabled);
+        setStitchMode(stitchRes.value.data.mode);
+        setMerchantId(stitchRes.value.data.merchantId || "");
+        setRedirectUrl(stitchRes.value.data.redirectUrl || "");
+        setCallbackUrl(stitchRes.value.data.callbackUrl || "");
+        setApiBaseUrl(stitchRes.value.data.apiBaseUrl || "");
+        setApiKeyConfigured(stitchRes.value.data.apiKeyConfigured);
+        setWebhookConfigured(stitchRes.value.data.webhookSecretConfigured);
+      }
+      if (paymentEventsRes.status === "fulfilled") setPaymentEvents(paymentEventsRes.value.data.items);
+      if (xeroSettingsRes.status === "fulfilled") {
+        setXeroEnabled(xeroSettingsRes.value.data.enabled);
+        setXeroClientId(xeroSettingsRes.value.data.clientId || "");
+        setXeroRedirectUri(xeroSettingsRes.value.data.redirectUri || "");
+        setXeroTenantId(xeroSettingsRes.value.data.tenantId || "");
+        setXeroScopes((xeroSettingsRes.value.data.scopes || []).join(" "));
+        setXeroConnectionStatus(xeroSettingsRes.value.data.connectionStatus);
+        setXeroTokenExpiresAt(xeroSettingsRes.value.data.tokenExpiresAt);
+        setXeroSecretConfigured(xeroSettingsRes.value.data.clientSecretConfigured);
+      }
+      if (xeroSyncRes.status === "fulfilled") setXeroSyncRecords(xeroSyncRes.value.data.items);
 
-      setStitchEnabled(stitchRes.data.enabled);
-      setStitchMode(stitchRes.data.mode);
-      setMerchantId(stitchRes.data.merchantId || "");
-      setRedirectUrl(stitchRes.data.redirectUrl || "");
-      setCallbackUrl(stitchRes.data.callbackUrl || "");
-      setApiBaseUrl(stitchRes.data.apiBaseUrl || "");
-      setApiKeyConfigured(stitchRes.data.apiKeyConfigured);
-      setWebhookConfigured(stitchRes.data.webhookSecretConfigured);
-      setPaymentEvents(paymentEventsRes.data.items);
-
-      setXeroEnabled(xeroSettingsRes.data.enabled);
-      setXeroClientId(xeroSettingsRes.data.clientId || "");
-      setXeroRedirectUri(xeroSettingsRes.data.redirectUri || "");
-      setXeroTenantId(xeroSettingsRes.data.tenantId || "");
-      setXeroScopes((xeroSettingsRes.data.scopes || []).join(" "));
-      setXeroConnectionStatus(xeroSettingsRes.data.connectionStatus);
-      setXeroTokenExpiresAt(xeroSettingsRes.data.tokenExpiresAt);
-      setXeroSecretConfigured(xeroSettingsRes.data.clientSecretConfigured);
-      setXeroSyncRecords(xeroSyncRes.data.items);
+      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes].filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        toast.error(`Loaded with partial failures (${failed.length})`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -129,7 +137,7 @@ export default function AdminSettings() {
 
   const saveStore = async (e: FormEvent) => {
     e.preventDefault();
-    if (!session?.accessToken) return;
+    if (!session?.accessToken || saving) return;
     try {
       setSaving(true);
       await Promise.all([
@@ -146,7 +154,7 @@ export default function AdminSettings() {
 
   const saveStitch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!session?.accessToken) return;
+    if (!session?.accessToken || saving) return;
     try {
       setSaving(true);
       const payload = {
@@ -175,7 +183,7 @@ export default function AdminSettings() {
 
   const saveXero = async (e: FormEvent) => {
     e.preventDefault();
-    if (!session?.accessToken) return;
+    if (!session?.accessToken || saving) return;
     try {
       setSaving(true);
       const payload = {

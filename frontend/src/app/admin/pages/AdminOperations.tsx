@@ -29,7 +29,8 @@ export default function AdminOperations() {
     try {
       setLoading(true);
       setError(null);
-      const [dashboardRes, salesRes, ordersRes, customersRes, inventoryRes, activityRes, couponsRes, shippingRes, taxRes, inquiriesRes, newsletterRes] = await Promise.all([
+
+      const requests = await Promise.allSettled([
         apiRequest<{ data: any }>("/admin/reports/dashboard", {}, session.accessToken),
         apiRequest<{ data: any }>("/admin/reports/sales", {}, session.accessToken),
         apiRequest<{ data: any }>("/admin/reports/orders", {}, session.accessToken),
@@ -43,17 +44,23 @@ export default function AdminOperations() {
         apiRequest<{ data: any[] }>("/admin/ops/newsletter", {}, session.accessToken),
       ]);
 
-      setDashboard(dashboardRes.data);
-      setSales(salesRes.data);
-      setOrderReport(ordersRes.data);
-      setCustomerReport(customersRes.data);
-      setInventory(inventoryRes.data);
-      setActivity(activityRes.data);
-      setCoupons(couponsRes.data);
-      setShippingMethods(shippingRes.data);
-      setTaxRates(taxRes.data);
-      setInquiries(inquiriesRes.data);
-      setNewsletter(newsletterRes.data);
+      const getData = <T,>(index: number, fallback: T): T => {
+        const result = requests[index];
+        if (result.status === "fulfilled") return result.value.data as T;
+        return fallback;
+      };
+
+      setDashboard(getData(0, null));
+      setSales(getData(1, null));
+      setOrderReport(getData(2, null));
+      setCustomerReport(getData(3, null));
+      setInventory(getData(4, null));
+      setActivity(getData(5, null));
+      setCoupons(getData(6, []));
+      setShippingMethods(getData(7, []));
+      setTaxRates(getData(8, []));
+      setInquiries(getData(9, []));
+      setNewsletter(getData(10, []));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load operations data");
     } finally {

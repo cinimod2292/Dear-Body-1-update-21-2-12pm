@@ -159,6 +159,10 @@ export async function listTaxRates() {
 
 export async function upsertTaxRate(rawBody: unknown) {
   const body = taxRateSchema.parse(rawBody);
+  const existing = await prisma.taxRate.findFirst({ where: { country: body.country, state: body.state ?? null, name: body.name } });
+  if (existing) {
+    return prisma.taxRate.update({ where: { id: existing.id }, data: body });
+  }
   return prisma.taxRate.create({ data: body });
 }
 

@@ -29,8 +29,14 @@ export function buildApp() {
       : true,
   });
 
+  const corsOrigin = process.env.CORS_ORIGIN ?? env.CORS_ORIGIN;
+
+  if (env.NODE_ENV === "production" && corsOrigin === "*") {
+    throw new Error("CORS_ORIGIN cannot be '*' in production");
+  }
+
   app.register(cors, {
-    origin: env.CORS_ORIGIN,
+    origin: corsOrigin,
     credentials: true,
   });
 

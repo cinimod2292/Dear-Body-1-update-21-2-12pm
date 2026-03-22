@@ -304,7 +304,10 @@ export async function getOrder(orderId: string) {
 
 const storefrontItemResolverSchema = z.object({
   items: z.array(z.object({
-    productName: z.string().min(1),
+    variantId: z.string().cuid().optional(),
+    productId: z.string().cuid().optional(),
+    slug: z.string().min(1).optional(),
+    productName: z.string().min(1).optional(),
     quantity: z.number().int().positive(),
   })).min(1),
 });
@@ -314,24 +317,58 @@ export async function resolveStorefrontItems(rawBody: unknown) {
   const resolved = [];
 
   for (const item of body.items) {
-    const variant = await prisma.productVariant.findFirst({
-      where: {
-        isActive: true,
-        product: {
-          status: "ACTIVE",
-          visibility: "PUBLIC",
-          name: { equals: item.productName, mode: "insensitive" },
+    let variant = null;
+    if (item.variantId) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          id: item.variantId,
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC" },
         },
-      },
-      orderBy: { createdAt: "asc" },
-    });
+      });
+    }
+
+    if (!variant && item.productId) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          productId: item.productId,
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC" },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
+    if (!variant && item.slug) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          isActive: true,
+          product: { status: "ACTIVE", visibility: "PUBLIC", slug: item.slug },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
+    if (!variant && item.productName) {
+      variant = await prisma.productVariant.findFirst({
+        where: {
+          isActive: true,
+          product: {
+            status: "ACTIVE",
+            visibility: "PUBLIC",
+            name: { equals: item.productName, mode: "insensitive" },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
 
     if (!variant) {
-      throw new AppError(400, `No active variant found for ${item.productName}`, "CHECKOUT_VARIANT_NOT_FOUND");
+      throw new AppError(400, `No active variant found for checkout item`, "CHECKOUT_VARIANT_NOT_FOUND");
     }
 
     resolved.push({
-      productName: item.productName,
+      productName: item.productName ?? null,
       quantity: item.quantity,
       variantId: variant.id,
     });

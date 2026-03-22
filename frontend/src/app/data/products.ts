@@ -1,5 +1,8 @@
 export interface Product {
   id: string;
+  slug?: string;
+  backendProductId?: string;
+  backendVariantId?: string;
   name: string;
   tagline: string;
   price: number;

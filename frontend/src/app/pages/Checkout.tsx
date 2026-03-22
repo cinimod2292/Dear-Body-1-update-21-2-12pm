@@ -74,6 +74,9 @@ export default function Checkout() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: cartItems.map(({ product, quantity }) => ({
+            variantId: product.backendVariantId,
+            productId: product.backendProductId,
+            slug: product.slug ?? product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
             productName: product.name,
             quantity,
           })),

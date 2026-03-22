@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Check, CreditCard, Lock, ArrowLeft, Truck } from "lucide-react";
 import { useCart } from "../context/CartContext";
-import logoImage from "figma:asset/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
+import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 

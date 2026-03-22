@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { ArrowRight, Heart, Leaf, Sparkles, Globe } from "lucide-react";
-import heroImage from "figma:asset/909142a9f8349273030b1d771262f7d833d21920.png";
+import heroImage from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
 
 const values = [
   { icon: Heart, title: "Made with Love", desc: "Every fragrance is crafted with passion and care — from concept to the final spritz.", color: "#FF69B4" },

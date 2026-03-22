@@ -67,7 +67,7 @@ export async function createProduct(rawBody: unknown) {
             create: body.relatedProductIds.map((targetProductId, index) => ({ targetProductId, position: index })),
           }
         : undefined,
-    },
+    } as any,
     include: {
       seoMetadata: true,
       tags: { include: { tag: true } },
@@ -115,7 +115,7 @@ export async function updateProduct(productId: string, rawBody: unknown) {
       ...(body.tagIds ? { tags: { deleteMany: {}, create: body.tagIds.map((tagId) => ({ tagId })) } } : {}),
       ...(body.relatedProductIds ? { relatedSource: { deleteMany: {}, create: body.relatedProductIds.map((targetProductId, index) => ({ targetProductId, position: index })) } } : {}),
       ...(body.gallery ? { galleries: { deleteMany: {}, create: body.gallery.map((image) => ({ mediaAssetId: image.mediaAssetId, position: image.position, altText: image.altText })) } } : {}),
-    },
+    } as any,
     include: {
       seoMetadata: true,
       tags: { include: { tag: true } },

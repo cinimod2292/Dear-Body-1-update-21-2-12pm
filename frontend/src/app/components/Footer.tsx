@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { Instagram, Facebook, Twitter, Youtube, Mail, Phone, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
-import logoImage from "figma:asset/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
+import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { fetchCmsBootstrap } from "../lib/cms";
 
 const iconMap: Record<string, any> = {

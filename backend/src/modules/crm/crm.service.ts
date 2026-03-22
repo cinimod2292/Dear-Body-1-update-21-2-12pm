@@ -156,7 +156,8 @@ function csvEscape(value: unknown) {
 }
 
 export async function exportCustomersCsv(rawQuery: unknown) {
-  const paged = await listCustomers({ ...rawQuery, page: 1, perPage: 1000 });
+  const baseQuery = (rawQuery && typeof rawQuery === "object") ? rawQuery : {};
+  const paged = await listCustomers({ ...baseQuery, page: 1, perPage: 1000 });
   const header = ["id", "email", "firstName", "lastName", "status", "marketingEmailConsent", "marketingSmsConsent", "lifetimeValue", "averageOrderValue", "lastOrderAt"];
   const lines = [header.join(",")];
 

@@ -4,7 +4,7 @@ import { ArrowRight, Star } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { products } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
-import heroImageFallback from "figma:asset/909142a9f8349273030b1d771262f7d833d21920.png";
+import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
 
 interface HomeSection {
   id: string;

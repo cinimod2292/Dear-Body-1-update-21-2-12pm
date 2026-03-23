@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { apiRequest } from "../api/client";
+import { apiRequest, API_BASE } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
@@ -100,7 +100,7 @@ export default function AdminOperations() {
   const exportNewsletter = async () => {
     if (!session?.accessToken) return;
     try {
-      const res = await fetch(`${(import.meta as any).env.VITE_API_BASE_URL ?? "http://localhost:4000/api"}/admin/ops/newsletter/export.csv`, {
+      const res = await fetch(`${API_BASE}/admin/ops/newsletter/export.csv`, {
         headers: { Authorization: `Bearer ${session.accessToken}` },
       });
       const text = await res.text();

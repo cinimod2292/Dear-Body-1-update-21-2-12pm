@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { env } from "../../config/env.js";
-import { runInitialSetup } from "./setup.service.js";
+import { runInitialSetup, SetupExecutionError } from "./setup.service.js";
 
 // TEMPORARY ROUTE: Remove this entire file + app registration after first production setup.
 const SETUP_ROUTE_PATH = "/internal/setup/initialize";
@@ -44,9 +44,12 @@ export async function setupRoutes(app: FastifyInstance) {
         data: result,
       });
     } catch (error) {
+      const stepDetails = error instanceof SetupExecutionError ? error.steps : undefined;
+
       return reply.status(500).send({
         success: false,
         error: error instanceof Error ? error.message : "Unknown setup failure",
+        details: stepDetails,
       });
     }
   });

@@ -21,6 +21,7 @@ import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
+import { setupRoutes } from "./modules/setup/setup.routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -77,6 +78,7 @@ export async function buildApp() {
   });
 
   app.register(async (api) => {
+    await api.register(setupRoutes);
     await api.register(healthRoutes);
     await api.register(authRoutes);
     await api.register(settingsRoutes);

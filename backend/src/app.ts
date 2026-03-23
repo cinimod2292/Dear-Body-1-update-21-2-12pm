@@ -22,7 +22,7 @@ import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 
-export function buildApp() {
+export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV === "production"
       ? { transport: { target: "pino-pretty" } }

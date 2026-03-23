@@ -28,6 +28,7 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().email(),
   WEBHOOK_SIGNING_SECRET: z.string().min(8),
   PAYMENTS_ENCRYPTION_SECRET: z.string().min(16).optional(),
+  SETUP_TOKEN: z.string().min(16).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

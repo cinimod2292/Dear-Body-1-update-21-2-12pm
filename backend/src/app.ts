@@ -24,7 +24,7 @@ import { opsRoutes } from "./modules/ops/ops.routes.js";
 
 export function buildApp() {
   const app = Fastify({
-    logger: env.NODE_ENV === "development"
+    logger: env.NODE_ENV === "production"
       ? { transport: { target: "pino-pretty" } }
       : true,
   });
@@ -35,7 +35,7 @@ export function buildApp() {
     throw new Error("CORS_ORIGIN cannot be '*' in production");
   }
 
-  app.register(cors, {
+  await app.register(cors, {
     origin: corsOrigin,
     credentials: true,
   });

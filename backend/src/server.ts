@@ -28,9 +28,12 @@ try {
   const address = await app.listen({ port: env.PORT, host: "0.0.0.0" });
 
   const adminLoginPath = `${env.API_PREFIX}/auth/admin/login`;
+  const routes = app.printRoutes();
   app.log.info(`[startup] Listening at ${address}`);
   app.log.info(`[startup] API prefix: ${env.API_PREFIX}`);
   app.log.info(`[startup] Expected admin login route: POST ${adminLoginPath}`);
+  app.log.info(`[startup] Registered routes:
+${routes}`);
 } catch (error) {
   if (app) {
     app.log.error({ err: error }, "[startup] Fatal startup error");

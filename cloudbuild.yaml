@@ -22,4 +22,4 @@ images:
   - 'gcr.io/$PROJECT_ID/$SERVICE_NAME:$COMMIT_SHA'
 
 substitutions:
-  _REGION: us-central1
+  _REGION: africa-south1

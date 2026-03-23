@@ -4,7 +4,11 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  API_PREFIX: z.string().default("/api"),
+  API_PREFIX: z.string().trim().default("/api").transform((value) => {
+    if (!value) return "/api";
+    const normalized = value.startsWith("/") ? value : `/${value}`;
+    return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+  }),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   PUBLIC_BASE_URL: z.string().url().optional(),
   DATABASE_URL: z.string().min(1),
@@ -12,8 +16,8 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("7d"),
-  INITIAL_SUPER_ADMIN_EMAIL: z.string().email(),
-  INITIAL_SUPER_ADMIN_PASSWORD: z.string().min(10),
+  INITIAL_SUPER_ADMIN_EMAIL: z.string().email().optional(),
+  INITIAL_SUPER_ADMIN_PASSWORD: z.string().min(10).optional(),
   UPLOAD_PROVIDER: z.enum(["local", "s3"]).default("local"),
   UPLOAD_BUCKET: z.string().optional(),
   UPLOAD_REGION: z.string().optional(),
@@ -30,6 +34,7 @@ const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n");
+  console.error(`[startup] Environment validation failed:\n${issues}`);
   throw new Error(`Invalid environment configuration:\n${issues}`);
 }
 

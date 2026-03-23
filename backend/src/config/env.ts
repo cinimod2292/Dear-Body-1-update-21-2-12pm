@@ -4,7 +4,11 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  API_PREFIX: z.string().default("/api"),
+  API_PREFIX: z.string().trim().default("/api").transform((value) => {
+    if (!value) return "/api";
+    const normalized = value.startsWith("/") ? value : `/${value}`;
+    return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+  }),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   PUBLIC_BASE_URL: z.string().url().optional(),
   DATABASE_URL: z.string().min(1),

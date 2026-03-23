@@ -29,15 +29,11 @@ export async function buildApp() {
       : true,
   });
 
-  const corsOrigin = process.env.CORS_ORIGIN ?? env.CORS_ORIGIN;
-
-  if (env.NODE_ENV === "production" && corsOrigin === "*") {
-    throw new Error("CORS_ORIGIN cannot be '*' in production");
-  }
-
   await app.register(cors, {
-    origin: corsOrigin,
+    origin: "https://dear-body-1-update-21-2-12pm.vercel.app",
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    preflight: true,
   });
 
   app.register(multipart, {

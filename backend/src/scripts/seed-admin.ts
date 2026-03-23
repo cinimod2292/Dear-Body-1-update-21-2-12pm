@@ -3,6 +3,10 @@ import { prisma } from "../lib/prisma.js";
 import { env } from "../config/env.js";
 
 async function main() {
+  if (!env.INITIAL_SUPER_ADMIN_EMAIL || !env.INITIAL_SUPER_ADMIN_PASSWORD) {
+    throw new Error("INITIAL_SUPER_ADMIN_EMAIL and INITIAL_SUPER_ADMIN_PASSWORD must be set for seed script");
+  }
+
   const existing = await prisma.staffUser.findUnique({ where: { email: env.INITIAL_SUPER_ADMIN_EMAIL } });
   if (existing) {
     console.log("Initial super admin already exists");

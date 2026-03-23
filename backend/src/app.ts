@@ -66,6 +66,16 @@ export async function buildApp() {
     });
   });
 
+  app.get("/__debug/routes", async () => {
+    const expectedAdminLoginPath = `${env.API_PREFIX}/auth/admin/login`;
+
+    return {
+      apiPrefix: env.API_PREFIX,
+      expectedAdminLoginPath,
+      routes: app.printRoutes(),
+    };
+  });
+
   app.register(async (api) => {
     await api.register(healthRoutes);
     await api.register(authRoutes);

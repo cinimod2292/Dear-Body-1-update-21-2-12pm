@@ -24,7 +24,7 @@ export const paymentVerifySchema = z.object({
 
 export const paymentEventsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
+  perPage: z.coerce.number().int().positive().default(20).transform((perPage) => Math.min(perPage, 100)),
   gateway: z.string().optional(),
   status: z.string().optional(),
   q: z.string().optional(),

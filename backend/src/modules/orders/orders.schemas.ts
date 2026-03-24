@@ -45,7 +45,7 @@ export const checkoutSchema = z.object({
 
 export const orderListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
+  perPage: z.coerce.number().int().positive().default(20).transform((perPage) => Math.min(perPage, 100)),
   sortBy: z.enum(["placedAt", "createdAt", "totalAmount", "orderNumber"]).default("placedAt"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   q: z.string().optional(),

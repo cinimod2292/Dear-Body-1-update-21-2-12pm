@@ -11,7 +11,7 @@ export const xeroSettingsSchema = z.object({
 
 export const xeroSyncQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
+  perPage: z.coerce.number().int().positive().default(20).transform((perPage) => Math.min(perPage, 100)),
   status: z.enum(["PENDING", "SUCCESS", "FAILED"]).optional(),
   entityType: z.enum(["CUSTOMER", "ORDER", "INVOICE"]).optional(),
 });

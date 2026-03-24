@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import { ZodError } from "zod";
 
 export class AppError extends Error {
   constructor(
@@ -25,6 +26,17 @@ export function registerErrorHandler(app: { setErrorHandler: Function }) {
           code: error.code,
           message: error.message,
           details: error.details,
+          requestId: request.id,
+        },
+      });
+    }
+
+    if (error instanceof ZodError) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid request data",
+          details: error.issues,
           requestId: request.id,
         },
       });

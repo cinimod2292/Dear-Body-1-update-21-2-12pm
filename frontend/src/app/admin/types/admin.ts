@@ -1,6 +1,8 @@
 export interface AdminSession {
   accessToken: string;
   refreshToken?: string;
+  accessTokenExpiresAt?: string;
+  refreshTokenExpiresAt?: string;
   permissions: string[];
   email: string;
   role: string;

@@ -71,7 +71,7 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={() => {
-                logout();
+                void logout();
                 navigate("/admin/login", { replace: true });
               }}
               className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm"

@@ -29,6 +29,23 @@ export async function issueTokens(user: StaffUser, app: any) {
     },
   });
 
+  app.log.info(
+    {
+      event: "auth.login.token_issued",
+      userId: user.id,
+      email: user.email,
+      accessTokenIssued: Boolean(accessToken),
+      accessTokenType: "access",
+      accessTokenSecretPath: "env.JWT_ACCESS_SECRET",
+      accessTokenExpiresIn: env.JWT_ACCESS_TTL,
+      refreshTokenIssued: Boolean(refreshToken),
+      refreshTokenType: "refresh",
+      refreshTokenSecretPath: "env.JWT_REFRESH_SECRET",
+      refreshTokenExpiresIn: env.JWT_REFRESH_TTL,
+    },
+    "Admin login token issued",
+  );
+
   return { accessToken, refreshToken, permissions };
 }
 

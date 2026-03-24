@@ -30,8 +30,16 @@ export const authPlugin = fp(async (app) => {
       authContext.tokenSub = request.user?.sub;
       authContext.tokenEmail = request.user?.email;
       authContext.tokenRole = request.user?.role;
-    } catch {
-      request.log.warn(authContext, "Admin auth failed: JWT verification failed");
+    } catch (error: any) {
+      request.log.warn(
+        {
+          ...authContext,
+          jwtErrorMessage: error?.message,
+          jwtErrorCode: error?.code,
+          jwtErrorName: error?.name,
+        },
+        "Admin auth failed: JWT verification failed",
+      );
       throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
     }
 

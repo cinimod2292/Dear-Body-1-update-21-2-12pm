@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const customerListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
+  perPage: z.coerce.number().int().positive().default(20).transform((perPage) => Math.min(perPage, 100)),
   sortBy: z.enum(["createdAt", "updatedAt", "lastOrderAt", "lifetimeValue", "averageOrderValue", "email"]).default("updatedAt"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   q: z.string().optional(),

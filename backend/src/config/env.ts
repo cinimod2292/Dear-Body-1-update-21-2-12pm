@@ -39,4 +39,13 @@ if (!parsed.success) {
   throw new Error(`Invalid environment configuration:\n${issues}`);
 }
 
+if (
+  parsed.data.NODE_ENV === "production"
+  && !/(?:\?|&)sslmode=require(?:&|$)/i.test(parsed.data.DATABASE_URL)
+) {
+  const message = "DATABASE_URL must include sslmode=require when NODE_ENV=production";
+  console.error(`[startup] Environment validation failed:\n${message}`);
+  throw new Error(`Invalid environment configuration:\n${message}`);
+}
+
 export const env = parsed.data;

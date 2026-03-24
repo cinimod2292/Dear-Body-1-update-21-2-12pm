@@ -54,17 +54,24 @@ export async function buildApp() {
     const actorEmail = request.user?.email;
     const actorUserId = request.user?.sub;
 
-    await writeAuditLog({
-      actorUserId,
-      actorEmail,
-      action: `${request.method} ${request.url}`,
-      resourceType: "api",
-      details: {
-        statusCode: reply.statusCode,
-      },
-      ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
-    });
+    try {
+      await writeAuditLog({
+        actorUserId,
+        actorEmail,
+        action: `${request.method} ${request.url}`,
+        resourceType: "api",
+        details: {
+          statusCode: reply.statusCode,
+        },
+        ipAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+      });
+    } catch (error) {
+      request.log.warn(
+        { err: error, url: request.url, method: request.method },
+        "Audit log write failed; request already completed",
+      );
+    }
   });
 
   app.get("/__debug/routes", async () => {

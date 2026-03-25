@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { loginSchema, refreshSchema } from "./auth.schemas.js";
-import { login, logoutAdminSession, refreshAdminSession } from "./auth.service.js";
+import { customerLoginSchema, customerRegisterSchema, loginSchema, refreshSchema } from "./auth.schemas.js";
+import { getCustomerById, login, loginCustomer, logoutAdminSession, refreshAdminSession, registerCustomer } from "./auth.service.js";
 
 export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/admin/login", async (request, reply) => {
@@ -36,5 +36,21 @@ export async function authRoutes(app: FastifyInstance) {
         permissions: request.user.permissions,
       },
     });
+  });
+
+  app.post("/auth/customer/register", async (request, reply) => {
+    const body = customerRegisterSchema.parse(request.body);
+    const session = await registerCustomer(body, app);
+    return reply.status(201).send({ data: session });
+  });
+
+  app.post("/auth/customer/login", async (request, reply) => {
+    const body = customerLoginSchema.parse(request.body);
+    const session = await loginCustomer(body.email, body.password, app);
+    return reply.send({ data: session });
+  });
+
+  app.get("/auth/customer/me", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
+    return reply.send({ data: await getCustomerById(request.customer.id) });
   });
 }

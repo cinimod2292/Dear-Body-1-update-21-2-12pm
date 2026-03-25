@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { env } from "../../config/env.js";
-import { StaffUser } from "@prisma/client";
+import { Customer, StaffUser } from "@prisma/client";
 import { getPermissionsForRole } from "./rbac.js";
 
 interface TokenPair {
@@ -152,4 +152,85 @@ export async function logoutAdminSession(refreshToken: string, app: any) {
     where: { id: matchedToken.id },
     data: { revokedAt: new Date() },
   });
+}
+
+
+interface CustomerToken {
+  accessToken: string;
+  accessTokenExpiresAt: string | null;
+  customer: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+  };
+}
+
+async function issueCustomerAccessToken(customer: Customer, app: any): Promise<CustomerToken> {
+  const accessToken = await app.jwt.sign(
+    { email: customer.email, tokenType: "customer" },
+    { sub: customer.id, expiresIn: env.JWT_ACCESS_TTL },
+  );
+
+  return {
+    accessToken,
+    accessTokenExpiresAt: getTokenExpiryIso(app, accessToken),
+    customer: {
+      id: customer.id,
+      email: customer.email,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phone: customer.phone,
+    },
+  };
+}
+
+export async function registerCustomer(input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }, app: any) {
+  const existing = await prisma.customer.findUnique({ where: { email: input.email } });
+  if (existing?.passwordHash) throw new AppError(409, "Customer account already exists", "CUSTOMER_EXISTS");
+
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const customer = existing
+    ? await prisma.customer.update({
+        where: { id: existing.id },
+        data: {
+          passwordHash,
+          status: "ACTIVE",
+          firstName: input.firstName ?? existing.firstName,
+          lastName: input.lastName ?? existing.lastName,
+          phone: input.phone ?? existing.phone,
+        },
+      })
+    : await prisma.customer.create({
+        data: {
+          email: input.email,
+          passwordHash,
+          status: "ACTIVE",
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+        },
+      });
+
+  return issueCustomerAccessToken(customer, app);
+}
+
+export async function loginCustomer(email: string, password: string, app: any) {
+  const customer = await prisma.customer.findUnique({ where: { email } });
+  if (!customer?.passwordHash) throw new AppError(401, "Invalid credentials", "INVALID_CREDENTIALS");
+
+  const valid = await bcrypt.compare(password, customer.passwordHash);
+  if (!valid) throw new AppError(401, "Invalid credentials", "INVALID_CREDENTIALS");
+
+  return issueCustomerAccessToken(customer, app);
+}
+
+export async function getCustomerById(customerId: string) {
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { id: true, email: true, firstName: true, lastName: true, phone: true },
+  });
+  if (!customer) throw new AppError(404, "Customer not found", "CUSTOMER_NOT_FOUND");
+  return customer;
 }

@@ -23,6 +23,24 @@ function buildApiBase(baseUrl: string, pathPrefix: string): string {
 }
 
 const API_BASE = buildApiBase(RAW_API_BASE, RAW_API_PREFIX);
+const AUTH_REFRESH_PATH = "/auth/admin/refresh";
+
+type AdminAuthSession = {
+  accessToken: string;
+  refreshToken?: string;
+};
+
+type AdminAuthHandlers = {
+  getSessionToken: () => AdminAuthSession | null;
+  refreshSession: () => Promise<string | null>;
+  onHardAuthFailure: () => void;
+};
+
+let adminAuthHandlers: AdminAuthHandlers | null = null;
+
+export function registerAdminApiAuthHandlers(handlers: AdminAuthHandlers | null) {
+  adminAuthHandlers = handlers;
+}
 
 async function parseJsonSafe(res: Response) {
   try {
@@ -33,18 +51,42 @@ async function parseJsonSafe(res: Response) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const makeRequest = async (requestToken?: string) => {
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", "application/json");
+    if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
 
-  const payload = await parseJsonSafe(response);
+    const payload = await parseJsonSafe(response);
+    return { response, payload };
+  };
+
+  const initialToken = token ?? adminAuthHandlers?.getSessionToken()?.accessToken;
+  let { response, payload } = await makeRequest(initialToken);
+
+  const isUnauthorized = response.status === 401;
+  const isRefreshCall = path === AUTH_REFRESH_PATH;
+  const canTryRefresh = isUnauthorized && !isRefreshCall && Boolean(adminAuthHandlers?.getSessionToken()?.refreshToken);
+
+  if (canTryRefresh) {
+    try {
+      const refreshedAccessToken = await adminAuthHandlers?.refreshSession();
+      if (refreshedAccessToken) {
+        ({ response, payload } = await makeRequest(refreshedAccessToken));
+      }
+    } catch {
+      adminAuthHandlers?.onHardAuthFailure();
+    }
+  }
 
   if (!response.ok) {
+    if (response.status === 401 && !isRefreshCall) {
+      adminAuthHandlers?.onHardAuthFailure();
+    }
     const message = payload?.error?.message || `Request failed (${response.status})`;
     throw new Error(message);
   }

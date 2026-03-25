@@ -158,7 +158,7 @@ async function getStitchGatewayConfig(): Promise<GatewayConfig> {
   };
 }
 
-async function applyPaymentStatus(orderId: string, transactionId: string, status: "PENDING" | "AUTHORIZED" | "PAID" | "FAILED", details: Record<string, unknown>) {
+async function applyPaymentStatus(orderId: string, transactionId: string, status: "PENDING" | "AWAITING_PAYMENT" | "PAID" | "FAILED", details: Record<string, unknown>) {
   await prisma.paymentTransaction.update({
     where: { id: transactionId },
     data: {
@@ -171,12 +171,10 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 
   const orderData =
     status === "PAID"
-      ? { paymentStatus: "PAID" as const, status: "CONFIRMED" as const }
-      : status === "AUTHORIZED"
-        ? { paymentStatus: "AUTHORIZED" as const }
-        : status === "FAILED"
-          ? { paymentStatus: "FAILED" as const }
-          : { paymentStatus: "PENDING" as const };
+      ? { paymentStatus: "PAID" as const, status: "PAID" as const }
+      : status === "FAILED"
+        ? { paymentStatus: "FAILED" as const, status: "PAYMENT_FAILED" as const }
+        : { paymentStatus: "AWAITING_PAYMENT" as const, status: "AWAITING_PAYMENT" as const };
 
   await prisma.order.update({ where: { id: orderId }, data: orderData });
   await prisma.orderEvent.create({
@@ -198,7 +196,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
   const config = await getStitchGatewayConfig();
   const idempotencyKey = `${gateway.name}:init:${order.id}`;
   const existing = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, idempotencyKey }, orderBy: { createdAt: "desc" } });
-  if (existing && ["PENDING", "AUTHORIZED", "PAID"].includes(existing.status)) {
+  if (existing && ["PENDING", "AWAITING_PAYMENT", "PAID"].includes(existing.status)) {
     return {
       transactionId: existing.id,
       status: existing.status,
@@ -224,7 +222,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       provider: gateway.name,
       referenceId: result.referenceId,
       amount: order.totalAmount,
-      status: result.status,
+      status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
       metadata: {
         checkoutUrl: result.checkoutUrl,
         raw: result.raw,
@@ -237,7 +235,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
   await writePaymentEventLog({
     gateway: gateway.name,
     eventType: "payment.initiated",
-    status: result.status,
+    status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
     orderId: order.id,
     transactionId: transaction.id,
     idempotencyKey,
@@ -249,7 +247,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       orderId: order.id,
       actorId,
       eventType: "PAYMENT_INITIATED",
-      nextValue: result.status,
+      nextValue: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
       details: { provider: gateway.name, referenceId: result.referenceId } as Prisma.InputJsonValue,
     },
   });

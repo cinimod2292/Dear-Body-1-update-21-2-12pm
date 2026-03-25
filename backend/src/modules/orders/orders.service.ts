@@ -128,7 +128,7 @@ async function recordOrderEvent(orderId: string, actorId: string | undefined, ev
   await prisma.orderEvent.create({ data: { orderId, actorId, eventType, previousValue, nextValue, details } });
 }
 
-export async function checkoutCart(cartId: string, rawBody: unknown) {
+export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
   const body = checkoutSchema.parse(rawBody);
   const cart = await recalcCart(cartId);
 
@@ -138,15 +138,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
 
-  let customerId = body.customerId;
-  if (!customerId) {
-    const existing = await prisma.customer.findUnique({ where: { email: body.email } });
-    if (existing) customerId = existing.id;
-  }
-  if (!customerId) {
-    const c = await prisma.customer.create({ data: { email: body.email, status: "ACTIVE" } });
-    customerId = c.id;
-  }
+  const customerId = authenticatedCustomerId;
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!customer) throw new AppError(401, "Customer authentication required", "UNAUTHORIZED");
 
   const orderNumber = generateOrderNumber();
 
@@ -165,8 +159,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
         orderNumber,
         cartId,
         customerId,
-        status: "PLACED",
-        paymentStatus: "PENDING",
+        status: "AWAITING_PAYMENT",
+        paymentStatus: "AWAITING_PAYMENT",
         fulfillmentStatus: "UNFULFILLED",
         currency: cart.currency,
         couponId: cart.couponId,
@@ -199,10 +193,10 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     await tx.paymentTransaction.create({
       data: {
         orderId: created.id,
-        provider: "manual",
+        provider: "stitch",
         referenceId: body.paymentReference,
         amount: cart.totalAmount,
-        status: "PENDING",
+        status: "AWAITING_PAYMENT",
       },
     });
 
@@ -216,9 +210,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
 
     await tx.customerOrder.create({
       data: {
-        customerId: customerId!,
+        customerId: customerId,
         orderNumber,
-        status: "PLACED",
+        status: "AWAITING_PAYMENT",
         totalAmount: cart.totalAmount,
       },
     });
@@ -226,7 +220,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     return created;
   });
 
-  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "PLACED", { source: "checkout" });
+  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -240,6 +234,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
       cancellation: true,
       shippingAddress: true,
       billingAddress: true,
+      shippingMethod: true,
     },
   });
 }
@@ -399,9 +394,14 @@ export async function getStoreOrderById(orderId: string) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    customerId: order.customerId,
     status: order.status,
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
+    trackingNumber: order.trackingNumber,
+    courier: order.courier,
+    shippedAt: order.shippedAt,
+    deliveredAt: order.deliveredAt,
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
@@ -445,7 +445,7 @@ export async function updatePaymentStatus(orderId: string, rawBody: unknown, act
 export async function updateFulfillmentStatus(orderId: string, rawBody: unknown, actorId?: string) {
   const body = orderStatusUpdateSchema.parse(rawBody);
   const order = await getOrder(orderId);
-  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any } });
+  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
   return updated;
 }
@@ -494,8 +494,8 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
     await tx.order.update({
       where: { id: orderId },
       data: {
-        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : "PARTIALLY_REFUNDED",
-        status: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : order.status,
+        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "FAILED" : "PAID",
+        status: existingRefunded >= Number(order.totalAmount) ? "CANCELLED" : order.status,
         refundedAt: existingRefunded >= Number(order.totalAmount) ? new Date() : null,
       },
     });
@@ -505,4 +505,27 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
 
   await recordOrderEvent(orderId, actorId, "ORDER_REFUNDED", undefined, undefined, { amount: body.amount, reason: body.reason });
   return refund;
+}
+
+
+export async function listCustomerOrders(customerId: string) {
+  return prisma.order.findMany({
+    where: { customerId },
+    orderBy: { createdAt: "desc" },
+    include: { items: true },
+  });
+}
+
+export async function getCustomerOrder(customerId: string, orderId: string) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId },
+    include: {
+      items: true,
+      shippingAddress: true,
+      billingAddress: true,
+      payments: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  return order;
 }

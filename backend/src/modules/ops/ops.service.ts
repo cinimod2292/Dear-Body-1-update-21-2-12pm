@@ -24,7 +24,7 @@ export async function getDashboardKpis(rawQuery: unknown) {
 
   const [ordersCount, revenueAgg, customersCount, inventoryReport, pendingInquiries, abandonedCarts] = await Promise.all([
     prisma.order.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID"] } } }),
     prisma.customer.count({ where: { createdAt: { gte: from, lte: to } } }),
     getInventoryReport(),
     prisma.supportInquiry.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),

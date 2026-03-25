@@ -21,13 +21,13 @@ export interface InitiatePaymentInput {
 export interface InitiatePaymentResult {
   referenceId: string;
   checkoutUrl?: string;
-  status: "PENDING" | "AUTHORIZED" | "PAID" | "FAILED";
+  status: "PENDING" | "PAID" | "FAILED";
   raw: Record<string, unknown>;
 }
 
 export interface VerifyPaymentResult {
   referenceId: string;
-  status: "PENDING" | "AUTHORIZED" | "PAID" | "FAILED";
+  status: "PENDING" | "PAID" | "FAILED";
   raw: Record<string, unknown>;
   externalEventId?: string;
 }
@@ -42,7 +42,7 @@ export interface VerifyWebhookResult {
   isValid: boolean;
   referenceId?: string;
   externalEventId?: string;
-  status: "PENDING" | "AUTHORIZED" | "PAID" | "FAILED";
+  status: "PENDING" | "PAID" | "FAILED";
   raw: Record<string, unknown>;
   reason?: string;
 }

@@ -22,6 +22,7 @@ import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
+import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -105,6 +106,13 @@ export async function buildApp() {
   }, { prefix: env.API_PREFIX });
 
   registerErrorHandler(app);
+
+  const abandonedCartInterval = setInterval(() => {
+    processAbandonedCarts().catch((error) => {
+      app.log.warn({ err: error }, "Abandoned cart processor failed");
+    });
+  }, 60_000);
+  abandonedCartInterval.unref();
 
   return app;
 }

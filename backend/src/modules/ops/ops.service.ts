@@ -1,5 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 import {
   bulkCouponActionSchema,
   couponSchema,
@@ -9,7 +11,134 @@ import {
   reportRangeSchema,
   shippingMethodSchema,
   taxRateSchema,
+  abandonedCartReminderSchema,
+  abandonedCartConfigSchema,
 } from "./ops.schemas.js";
+
+const ABANDONED_SCOPE = "abandoned_cart";
+const ABANDONED_KEY = "config";
+
+export async function getAbandonedCartConfig() {
+  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: ABANDONED_SCOPE, key: ABANDONED_KEY } } });
+  return abandonedCartConfigSchema.parse(existing?.value ?? {});
+}
+
+export async function upsertAbandonedCartConfig(rawBody: unknown) {
+  const config = abandonedCartConfigSchema.parse(rawBody);
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: ABANDONED_SCOPE, key: ABANDONED_KEY } },
+    update: { value: config as any },
+    create: { scope: ABANDONED_SCOPE, key: ABANDONED_KEY, value: config as any },
+  });
+  return config;
+}
+
+async function releaseReservedStockForCart(tx: any, cartId: string) {
+  const items = await tx.cartItem.findMany({ where: { cartId } });
+  for (const item of items) {
+    const level = await tx.inventoryLevel.findUnique({ where: { variantId: item.variantId } });
+    if (!level) continue;
+    const nextReserved = Math.max(0, level.reservedQuantity - item.quantity);
+    await tx.inventoryLevel.update({ where: { variantId: item.variantId }, data: { reservedQuantity: nextReserved } });
+    await tx.stockMovement.create({
+      data: {
+        variantId: item.variantId,
+        movementType: "ORDER_RELEASE",
+        quantityDelta: 0,
+        quantityBefore: level.quantityOnHand,
+        quantityAfter: level.quantityOnHand,
+        reason: "Abandoned cart clear release",
+        referenceType: "cart",
+        referenceId: cartId,
+      },
+    });
+  }
+}
+
+export async function processAbandonedCarts(now = new Date()) {
+  const config = await getAbandonedCartConfig();
+  if (!config.enabled) return { scanned: 0, abandoned: 0, reminded: 0, cleared: 0 };
+
+  const carts = await prisma.cart.findMany({
+    where: { status: "ACTIVE", clearedAt: null },
+    include: { items: true, customer: true },
+    take: 200,
+  });
+
+  let abandoned = 0;
+  let reminded = 0;
+  let cleared = 0;
+
+  for (const cart of carts) {
+    const minutesSinceActivity = (now.getTime() - new Date(cart.lastActivityAt).getTime()) / 60000;
+    if (minutesSinceActivity < config.inactivityThresholdMinutes) continue;
+
+    const activeOrder = await prisma.order.findFirst({
+      where: {
+        cartId: cart.id,
+        OR: [
+          { paymentStatus: "PAID" },
+          { status: { in: ["AWAITING_PAYMENT", "PENDING"] } },
+        ],
+      },
+    });
+    if (activeOrder) continue;
+
+    await prisma.cart.update({
+      where: { id: cart.id },
+      data: { status: "ABANDONED", abandonedAt: cart.abandonedAt ?? now },
+    });
+    await prisma.abandonedCart.upsert({
+      where: { id: cart.id },
+      update: {
+        customerId: cart.customerId,
+        email: cart.customer?.email ?? null,
+        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+        totalValue: cart.totalAmount,
+      },
+      create: {
+        id: cart.id,
+        customerId: cart.customerId,
+        email: cart.customer?.email ?? null,
+        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+        totalValue: cart.totalAmount,
+      },
+    });
+    abandoned += 1;
+
+    const abandonedAt = cart.abandonedAt ?? now;
+    const minutesSinceAbandoned = (now.getTime() - new Date(abandonedAt).getTime()) / 60000;
+    if (config.reminderEnabled && !cart.reminderSentAt && minutesSinceAbandoned >= config.reminderDelayMinutes) {
+      try {
+        const targetEmail = cart.customer?.email;
+        if (targetEmail && cart.customer?.marketingEmailConsent !== false) {
+          const template = await resolveTemplateByKey(config.templateKey, {
+            firstName: cart.customer?.firstName ?? "there",
+            checkoutUrl: `${process.env.STOREFRONT_URL ?? ""}/checkout`,
+          });
+          await sendEmail({ to: targetEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, cartId: cart.id } });
+          await prisma.cart.update({ where: { id: cart.id }, data: { reminderSentAt: now } });
+          reminded += 1;
+        }
+      } catch {
+        // non-blocking
+      }
+    }
+
+    if (minutesSinceAbandoned >= config.clearDelayMinutes && !cart.clearedAt) {
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.cart.findUnique({ where: { id: cart.id } });
+        if (!fresh || fresh.clearedAt || fresh.status !== "ABANDONED") return;
+        await releaseReservedStockForCart(tx, cart.id);
+        await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+        await tx.cart.update({ where: { id: cart.id }, data: { clearedAt: now } });
+      });
+      cleared += 1;
+    }
+  }
+
+  return { scanned: carts.length, abandoned, reminded, cleared };
+}
 
 function getDateRange(rawQuery: unknown) {
   const parsed = reportRangeSchema.parse(rawQuery);
@@ -24,7 +153,7 @@ export async function getDashboardKpis(rawQuery: unknown) {
 
   const [ordersCount, revenueAgg, customersCount, inventoryReport, pendingInquiries, abandonedCarts] = await Promise.all([
     prisma.order.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID"] } } }),
     prisma.customer.count({ where: { createdAt: { gte: from, lte: to } } }),
     getInventoryReport(),
     prisma.supportInquiry.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
@@ -214,4 +343,30 @@ export async function exportNewsletterCsv() {
   const header = "email,status,source,createdAt";
   const data = rows.map((row) => `${row.email},${row.status},${row.source},${row.createdAt.toISOString()}`);
   return [header, ...data].join("\n");
+}
+
+
+export async function sendAbandonedCartReminder(rawBody: unknown) {
+  const body = abandonedCartReminderSchema.parse(rawBody);
+  const config = await getAbandonedCartConfig();
+  const cart = await prisma.abandonedCart.findUnique({ where: { id: body.cartId }, include: { customer: true } });
+  if (!cart) throw new AppError(404, "Abandoned cart not found", "ABANDONED_CART_NOT_FOUND");
+  if (cart.recoveredAt) throw new AppError(400, "Cart already recovered", "ABANDONED_CART_RECOVERED");
+  if (cart.customerId) {
+    const paidOrder = await prisma.order.findFirst({ where: { customerId: cart.customerId, paymentStatus: "PAID", createdAt: { gte: cart.abandonedAt } } });
+    if (paidOrder) throw new AppError(400, "Customer has already completed a paid order", "ABANDONED_CART_ALREADY_CONVERTED");
+  }
+  const targetEmail = cart.customer?.email ?? cart.email;
+  if (!targetEmail) throw new AppError(400, "Abandoned cart has no contact email", "ABANDONED_CART_NO_EMAIL");
+  if (cart.customer && cart.customer.marketingEmailConsent === false) {
+    throw new AppError(400, "Customer has unsubscribed from marketing email", "ABANDONED_CART_UNSUBSCRIBED");
+  }
+
+  const template = await resolveTemplateByKey(config.templateKey, {
+    firstName: cart.customer?.firstName ?? "there",
+    checkoutUrl: body.checkoutUrl,
+  });
+
+  await sendEmail({ to: targetEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, abandonedCartId: cart.id } });
+  return { sent: true, abandonedCartId: cart.id, email: targetEmail };
 }

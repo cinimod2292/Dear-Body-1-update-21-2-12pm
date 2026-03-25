@@ -14,6 +14,8 @@ import {
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
 import { z } from "zod";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 async function recalcCart(cartId: string) {
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
@@ -56,6 +58,60 @@ async function recalcCart(cartId: string) {
   });
 }
 
+async function touchCartActivity(cartId: string) {
+  const now = new Date();
+  await prisma.cart.update({
+    where: { id: cartId },
+    data: {
+      lastActivityAt: now,
+      abandonedAt: null,
+      reminderSentAt: null,
+      clearedAt: null,
+      status: "ACTIVE",
+    },
+  });
+  await prisma.abandonedCart.updateMany({
+    where: { id: cartId, recoveredAt: null },
+    data: { recoveredAt: now },
+  });
+}
+
+async function adjustReservedStock(tx: any, variantId: string, delta: number, cartId: string) {
+  if (delta === 0) return;
+  const variant = await tx.productVariant.findUnique({
+    where: { id: variantId },
+    include: { inventoryLevel: true },
+  });
+  if (!variant) throw new AppError(404, "Variant not found", "VARIANT_NOT_FOUND");
+
+  const level = variant.inventoryLevel ?? await tx.inventoryLevel.create({ data: { variantId, quantityOnHand: 0, reservedQuantity: 0 } });
+  const nextReserved = level.reservedQuantity + delta;
+  if (nextReserved < 0) throw new AppError(400, "Invalid stock release", "STOCK_RELEASE_INVALID");
+
+  const available = level.quantityOnHand - level.reservedQuantity;
+  if (delta > 0 && available < delta && !variant.allowBackorder) {
+    throw new AppError(400, "Insufficient stock available", "INSUFFICIENT_STOCK");
+  }
+
+  await tx.inventoryLevel.update({
+    where: { variantId },
+    data: { reservedQuantity: nextReserved },
+  });
+
+  await tx.stockMovement.create({
+    data: {
+      variantId,
+      movementType: delta > 0 ? "ORDER_RESERVE" : "ORDER_RELEASE",
+      quantityDelta: 0,
+      quantityBefore: level.quantityOnHand,
+      quantityAfter: level.quantityOnHand,
+      reason: delta > 0 ? "Cart reservation" : "Cart reservation release",
+      referenceType: "cart",
+      referenceId: cartId,
+    },
+  });
+}
+
 export async function createCart(rawBody: unknown) {
   const body = cartCreateSchema.parse(rawBody);
   const cart = await prisma.cart.create({ data: body });
@@ -76,22 +132,26 @@ export async function addCartItem(cartId: string, rawBody: unknown) {
   if (!variant) throw new AppError(404, "Variant not found", "VARIANT_NOT_FOUND");
 
   const existing = cart.items.find((i) => i.variantId === body.variantId);
-  if (existing) {
-    await prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + body.quantity } });
-  } else {
-    await prisma.cartItem.create({
-      data: {
-        cartId,
-        variantId: body.variantId,
-        quantity: body.quantity,
-        unitPrice: variant.price,
-        salePrice: variant.salePrice,
-        skuSnapshot: variant.sku,
-        titleSnapshot: variant.title ?? "Variant",
-        productNameSnapshot: variant.product.name,
-      },
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    await adjustReservedStock(tx, body.variantId, body.quantity, cartId);
+    if (existing) {
+      await tx.cartItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + body.quantity } });
+    } else {
+      await tx.cartItem.create({
+        data: {
+          cartId,
+          variantId: body.variantId,
+          quantity: body.quantity,
+          unitPrice: variant.price,
+          salePrice: variant.salePrice,
+          skuSnapshot: variant.sku,
+          titleSnapshot: variant.title ?? "Variant",
+          productNameSnapshot: variant.product.name,
+        },
+      });
+    }
+  });
+  await touchCartActivity(cartId);
 
   return recalcCart(cartId);
 }
@@ -100,12 +160,24 @@ export async function updateCartItem(cartId: string, itemId: string, rawBody: un
   const body = cartItemUpdateSchema.parse(rawBody);
   const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartId } });
   if (!item) throw new AppError(404, "Cart item not found", "CART_ITEM_NOT_FOUND");
-  await prisma.cartItem.update({ where: { id: itemId }, data: { quantity: body.quantity } });
+  const delta = body.quantity - item.quantity;
+  await prisma.$transaction(async (tx) => {
+    await adjustReservedStock(tx, item.variantId, delta, cartId);
+    await tx.cartItem.update({ where: { id: itemId }, data: { quantity: body.quantity } });
+  });
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
 export async function removeCartItem(cartId: string, itemId: string) {
-  await prisma.cartItem.deleteMany({ where: { id: itemId, cartId } });
+  const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartId } });
+  if (item) {
+    await prisma.$transaction(async (tx) => {
+      await adjustReservedStock(tx, item.variantId, -item.quantity, cartId);
+      await tx.cartItem.delete({ where: { id: item.id } });
+    });
+  }
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
@@ -115,6 +187,7 @@ export async function applyCoupon(cartId: string, rawBody: unknown) {
   if (!coupon || !coupon.isActive) throw new AppError(404, "Coupon not found or inactive", "COUPON_INVALID");
 
   await prisma.cart.update({ where: { id: cartId }, data: { couponId: coupon.id } });
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
@@ -124,11 +197,34 @@ function generateOrderNumber() {
   return `${base}${rnd}`;
 }
 
+
+async function sendOrderCreatedEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+  const template = await resolveTemplateByKey("order_confirmation", {
+    firstName: order.customer.firstName ?? "Customer",
+    orderNumber: order.orderNumber,
+    totalAmount: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
+async function sendShippingEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email || !order.trackingNumber) return;
+  const template = await resolveTemplateByKey("shipping_confirmation", {
+    orderNumber: order.orderNumber,
+    carrier: order.courier ?? "Carrier",
+    trackingNumber: order.trackingNumber,
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
 async function recordOrderEvent(orderId: string, actorId: string | undefined, eventType: string, previousValue?: string, nextValue?: string, details?: object) {
   await prisma.orderEvent.create({ data: { orderId, actorId, eventType, previousValue, nextValue, details } });
 }
 
-export async function checkoutCart(cartId: string, rawBody: unknown) {
+export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
   const body = checkoutSchema.parse(rawBody);
   const cart = await recalcCart(cartId);
 
@@ -138,15 +234,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
 
-  let customerId = body.customerId;
-  if (!customerId) {
-    const existing = await prisma.customer.findUnique({ where: { email: body.email } });
-    if (existing) customerId = existing.id;
-  }
-  if (!customerId) {
-    const c = await prisma.customer.create({ data: { email: body.email, status: "ACTIVE" } });
-    customerId = c.id;
-  }
+  const customerId = authenticatedCustomerId;
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!customer) throw new AppError(401, "Customer authentication required", "UNAUTHORIZED");
 
   const orderNumber = generateOrderNumber();
 
@@ -157,6 +247,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
         status: "CHECKED_OUT",
         customerId,
         shippingAddressId: shippingAddress.id,
+        abandonedAt: null,
+        reminderSentAt: null,
+        clearedAt: null,
       },
     });
 
@@ -165,8 +258,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
         orderNumber,
         cartId,
         customerId,
-        status: "PLACED",
-        paymentStatus: "PENDING",
+        status: "AWAITING_PAYMENT",
+        paymentStatus: "AWAITING_PAYMENT",
         fulfillmentStatus: "UNFULFILLED",
         currency: cart.currency,
         couponId: cart.couponId,
@@ -199,10 +292,10 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     await tx.paymentTransaction.create({
       data: {
         orderId: created.id,
-        provider: "manual",
+        provider: "stitch",
         referenceId: body.paymentReference,
         amount: cart.totalAmount,
-        status: "PENDING",
+        status: "AWAITING_PAYMENT",
       },
     });
 
@@ -216,9 +309,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
 
     await tx.customerOrder.create({
       data: {
-        customerId: customerId!,
+        customerId: customerId,
         orderNumber,
-        status: "PLACED",
+        status: "AWAITING_PAYMENT",
         totalAmount: cart.totalAmount,
       },
     });
@@ -226,7 +319,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     return created;
   });
 
-  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "PLACED", { source: "checkout" });
+  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
+  await sendOrderCreatedEmail(order.id).catch(() => undefined);
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -240,6 +334,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
       cancellation: true,
       shippingAddress: true,
       billingAddress: true,
+      shippingMethod: true,
     },
   });
 }
@@ -399,9 +494,15 @@ export async function getStoreOrderById(orderId: string) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    customerId: order.customerId,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    stitchReference: order.stitchReference,
     fulfillmentStatus: order.fulfillmentStatus,
+    trackingNumber: order.trackingNumber,
+    courier: order.courier,
+    shippedAt: order.shippedAt,
+    deliveredAt: order.deliveredAt,
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
@@ -445,8 +546,11 @@ export async function updatePaymentStatus(orderId: string, rawBody: unknown, act
 export async function updateFulfillmentStatus(orderId: string, rawBody: unknown, actorId?: string) {
   const body = orderStatusUpdateSchema.parse(rawBody);
   const order = await getOrder(orderId);
-  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any } });
+  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
+  if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
+    await sendShippingEmail(orderId).catch(() => undefined);
+  }
   return updated;
 }
 
@@ -494,8 +598,8 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
     await tx.order.update({
       where: { id: orderId },
       data: {
-        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : "PARTIALLY_REFUNDED",
-        status: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : order.status,
+        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "FAILED" : "PAID",
+        status: existingRefunded >= Number(order.totalAmount) ? "CANCELLED" : order.status,
         refundedAt: existingRefunded >= Number(order.totalAmount) ? new Date() : null,
       },
     });
@@ -505,4 +609,27 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
 
   await recordOrderEvent(orderId, actorId, "ORDER_REFUNDED", undefined, undefined, { amount: body.amount, reason: body.reason });
   return refund;
+}
+
+
+export async function listCustomerOrders(customerId: string) {
+  return prisma.order.findMany({
+    where: { customerId },
+    orderBy: { createdAt: "desc" },
+    include: { items: true },
+  });
+}
+
+export async function getCustomerOrder(customerId: string, orderId: string) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId },
+    include: {
+      items: true,
+      shippingAddress: true,
+      billingAddress: true,
+      payments: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  return order;
 }

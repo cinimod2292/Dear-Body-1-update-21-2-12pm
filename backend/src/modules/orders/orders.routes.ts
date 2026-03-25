@@ -8,8 +8,10 @@ import {
   createCart,
   createRefund,
   getCart,
-  getStoreOrderById,
+  getCustomerOrder,
   getOrder,
+  getStoreOrderById,
+  listCustomerOrders,
   listOrders,
   removeCartItem,
   resolveStorefrontItems,
@@ -51,9 +53,9 @@ export async function ordersRoutes(app: FastifyInstance) {
     const { cartId } = request.params as { cartId: string };
     return reply.send({ data: await applyCoupon(cartId, request.body) });
   });
-  app.post("/store/checkout/:cartId", async (request, reply) => {
+  app.post("/store/checkout/:cartId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { cartId } = request.params as { cartId: string };
-    const order = await checkoutCart(cartId, request.body);
+    const order = await checkoutCart(cartId, request.body, request.customer.id);
     const body = (request.body ?? {}) as { payment?: { gateway?: "stitch"; returnUrl?: string; cancelUrl?: string; referenceId?: string } };
 
     if (body.payment?.gateway === "stitch") {
@@ -69,17 +71,28 @@ export async function ordersRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: { order } });
   });
   app.post("/store/checkout/resolve-items", async (request, reply) => reply.send({ data: await resolveStorefrontItems(request.body) }));
-  app.get("/store/orders/:orderId", async (request, reply) => {
+  app.get("/store/orders/:orderId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
-    return reply.send({ data: await getStoreOrderById(orderId) });
+    const order = await getStoreOrderById(orderId);
+    if (order.customerId !== request.customer.id) return reply.status(404).send({ error: { message: "Order not found" } });
+    return reply.send({ data: order });
   });
-  app.post("/store/orders/:orderId/payments/initiate", async (request, reply) => {
+  app.post("/store/orders/:orderId/payments/initiate", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
+    await getCustomerOrder(request.customer.id, orderId);
     return reply.send({ data: await initiateOrderPayment(orderId, request.body) });
   });
-  app.post("/store/orders/:orderId/payments/verify", async (request, reply) => {
+  app.post("/store/orders/:orderId/payments/verify", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
+    await getCustomerOrder(request.customer.id, orderId);
     return reply.send({ data: await verifyOrderPayment(orderId, request.body) });
+  });
+  app.get("/store/account/orders", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
+    return reply.send({ data: await listCustomerOrders(request.customer.id) });
+  });
+  app.get("/store/account/orders/:orderId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
+    const { orderId } = request.params as { orderId: string };
+    return reply.send({ data: await getCustomerOrder(request.customer.id, orderId) });
   });
 
   app.get("/admin/orders", { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] }, async (request, reply) => {

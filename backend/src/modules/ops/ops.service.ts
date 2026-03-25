@@ -1,5 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 import {
   bulkCouponActionSchema,
   couponSchema,
@@ -9,6 +11,7 @@ import {
   reportRangeSchema,
   shippingMethodSchema,
   taxRateSchema,
+  abandonedCartReminderSchema,
 } from "./ops.schemas.js";
 
 function getDateRange(rawQuery: unknown) {
@@ -24,7 +27,7 @@ export async function getDashboardKpis(rawQuery: unknown) {
 
   const [ordersCount, revenueAgg, customersCount, inventoryReport, pendingInquiries, abandonedCarts] = await Promise.all([
     prisma.order.count({ where: { createdAt: { gte: from, lte: to } } }),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: from, lte: to }, paymentStatus: { in: ["PAID"] } } }),
     prisma.customer.count({ where: { createdAt: { gte: from, lte: to } } }),
     getInventoryReport(),
     prisma.supportInquiry.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
@@ -214,4 +217,21 @@ export async function exportNewsletterCsv() {
   const header = "email,status,source,createdAt";
   const data = rows.map((row) => `${row.email},${row.status},${row.source},${row.createdAt.toISOString()}`);
   return [header, ...data].join("\n");
+}
+
+
+export async function sendAbandonedCartReminder(rawBody: unknown) {
+  const body = abandonedCartReminderSchema.parse(rawBody);
+  const cart = await prisma.abandonedCart.findUnique({ where: { id: body.cartId }, include: { customer: true } });
+  if (!cart) throw new AppError(404, "Abandoned cart not found", "ABANDONED_CART_NOT_FOUND");
+  const targetEmail = cart.customer?.email ?? cart.email;
+  if (!targetEmail) throw new AppError(400, "Abandoned cart has no contact email", "ABANDONED_CART_NO_EMAIL");
+
+  const template = await resolveTemplateByKey("abandoned_cart_reminder", {
+    firstName: cart.customer?.firstName ?? "there",
+    checkoutUrl: body.checkoutUrl,
+  });
+
+  await sendEmail({ to: targetEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, abandonedCartId: cart.id } });
+  return { sent: true, abandonedCartId: cart.id, email: targetEmail };
 }

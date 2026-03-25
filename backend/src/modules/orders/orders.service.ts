@@ -14,6 +14,8 @@ import {
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
 import { z } from "zod";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 async function recalcCart(cartId: string) {
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
@@ -124,11 +126,34 @@ function generateOrderNumber() {
   return `${base}${rnd}`;
 }
 
+
+async function sendOrderCreatedEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+  const template = await resolveTemplateByKey("order_confirmation", {
+    firstName: order.customer.firstName ?? "Customer",
+    orderNumber: order.orderNumber,
+    totalAmount: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
+async function sendShippingEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email || !order.trackingNumber) return;
+  const template = await resolveTemplateByKey("shipping_confirmation", {
+    orderNumber: order.orderNumber,
+    carrier: order.courier ?? "Carrier",
+    trackingNumber: order.trackingNumber,
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
 async function recordOrderEvent(orderId: string, actorId: string | undefined, eventType: string, previousValue?: string, nextValue?: string, details?: object) {
   await prisma.orderEvent.create({ data: { orderId, actorId, eventType, previousValue, nextValue, details } });
 }
 
-export async function checkoutCart(cartId: string, rawBody: unknown) {
+export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
   const body = checkoutSchema.parse(rawBody);
   const cart = await recalcCart(cartId);
 
@@ -138,15 +163,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
 
-  let customerId = body.customerId;
-  if (!customerId) {
-    const existing = await prisma.customer.findUnique({ where: { email: body.email } });
-    if (existing) customerId = existing.id;
-  }
-  if (!customerId) {
-    const c = await prisma.customer.create({ data: { email: body.email, status: "ACTIVE" } });
-    customerId = c.id;
-  }
+  const customerId = authenticatedCustomerId;
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!customer) throw new AppError(401, "Customer authentication required", "UNAUTHORIZED");
 
   const orderNumber = generateOrderNumber();
 
@@ -165,8 +184,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
         orderNumber,
         cartId,
         customerId,
-        status: "PLACED",
-        paymentStatus: "PENDING",
+        status: "AWAITING_PAYMENT",
+        paymentStatus: "AWAITING_PAYMENT",
         fulfillmentStatus: "UNFULFILLED",
         currency: cart.currency,
         couponId: cart.couponId,
@@ -199,10 +218,10 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     await tx.paymentTransaction.create({
       data: {
         orderId: created.id,
-        provider: "manual",
+        provider: "stitch",
         referenceId: body.paymentReference,
         amount: cart.totalAmount,
-        status: "PENDING",
+        status: "AWAITING_PAYMENT",
       },
     });
 
@@ -216,9 +235,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
 
     await tx.customerOrder.create({
       data: {
-        customerId: customerId!,
+        customerId: customerId,
         orderNumber,
-        status: "PLACED",
+        status: "AWAITING_PAYMENT",
         totalAmount: cart.totalAmount,
       },
     });
@@ -226,7 +245,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
     return created;
   });
 
-  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "PLACED", { source: "checkout" });
+  await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
+  await sendOrderCreatedEmail(order.id);
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -240,6 +260,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown) {
       cancellation: true,
       shippingAddress: true,
       billingAddress: true,
+      shippingMethod: true,
     },
   });
 }
@@ -399,9 +420,15 @@ export async function getStoreOrderById(orderId: string) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    customerId: order.customerId,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    stitchReference: order.stitchReference,
     fulfillmentStatus: order.fulfillmentStatus,
+    trackingNumber: order.trackingNumber,
+    courier: order.courier,
+    shippedAt: order.shippedAt,
+    deliveredAt: order.deliveredAt,
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
@@ -445,8 +472,11 @@ export async function updatePaymentStatus(orderId: string, rawBody: unknown, act
 export async function updateFulfillmentStatus(orderId: string, rawBody: unknown, actorId?: string) {
   const body = orderStatusUpdateSchema.parse(rawBody);
   const order = await getOrder(orderId);
-  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any } });
+  const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
+  if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
+    await sendShippingEmail(orderId);
+  }
   return updated;
 }
 
@@ -494,8 +524,8 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
     await tx.order.update({
       where: { id: orderId },
       data: {
-        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : "PARTIALLY_REFUNDED",
-        status: existingRefunded >= Number(order.totalAmount) ? "REFUNDED" : order.status,
+        paymentStatus: existingRefunded >= Number(order.totalAmount) ? "FAILED" : "PAID",
+        status: existingRefunded >= Number(order.totalAmount) ? "CANCELLED" : order.status,
         refundedAt: existingRefunded >= Number(order.totalAmount) ? new Date() : null,
       },
     });
@@ -505,4 +535,27 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
 
   await recordOrderEvent(orderId, actorId, "ORDER_REFUNDED", undefined, undefined, { amount: body.amount, reason: body.reason });
   return refund;
+}
+
+
+export async function listCustomerOrders(customerId: string) {
+  return prisma.order.findMany({
+    where: { customerId },
+    orderBy: { createdAt: "desc" },
+    include: { items: true },
+  });
+}
+
+export async function getCustomerOrder(customerId: string, orderId: string) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId },
+    include: {
+      items: true,
+      shippingAddress: true,
+      billingAddress: true,
+      payments: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  return order;
 }

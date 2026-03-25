@@ -49,14 +49,18 @@ export const orderListQuerySchema = z.object({
   sortBy: z.enum(["placedAt", "createdAt", "totalAmount", "orderNumber"]).default("placedAt"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   q: z.string().optional(),
-  status: z.enum(["DRAFT", "PLACED", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]).optional(),
-  paymentStatus: z.enum(["PENDING", "AUTHORIZED", "PAID", "PARTIALLY_REFUNDED", "REFUNDED", "FAILED", "VOIDED"]).optional(),
+  status: z.enum(["PENDING", "AWAITING_PAYMENT", "PAID", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "PAYMENT_FAILED"]).optional(),
+  paymentStatus: z.enum(["PENDING", "AWAITING_PAYMENT", "PAID", "FAILED"]).optional(),
   fulfillmentStatus: z.enum(["UNFULFILLED", "PARTIALLY_FULFILLED", "FULFILLED", "RETURNED", "CANCELLED"]).optional(),
 });
 
 export const orderStatusUpdateSchema = z.object({
   value: z.string().min(2),
   reason: z.string().optional(),
+  trackingNumber: z.string().optional(),
+  courier: z.string().optional(),
+  shippedAt: z.coerce.date().optional(),
+  deliveredAt: z.coerce.date().optional(),
 });
 
 export const orderNoteSchema = z.object({

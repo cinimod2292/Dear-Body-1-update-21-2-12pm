@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Check, CreditCard, Lock, ArrowLeft, Truck } from "lucide-react";
+import { Check, Lock, ArrowLeft, Truck } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { API_BASE } from "../admin/api/client";
+import { useCustomerAuth } from "../context/CustomerAuthContext";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
@@ -13,10 +14,12 @@ export default function Checkout() {
   const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>("contact");
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
   const [orderNumber] = useState(() => Math.floor(Math.random() * 900000) + 100000);
+  const { customer, token } = useCustomerAuth();
 
   const shipping = cartTotal >= 50 ? 0 : 5.99;
   const total = cartTotal + shipping;
@@ -24,7 +27,6 @@ export default function Checkout() {
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     address: "", city: "", state: "", zip: "", country: "United States",
-    cardName: "", cardNumber: "", expiry: "", cvv: "",
     sameAsShipping: true,
   });
 
@@ -41,7 +43,8 @@ export default function Checkout() {
   const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
 
   const loadExistingOrder = async (orderId: string) => {
-    const res = await fetch(`${API_BASE}/store/orders/${orderId}`);
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/store/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
     const payload = await res.json().catch(() => null);
     if (!res.ok || !payload?.data) throw new Error(payload?.error?.message || "Failed to load order");
     const o = payload.data;
@@ -52,14 +55,49 @@ export default function Checkout() {
       status: o.status,
       checkoutUrl: null,
     });
-    setOrderPlaced(["PAID", "AUTHORIZED", "PENDING", "FAILED"].includes(o.paymentStatus));
+    setOrderPlaced(o.paymentStatus === "PAID");
+    setProcessingPayment(["AWAITING_PAYMENT", "PENDING"].includes(o.paymentStatus));
   };
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
     if (!orderId) return;
     loadExistingOrder(orderId).catch(() => undefined);
-  }, [searchParams]);
+  }, [searchParams, token]);
+
+
+  useEffect(() => {
+    if (!customer) {
+      navigate(`/account/login?next=${encodeURIComponent('/checkout')}`);
+    }
+  }, [customer, navigate]);
+
+
+  useEffect(() => {
+    if (!processingPayment) return;
+    const orderId = searchParams.get("orderId");
+    if (!orderId || !token) return;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/store/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.data) return;
+        const status = payload.data.paymentStatus;
+        setOrderInfo((prev) => prev ? { ...prev, paymentStatus: status, status: payload.data.status } : prev);
+        if (status === "PAID") {
+          setProcessingPayment(false);
+          setOrderPlaced(true);
+          clearCart();
+        }
+        if (status === "FAILED") {
+          setProcessingPayment(false);
+        }
+      } catch {}
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [processingPayment, searchParams, token, clearCart]);
 
   const handlePlaceOrder = async (e: FormEvent) => {
     e.preventDefault();
@@ -68,6 +106,11 @@ export default function Checkout() {
 
     try {
       setSubmitting(true);
+
+      if (!token || !customer) {
+        navigate(`/account/login?next=${encodeURIComponent("/checkout")}`);
+        return;
+      }
 
       const resolveRes = await fetch(`${API_BASE}/store/checkout/resolve-items`, {
         method: "POST",
@@ -109,9 +152,9 @@ export default function Checkout() {
 
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          email: form.email,
+          email: customer.email,
           shippingAddress: {
             firstName: form.firstName,
             lastName: form.lastName,
@@ -140,7 +183,7 @@ export default function Checkout() {
       if (payment && !payment.checkoutUrl) {
         const retryRes = await fetch(`${API_BASE}/store/orders/${order.id}/payments/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ gateway: "stitch", returnUrl: finalReturnUrl, cancelUrl: `${window.location.origin}/checkout?orderId=${order.id}&cancelled=1` }),
         });
         const retryPayload = await retryRes.json().catch(() => null);
@@ -175,6 +218,19 @@ export default function Checkout() {
     return null;
   }
 
+  if (processingPayment) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
+        <div className="max-w-md w-full text-center bg-white rounded-2xl p-8 shadow-sm">
+          <h1 className="text-2xl font-black mb-3">Processing payment…</h1>
+          <p className="text-gray-500 text-sm">We are waiting for Stitch webhook confirmation. This may take a few seconds.</p>
+          {searchParams.get("cancelled") ? <p className="text-amber-600 text-sm mt-3">Payment was cancelled on Stitch. You can retry payment from your account.</p> : null}
+          <Link to="/account" className="inline-block mt-5 text-pink-600 text-sm">Go to My Account</Link>
+        </div>
+      </div>
+    );
+  }
+
   if (orderPlaced) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
@@ -188,7 +244,7 @@ export default function Checkout() {
             Thank you for your order! We're getting your goodies ready.
           </p>
           <p className="text-gray-400 text-sm mb-8">
-            Order #{orderInfo?.orderNumber || orderNumber} · Confirmation sent to <strong>{form.email || "your email"}</strong>
+            Order #{orderInfo?.orderNumber || orderNumber} · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
           </p>
           <p className="text-sm mb-4">
             Payment status: <strong>{orderInfo?.paymentStatus || "PENDING"}</strong>
@@ -367,61 +423,13 @@ export default function Checkout() {
             {/* PAYMENT */}
             {step === "payment" && (
               <form onSubmit={handlePlaceOrder} className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="font-black text-gray-900 text-xl mb-2">Payment Details</h2>
+                <h2 className="font-black text-gray-900 text-xl mb-2">Pay with Stitch</h2>
                 <p className="text-gray-400 text-sm mb-6 flex items-center gap-1.5">
-                  <Lock size={13} /> Your payment information is secure and encrypted
+                  <Lock size={13} /> Card entry is handled securely on Stitch-hosted checkout.
                 </p>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Name on Card</label>
-                    <input
-                      type="text"
-                      value={form.cardName}
-                      onChange={e => update("cardName", e.target.value)}
-                      placeholder="Jane Doe"
-                      required
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-2">
-                      Card Number <CreditCard size={14} className="text-gray-400" />
-                    </label>
-                    <input
-                      type="text"
-                      value={form.cardNumber}
-                      onChange={e => update("cardNumber", e.target.value.replace(/\D/g, "").slice(0, 16).replace(/(\d{4})/g, "$1 ").trim())}
-                      placeholder="1234 5678 9012 3456"
-                      required
-                      maxLength={19}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 font-mono tracking-wider transition-colors"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1.5">Expiry Date</label>
-                      <input
-                        type="text"
-                        value={form.expiry}
-                        onChange={e => update("expiry", e.target.value)}
-                        placeholder="MM / YY"
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1.5">CVV</label>
-                      <input
-                        type="text"
-                        value={form.cvv}
-                        onChange={e => update("cvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
-                        placeholder="•••"
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
-                      />
-                    </div>
-                  </div>
+                <div className="rounded-xl border border-pink-100 bg-pink-50 p-4 text-sm text-gray-700">
+                  We do not collect raw card details on this site. After you click pay, you will be redirected to Stitch to complete payment.
                 </div>
 
                 <div className="flex gap-3 mt-6">
@@ -432,18 +440,19 @@ export default function Checkout() {
                   >
                     Back
                   </button>
-              <button
+                  <button
                     type="submit"
                     disabled={submitting}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
                   >
                     <Lock size={16} />
-                    {submitting ? "Processing..." : `Place Order · R${total.toFixed(2)}`}
+                    {submitting ? "Redirecting..." : `Pay with Stitch · R${total.toFixed(2)}`}
                   </button>
                 </div>
                 {checkoutError ? <p className="text-red-500 text-sm mt-3">{checkoutError}</p> : null}
               </form>
             )}
+
           </div>
 
           {/* Order Summary */}

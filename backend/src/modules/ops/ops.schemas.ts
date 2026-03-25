@@ -54,3 +54,9 @@ export const newsletterImportSchema = z.object({
   emails: z.array(z.string().email()).min(1),
   source: z.string().default("import"),
 });
+
+
+export const abandonedCartReminderSchema = z.object({
+  cartId: z.string().cuid(),
+  checkoutUrl: z.string().url(),
+});

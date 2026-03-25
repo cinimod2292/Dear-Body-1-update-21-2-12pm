@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 const STORAGE_KEY = "dear-body-admin-session";
 const WARNING_LEAD_MS = 5 * 60 * 1000;
+const DEBUG_ADMIN_AUTH = import.meta.env.DEV || import.meta.env.VITE_ADMIN_AUTH_DEBUG === "true";
 
 interface LoginInput {
   email: string;
@@ -38,8 +39,37 @@ function getTime(input?: string) {
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
+function decodeJwtExpiryMs(token?: string) {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    if (!payload.exp) return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+}
+
+function getAccessExpiryMs(session: AdminSession) {
+  return getTime(session.accessTokenExpiresAt) ?? decodeJwtExpiryMs(session.accessToken);
+}
+
+function getRefreshExpiryMs(session: AdminSession) {
+  return getTime(session.refreshTokenExpiresAt) ?? decodeJwtExpiryMs(session.refreshToken);
+}
+
+function authDebugLog(event: string, details?: Record<string, unknown>) {
+  if (!DEBUG_ADMIN_AUTH) return;
+  console.info("[admin-auth]", event, details ?? {});
+}
+
 function shouldAttemptRefreshOnLoad(session: AdminSession) {
-  const expiresAt = getTime(session.accessTokenExpiresAt);
+  const expiresAt = getAccessExpiryMs(session);
   if (!expiresAt) return false;
   return expiresAt - Date.now() <= WARNING_LEAD_MS;
 }
@@ -53,6 +83,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const refreshPromiseRef = useRef<Promise<string | null> | null>(null);
   const warningTimerRef = useRef<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const logoutTimerRef = useRef<number | null>(null);
 
   const persist = useCallback((next: AdminSession | null) => {
     setSession(next);
@@ -73,6 +104,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
+
+    if (logoutTimerRef.current) {
+      window.clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
   }, []);
 
   const clearSessionWithMessage = useCallback((message?: string) => {
@@ -90,8 +126,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const refreshSession = useCallback(async (): Promise<string | null> => {
     if (!session?.refreshToken) return null;
 
-    const refreshExpiresAt = getTime(session.refreshTokenExpiresAt);
+    const refreshExpiresAt = getRefreshExpiryMs(session);
     if (refreshExpiresAt && refreshExpiresAt <= Date.now()) {
+      authDebugLog("auto_logout_triggered", { reason: "refresh_token_expired" });
       clearSessionWithMessage("Your session expired. Please sign in again.");
       return null;
     }
@@ -101,6 +138,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
 
     const pendingRefresh = (async () => {
+      authDebugLog("refresh_scheduled", {
+        accessTokenExpiresAt: session.accessTokenExpiresAt ?? null,
+        refreshTokenExpiresAt: session.refreshTokenExpiresAt ?? null,
+      });
       try {
         const response = await apiRequest<AuthTokenResponse>("/auth/admin/refresh", {
           method: "POST",
@@ -123,8 +164,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         setShowExpiryWarning(false);
         setWarningAcknowledgedForExpiry(null);
         persist(nextSession);
+        authDebugLog("refresh_succeeded", {
+          accessTokenExpiresAt: nextSession.accessTokenExpiresAt ?? null,
+          refreshTokenExpiresAt: nextSession.refreshTokenExpiresAt ?? null,
+        });
         return nextSession.accessToken;
       } catch {
+        authDebugLog("refresh_failed");
         clearSessionWithMessage("Your session expired. Please sign in again.");
         return null;
       } finally {
@@ -161,6 +207,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     try {
       const parsed = JSON.parse(raw) as AdminSession;
       setSession(parsed);
+      authDebugLog("session_loaded", {
+        hasAccessTokenExpiry: Boolean(parsed.accessTokenExpiresAt),
+        accessTokenExpiresAt: parsed.accessTokenExpiresAt ?? null,
+        inferredAccessTokenExpiry: decodeJwtExpiryMs(parsed.accessToken)
+          ? new Date(decodeJwtExpiryMs(parsed.accessToken) as number).toISOString()
+          : null,
+      });
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     } finally {
@@ -175,29 +228,56 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const accessExpiryMs = getTime(session.accessTokenExpiresAt);
+    const accessExpiryMs = getAccessExpiryMs(session);
     if (!accessExpiryMs) return;
 
     const warningAt = accessExpiryMs - WARNING_LEAD_MS;
     const now = Date.now();
+    const refreshExpiryMs = getRefreshExpiryMs(session);
+    const shouldShowWarningForRefreshExpiry = !session.refreshToken
+      || (refreshExpiryMs ? refreshExpiryMs - now <= WARNING_LEAD_MS : false);
+    const timeUntilWarningMs = Math.max(warningAt - now, 0);
+    const timeUntilLogoutMs = Math.max(accessExpiryMs - now, 0);
 
-    if (warningAt <= now && warningAcknowledgedForExpiry !== session.accessTokenExpiresAt) {
+    authDebugLog("timers_calculated", {
+      accessTokenExpiresAt: new Date(accessExpiryMs).toISOString(),
+      refreshTokenExpiresAt: refreshExpiryMs ? new Date(refreshExpiryMs).toISOString() : null,
+      timeUntilWarningMs,
+      timeUntilLogoutMs,
+      shouldShowWarningForRefreshExpiry,
+    });
+
+    const expiryCycleKey = session.accessTokenExpiresAt ?? new Date(accessExpiryMs).toISOString();
+
+    if (shouldShowWarningForRefreshExpiry && warningAt <= now && warningAcknowledgedForExpiry !== expiryCycleKey) {
       setShowExpiryWarning(true);
-      setWarningAcknowledgedForExpiry(session.accessTokenExpiresAt ?? null);
+      setWarningAcknowledgedForExpiry(expiryCycleKey);
+      authDebugLog("warning_shown", { reason: "near_access_expiry" });
     } else {
       const warningDelay = warningAt - now;
-      if (warningDelay > 0) {
+      if (warningDelay > 0 && shouldShowWarningForRefreshExpiry) {
         warningTimerRef.current = window.setTimeout(() => {
           setShowExpiryWarning(true);
-          setWarningAcknowledgedForExpiry(session.accessTokenExpiresAt ?? null);
+          setWarningAcknowledgedForExpiry(expiryCycleKey);
+          authDebugLog("warning_shown", { reason: "warning_timer_elapsed" });
         }, warningDelay);
       }
     }
 
-    const refreshDelay = Math.max(accessExpiryMs - now - WARNING_LEAD_MS, 0);
-    refreshTimerRef.current = window.setTimeout(() => {
+    if (!shouldShowWarningForRefreshExpiry && session.refreshToken) {
+      const refreshDelay = Math.max(accessExpiryMs - now - WARNING_LEAD_MS, 0);
+      refreshTimerRef.current = window.setTimeout(() => {
+        void refreshSession();
+      }, refreshDelay);
+      authDebugLog("refresh_scheduled", { refreshDelayMs: refreshDelay });
+    } else {
+      setShowExpiryWarning((existing) => (shouldShowWarningForRefreshExpiry ? existing : false));
+    }
+
+    logoutTimerRef.current = window.setTimeout(() => {
+      authDebugLog("auto_logout_triggered", { reason: "access_token_expired" });
       void refreshSession();
-    }, refreshDelay);
+    }, timeUntilLogoutMs);
 
     return clearTimers;
   }, [session, clearTimers, refreshSession, warningAcknowledgedForExpiry]);
@@ -210,7 +290,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const accessExpiryMs = getTime(session.accessTokenExpiresAt);
+    const accessExpiryMs = getAccessExpiryMs(session);
     if (accessExpiryMs && accessExpiryMs <= Date.now()) {
       void refreshSession();
     }

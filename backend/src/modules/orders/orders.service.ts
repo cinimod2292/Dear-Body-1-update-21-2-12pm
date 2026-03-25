@@ -58,6 +58,60 @@ async function recalcCart(cartId: string) {
   });
 }
 
+async function touchCartActivity(cartId: string) {
+  const now = new Date();
+  await prisma.cart.update({
+    where: { id: cartId },
+    data: {
+      lastActivityAt: now,
+      abandonedAt: null,
+      reminderSentAt: null,
+      clearedAt: null,
+      status: "ACTIVE",
+    },
+  });
+  await prisma.abandonedCart.updateMany({
+    where: { id: cartId, recoveredAt: null },
+    data: { recoveredAt: now },
+  });
+}
+
+async function adjustReservedStock(tx: any, variantId: string, delta: number, cartId: string) {
+  if (delta === 0) return;
+  const variant = await tx.productVariant.findUnique({
+    where: { id: variantId },
+    include: { inventoryLevel: true },
+  });
+  if (!variant) throw new AppError(404, "Variant not found", "VARIANT_NOT_FOUND");
+
+  const level = variant.inventoryLevel ?? await tx.inventoryLevel.create({ data: { variantId, quantityOnHand: 0, reservedQuantity: 0 } });
+  const nextReserved = level.reservedQuantity + delta;
+  if (nextReserved < 0) throw new AppError(400, "Invalid stock release", "STOCK_RELEASE_INVALID");
+
+  const available = level.quantityOnHand - level.reservedQuantity;
+  if (delta > 0 && available < delta && !variant.allowBackorder) {
+    throw new AppError(400, "Insufficient stock available", "INSUFFICIENT_STOCK");
+  }
+
+  await tx.inventoryLevel.update({
+    where: { variantId },
+    data: { reservedQuantity: nextReserved },
+  });
+
+  await tx.stockMovement.create({
+    data: {
+      variantId,
+      movementType: delta > 0 ? "ORDER_RESERVE" : "ORDER_RELEASE",
+      quantityDelta: 0,
+      quantityBefore: level.quantityOnHand,
+      quantityAfter: level.quantityOnHand,
+      reason: delta > 0 ? "Cart reservation" : "Cart reservation release",
+      referenceType: "cart",
+      referenceId: cartId,
+    },
+  });
+}
+
 export async function createCart(rawBody: unknown) {
   const body = cartCreateSchema.parse(rawBody);
   const cart = await prisma.cart.create({ data: body });
@@ -78,22 +132,26 @@ export async function addCartItem(cartId: string, rawBody: unknown) {
   if (!variant) throw new AppError(404, "Variant not found", "VARIANT_NOT_FOUND");
 
   const existing = cart.items.find((i) => i.variantId === body.variantId);
-  if (existing) {
-    await prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + body.quantity } });
-  } else {
-    await prisma.cartItem.create({
-      data: {
-        cartId,
-        variantId: body.variantId,
-        quantity: body.quantity,
-        unitPrice: variant.price,
-        salePrice: variant.salePrice,
-        skuSnapshot: variant.sku,
-        titleSnapshot: variant.title ?? "Variant",
-        productNameSnapshot: variant.product.name,
-      },
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    await adjustReservedStock(tx, body.variantId, body.quantity, cartId);
+    if (existing) {
+      await tx.cartItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + body.quantity } });
+    } else {
+      await tx.cartItem.create({
+        data: {
+          cartId,
+          variantId: body.variantId,
+          quantity: body.quantity,
+          unitPrice: variant.price,
+          salePrice: variant.salePrice,
+          skuSnapshot: variant.sku,
+          titleSnapshot: variant.title ?? "Variant",
+          productNameSnapshot: variant.product.name,
+        },
+      });
+    }
+  });
+  await touchCartActivity(cartId);
 
   return recalcCart(cartId);
 }
@@ -102,12 +160,24 @@ export async function updateCartItem(cartId: string, itemId: string, rawBody: un
   const body = cartItemUpdateSchema.parse(rawBody);
   const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartId } });
   if (!item) throw new AppError(404, "Cart item not found", "CART_ITEM_NOT_FOUND");
-  await prisma.cartItem.update({ where: { id: itemId }, data: { quantity: body.quantity } });
+  const delta = body.quantity - item.quantity;
+  await prisma.$transaction(async (tx) => {
+    await adjustReservedStock(tx, item.variantId, delta, cartId);
+    await tx.cartItem.update({ where: { id: itemId }, data: { quantity: body.quantity } });
+  });
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
 export async function removeCartItem(cartId: string, itemId: string) {
-  await prisma.cartItem.deleteMany({ where: { id: itemId, cartId } });
+  const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartId } });
+  if (item) {
+    await prisma.$transaction(async (tx) => {
+      await adjustReservedStock(tx, item.variantId, -item.quantity, cartId);
+      await tx.cartItem.delete({ where: { id: item.id } });
+    });
+  }
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
@@ -117,6 +187,7 @@ export async function applyCoupon(cartId: string, rawBody: unknown) {
   if (!coupon || !coupon.isActive) throw new AppError(404, "Coupon not found or inactive", "COUPON_INVALID");
 
   await prisma.cart.update({ where: { id: cartId }, data: { couponId: coupon.id } });
+  await touchCartActivity(cartId);
   return recalcCart(cartId);
 }
 
@@ -176,6 +247,9 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         status: "CHECKED_OUT",
         customerId,
         shippingAddressId: shippingAddress.id,
+        abandonedAt: null,
+        reminderSentAt: null,
+        clearedAt: null,
       },
     });
 

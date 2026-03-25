@@ -60,3 +60,13 @@ export const abandonedCartReminderSchema = z.object({
   cartId: z.string().cuid(),
   checkoutUrl: z.string().url(),
 });
+
+export const abandonedCartConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  inactivityThresholdMinutes: z.coerce.number().int().positive().default(30),
+  reminderDelayMinutes: z.coerce.number().int().positive().default(60),
+  clearDelayMinutes: z.coerce.number().int().positive().default(120),
+  reminderEnabled: z.boolean().default(true),
+  templateKey: z.string().min(1).default("abandoned_cart_reminder"),
+  helpText: z.string().default("When a cart is auto-cleared, any reserved stock is released."),
+});

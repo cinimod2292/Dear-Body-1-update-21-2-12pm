@@ -56,6 +56,13 @@ async function releaseReservedStockForCart(tx: any, cartId: string) {
 }
 
 export async function processAbandonedCarts(now = new Date()) {
+  const lockRows = await prisma.$queryRaw<Array<{ acquired: boolean }>>`SELECT pg_try_advisory_lock(93842017) AS acquired`;
+  const lockAcquired = Boolean(lockRows?.[0]?.acquired);
+  if (!lockAcquired) {
+    return { scanned: 0, abandoned: 0, reminded: 0, cleared: 0, skipped: true };
+  }
+
+  try {
   const config = await getAbandonedCartConfig();
   if (!config.enabled) return { scanned: 0, abandoned: 0, reminded: 0, cleared: 0 };
 
@@ -137,7 +144,10 @@ export async function processAbandonedCarts(now = new Date()) {
     }
   }
 
-  return { scanned: carts.length, abandoned, reminded, cleared };
+  return { scanned: carts.length, abandoned, reminded, cleared, skipped: false };
+  } finally {
+    await prisma.$executeRaw`SELECT pg_advisory_unlock(93842017)`;
+  }
 }
 
 function getDateRange(rawQuery: unknown) {

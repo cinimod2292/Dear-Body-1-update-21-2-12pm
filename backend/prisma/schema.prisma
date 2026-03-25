@@ -675,7 +675,7 @@ model Order {
   customerId       String?
   status           OrderStatus       @default(PENDING)
   paymentStatus    PaymentStatus     @default(AWAITING_PAYMENT)
-  stitchReference  String?
+  stitchReference  String?           @unique
   trackingNumber   String?
   courier          String?
   shippedAt        DateTime?

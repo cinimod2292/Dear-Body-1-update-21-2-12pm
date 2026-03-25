@@ -15,6 +15,7 @@ export default function Checkout() {
   const [step, setStep] = useState<Step>("contact");
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
@@ -78,7 +79,10 @@ export default function Checkout() {
     const orderId = searchParams.get("orderId");
     if (!orderId || !token) return;
 
+    let attempts = 0;
+    setProcessingTimedOut(false);
     const timer = window.setInterval(async () => {
+      attempts += 1;
       try {
         const res = await fetch(`${API_BASE}/store/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
         const payload = await res.json().catch(() => null);
@@ -91,6 +95,10 @@ export default function Checkout() {
           clearCart();
         }
         if (status === "FAILED") {
+          setProcessingPayment(false);
+        }
+        if (attempts >= 20) {
+          setProcessingTimedOut(true);
           setProcessingPayment(false);
         }
       } catch {}
@@ -200,8 +208,8 @@ export default function Checkout() {
         status: order.status,
         checkoutUrl: payment?.checkoutUrl ?? null,
       });
-      setOrderPlaced(true);
-      clearCart();
+      setProcessingPayment(order.paymentStatus !== "PAID");
+      setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
         window.location.href = payment.checkoutUrl;
@@ -225,6 +233,19 @@ export default function Checkout() {
           <h1 className="text-2xl font-black mb-3">Processing payment…</h1>
           <p className="text-gray-500 text-sm">We are waiting for Stitch webhook confirmation. This may take a few seconds.</p>
           {searchParams.get("cancelled") ? <p className="text-amber-600 text-sm mt-3">Payment was cancelled on Stitch. You can retry payment from your account.</p> : null}
+          <Link to="/account" className="inline-block mt-5 text-pink-600 text-sm">Go to My Account</Link>
+        </div>
+      </div>
+    );
+  }
+
+
+  if (processingTimedOut) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
+        <div className="max-w-md w-full text-center bg-white rounded-2xl p-8 shadow-sm">
+          <h1 className="text-2xl font-black mb-3">Payment confirmation delayed</h1>
+          <p className="text-gray-500 text-sm">We have not received webhook confirmation yet. Your order is safe; please check My Account and retry payment if needed.</p>
           <Link to="/account" className="inline-block mt-5 text-pink-600 text-sm">Go to My Account</Link>
         </div>
       </div>

@@ -224,6 +224,11 @@ export async function sendAbandonedCartReminder(rawBody: unknown) {
   const body = abandonedCartReminderSchema.parse(rawBody);
   const cart = await prisma.abandonedCart.findUnique({ where: { id: body.cartId }, include: { customer: true } });
   if (!cart) throw new AppError(404, "Abandoned cart not found", "ABANDONED_CART_NOT_FOUND");
+  if (cart.recoveredAt) throw new AppError(400, "Cart already recovered", "ABANDONED_CART_RECOVERED");
+  if (cart.customerId) {
+    const paidOrder = await prisma.order.findFirst({ where: { customerId: cart.customerId, paymentStatus: "PAID", createdAt: { gte: cart.abandonedAt } } });
+    if (paidOrder) throw new AppError(400, "Customer has already completed a paid order", "ABANDONED_CART_ALREADY_CONVERTED");
+  }
   const targetEmail = cart.customer?.email ?? cart.email;
   if (!targetEmail) throw new AppError(400, "Abandoned cart has no contact email", "ABANDONED_CART_NO_EMAIL");
 

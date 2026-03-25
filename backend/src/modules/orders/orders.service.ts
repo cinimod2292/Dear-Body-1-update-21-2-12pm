@@ -246,7 +246,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
-  await sendOrderCreatedEmail(order.id);
+  await sendOrderCreatedEmail(order.id).catch(() => undefined);
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -475,7 +475,7 @@ export async function updateFulfillmentStatus(orderId: string, rawBody: unknown,
   const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
   if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
-    await sendShippingEmail(orderId);
+    await sendShippingEmail(orderId).catch(() => undefined);
   }
   return updated;
 }

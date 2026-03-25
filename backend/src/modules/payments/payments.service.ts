@@ -197,7 +197,7 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 
   await prisma.order.update({ where: { id: orderId }, data: orderData });
   if (status === "PAID") {
-    await sendPaymentSuccessEmail(orderId);
+    await sendPaymentSuccessEmail(orderId).catch(() => undefined);
   }
   await prisma.orderEvent.create({
     data: {
@@ -246,21 +246,28 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     customerEmail: order.customer?.email,
   });
 
-  const transaction = await prisma.paymentTransaction.create({
-    data: {
-      orderId: order.id,
-      provider: gateway.name,
-      referenceId: result.referenceId,
-      amount: order.totalAmount,
-      status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
-      metadata: {
-        checkoutUrl: result.checkoutUrl,
-        raw: result.raw,
-      } as Prisma.InputJsonValue,
-      idempotencyKey,
-      processedAt: new Date(),
-    },
-  });
+  let transaction;
+  try {
+    transaction = await prisma.paymentTransaction.create({
+      data: {
+        orderId: order.id,
+        provider: gateway.name,
+        referenceId: result.referenceId,
+        amount: order.totalAmount,
+        status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
+        metadata: {
+          checkoutUrl: result.checkoutUrl,
+          raw: result.raw,
+        } as Prisma.InputJsonValue,
+        idempotencyKey,
+        processedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    const existingByKey = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey } });
+    if (!existingByKey) throw error;
+    transaction = existingByKey;
+  }
 
   await prisma.order.update({ where: { id: order.id }, data: { stitchReference: result.referenceId, paymentStatus: "AWAITING_PAYMENT", status: "AWAITING_PAYMENT" } });
 

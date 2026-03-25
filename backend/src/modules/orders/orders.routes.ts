@@ -79,10 +79,12 @@ export async function ordersRoutes(app: FastifyInstance) {
   });
   app.post("/store/orders/:orderId/payments/initiate", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
+    await getCustomerOrder(request.customer.id, orderId);
     return reply.send({ data: await initiateOrderPayment(orderId, request.body) });
   });
   app.post("/store/orders/:orderId/payments/verify", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
+    await getCustomerOrder(request.customer.id, orderId);
     return reply.send({ data: await verifyOrderPayment(orderId, request.body) });
   });
   app.get("/store/account/orders", { preHandler: [app.verifyCustomer] }, async (request, reply) => {

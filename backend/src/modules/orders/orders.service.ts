@@ -14,6 +14,8 @@ import {
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
 import { z } from "zod";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 async function recalcCart(cartId: string) {
   const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
@@ -124,6 +126,29 @@ function generateOrderNumber() {
   return `${base}${rnd}`;
 }
 
+
+async function sendOrderCreatedEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+  const template = await resolveTemplateByKey("order_confirmation", {
+    firstName: order.customer.firstName ?? "Customer",
+    orderNumber: order.orderNumber,
+    totalAmount: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
+async function sendShippingEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email || !order.trackingNumber) return;
+  const template = await resolveTemplateByKey("shipping_confirmation", {
+    orderNumber: order.orderNumber,
+    carrier: order.courier ?? "Carrier",
+    trackingNumber: order.trackingNumber,
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
 async function recordOrderEvent(orderId: string, actorId: string | undefined, eventType: string, previousValue?: string, nextValue?: string, details?: object) {
   await prisma.orderEvent.create({ data: { orderId, actorId, eventType, previousValue, nextValue, details } });
 }
@@ -221,6 +246,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
+  await sendOrderCreatedEmail(order.id).catch(() => undefined);
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -397,6 +423,7 @@ export async function getStoreOrderById(orderId: string) {
     customerId: order.customerId,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    stitchReference: order.stitchReference,
     fulfillmentStatus: order.fulfillmentStatus,
     trackingNumber: order.trackingNumber,
     courier: order.courier,
@@ -447,6 +474,9 @@ export async function updateFulfillmentStatus(orderId: string, rawBody: unknown,
   const order = await getOrder(orderId);
   const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
+  if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
+    await sendShippingEmail(orderId).catch(() => undefined);
+  }
   return updated;
 }
 

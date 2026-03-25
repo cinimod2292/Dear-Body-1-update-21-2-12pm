@@ -11,6 +11,8 @@ import {
 } from "./payments.schemas.js";
 import { GatewayConfig, PaymentGatewayProvider } from "./payment-gateway.js";
 import { StitchGateway } from "./stitch.gateway.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 const STITCH_SETTING_SCOPE = "payments";
 const STITCH_SETTING_KEY = "stitch";
@@ -158,6 +160,23 @@ async function getStitchGatewayConfig(): Promise<GatewayConfig> {
   };
 }
 
+async function sendPaymentSuccessEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+
+  const template = await resolveTemplateByKey("payment_confirmation", {
+    orderNumber: order.orderNumber,
+    amount: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`,
+  });
+
+  await sendEmail({
+    to: order.customer.email,
+    subject: template.subject,
+    html: template.htmlBody,
+    meta: { templateKey: template.key, orderId: order.id },
+  });
+}
+
 async function applyPaymentStatus(orderId: string, transactionId: string, status: "PENDING" | "AWAITING_PAYMENT" | "PAID" | "FAILED", details: Record<string, unknown>) {
   await prisma.paymentTransaction.update({
     where: { id: transactionId },
@@ -177,6 +196,9 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
         : { paymentStatus: "AWAITING_PAYMENT" as const, status: "AWAITING_PAYMENT" as const };
 
   await prisma.order.update({ where: { id: orderId }, data: orderData });
+  if (status === "PAID") {
+    await sendPaymentSuccessEmail(orderId).catch(() => undefined);
+  }
   await prisma.orderEvent.create({
     data: {
       orderId,
@@ -194,13 +216,21 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
 
   const config = await getStitchGatewayConfig();
-  const idempotencyKey = `${gateway.name}:init:${order.id}`;
-  const existing = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, idempotencyKey }, orderBy: { createdAt: "desc" } });
-  if (existing && ["PENDING", "AWAITING_PAYMENT", "PAID"].includes(existing.status)) {
+  if (order.paymentStatus === "PAID") {
+    throw new AppError(400, "Order is already paid", "ORDER_ALREADY_PAID");
+  }
+  if (!["AWAITING_PAYMENT", "PAYMENT_FAILED", "PENDING"].includes(order.status)) {
+    throw new AppError(400, "Order is not eligible for payment retry", "ORDER_PAYMENT_RETRY_NOT_ALLOWED");
+  }
+
+  const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
+  if (!body.force && latestAttempt && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
     return {
-      transactionId: existing.id,
-      status: existing.status,
-      referenceId: existing.referenceId,
+      transactionId: latestAttempt.id,
+      status: latestAttempt.status,
+      referenceId: latestAttempt.referenceId,
+      checkoutUrl: (latestAttempt.metadata as { checkoutUrl?: string } | null)?.checkoutUrl,
       idempotencyKey,
       reused: true,
     };
@@ -216,21 +246,30 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     customerEmail: order.customer?.email,
   });
 
-  const transaction = await prisma.paymentTransaction.create({
-    data: {
-      orderId: order.id,
-      provider: gateway.name,
-      referenceId: result.referenceId,
-      amount: order.totalAmount,
-      status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
-      metadata: {
-        checkoutUrl: result.checkoutUrl,
-        raw: result.raw,
-      } as Prisma.InputJsonValue,
-      idempotencyKey,
-      processedAt: new Date(),
-    },
-  });
+  let transaction;
+  try {
+    transaction = await prisma.paymentTransaction.create({
+      data: {
+        orderId: order.id,
+        provider: gateway.name,
+        referenceId: result.referenceId,
+        amount: order.totalAmount,
+        status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
+        metadata: {
+          checkoutUrl: result.checkoutUrl,
+          raw: result.raw,
+        } as Prisma.InputJsonValue,
+        idempotencyKey,
+        processedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    const existingByKey = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey } });
+    if (!existingByKey) throw error;
+    transaction = existingByKey;
+  }
+
+  await prisma.order.update({ where: { id: order.id }, data: { stitchReference: result.referenceId, paymentStatus: "AWAITING_PAYMENT", status: "AWAITING_PAYMENT" } });
 
   await writePaymentEventLog({
     gateway: gateway.name,
@@ -316,7 +355,23 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     throw new AppError(401, verification.reason ?? "Invalid Stitch webhook", "STITCH_WEBHOOK_INVALID");
   }
 
-  const transaction = await prisma.paymentTransaction.findFirst({ where: { referenceId: ref, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  let transaction = await prisma.paymentTransaction.findFirst({ where: { referenceId: ref, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  if (!transaction) {
+    const orderByReference = await prisma.order.findFirst({ where: { stitchReference: ref } });
+    if (orderByReference) {
+      transaction = await prisma.paymentTransaction.create({
+        data: {
+          orderId: orderByReference.id,
+          provider: gateway.name,
+          referenceId: ref,
+          amount: orderByReference.totalAmount,
+          status: "AWAITING_PAYMENT",
+          metadata: { source: "webhook_backfill" } as Prisma.InputJsonValue,
+          idempotencyKey: `${gateway.name}:webhook-backfill:${orderByReference.id}:${ref}`,
+        },
+      });
+    }
+  }
   if (!transaction) {
     await writePaymentEventLog({
       gateway: gateway.name,
@@ -336,7 +391,7 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     orderId: transaction.orderId,
     transactionId: transaction.id,
     externalEventId: verification.externalEventId,
-    idempotencyKey: `${gateway.name}:${verification.externalEventId ?? ref}`,
+    idempotencyKey: `${gateway.name}:${verification.externalEventId ?? `${ref}:${verification.status}`}`,
     payload: verification.raw,
   });
 

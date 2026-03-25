@@ -1,5 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 import {
   bulkCouponActionSchema,
   couponSchema,
@@ -9,6 +11,7 @@ import {
   reportRangeSchema,
   shippingMethodSchema,
   taxRateSchema,
+  abandonedCartReminderSchema,
 } from "./ops.schemas.js";
 
 function getDateRange(rawQuery: unknown) {
@@ -214,4 +217,26 @@ export async function exportNewsletterCsv() {
   const header = "email,status,source,createdAt";
   const data = rows.map((row) => `${row.email},${row.status},${row.source},${row.createdAt.toISOString()}`);
   return [header, ...data].join("\n");
+}
+
+
+export async function sendAbandonedCartReminder(rawBody: unknown) {
+  const body = abandonedCartReminderSchema.parse(rawBody);
+  const cart = await prisma.abandonedCart.findUnique({ where: { id: body.cartId }, include: { customer: true } });
+  if (!cart) throw new AppError(404, "Abandoned cart not found", "ABANDONED_CART_NOT_FOUND");
+  if (cart.recoveredAt) throw new AppError(400, "Cart already recovered", "ABANDONED_CART_RECOVERED");
+  if (cart.customerId) {
+    const paidOrder = await prisma.order.findFirst({ where: { customerId: cart.customerId, paymentStatus: "PAID", createdAt: { gte: cart.abandonedAt } } });
+    if (paidOrder) throw new AppError(400, "Customer has already completed a paid order", "ABANDONED_CART_ALREADY_CONVERTED");
+  }
+  const targetEmail = cart.customer?.email ?? cart.email;
+  if (!targetEmail) throw new AppError(400, "Abandoned cart has no contact email", "ABANDONED_CART_NO_EMAIL");
+
+  const template = await resolveTemplateByKey("abandoned_cart_reminder", {
+    firstName: cart.customer?.firstName ?? "there",
+    checkoutUrl: body.checkoutUrl,
+  });
+
+  await sendEmail({ to: targetEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, abandonedCartId: cart.id } });
+  return { sent: true, abandonedCartId: cart.id, email: targetEmail };
 }

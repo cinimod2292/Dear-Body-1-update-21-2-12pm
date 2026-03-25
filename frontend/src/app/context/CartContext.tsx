@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Product } from "../data/products";
 
 export interface CartItem {
@@ -19,7 +19,15 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    const stored = localStorage.getItem("storefront_cart");
+    if (!stored) return [];
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  });
 
   const addToCart = (product: Product, quantity = 1) => {
     setCartItems(prev => {
@@ -52,6 +60,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const clearCart = () => setCartItems([]);
+
+  useEffect(() => {
+    localStorage.setItem("storefront_cart", JSON.stringify(cartItems));
+  }, [cartItems]);
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);

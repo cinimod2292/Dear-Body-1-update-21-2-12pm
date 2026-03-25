@@ -35,10 +35,9 @@ async function stitchRequest(config: GatewayConfig, path: string, init: RequestI
   return payload as Record<string, unknown>;
 }
 
-function normalizeStatus(status: unknown): "PENDING" | "AUTHORIZED" | "PAID" | "FAILED" {
+function normalizeStatus(status: unknown): "PENDING" | "PAID" | "FAILED" {
   const value = typeof status === "string" ? status.toUpperCase() : "PENDING";
   if (["SUCCESS", "COMPLETED", "PAID"].includes(value)) return "PAID";
-  if (["AUTHORIZED", "AUTHORISED"].includes(value)) return "AUTHORIZED";
   if (["FAILED", "ERROR", "DECLINED", "CANCELLED"].includes(value)) return "FAILED";
   return "PENDING";
 }

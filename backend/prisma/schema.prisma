@@ -100,24 +100,21 @@ enum CartStatus {
 }
 
 enum OrderStatus {
-  DRAFT
-  PLACED
-  CONFIRMED
+  PENDING
+  AWAITING_PAYMENT
+  PAID
   PROCESSING
   SHIPPED
   DELIVERED
   CANCELLED
-  REFUNDED
+  PAYMENT_FAILED
 }
 
 enum PaymentStatus {
   PENDING
-  AUTHORIZED
+  AWAITING_PAYMENT
   PAID
-  PARTIALLY_REFUNDED
-  REFUNDED
   FAILED
-  VOIDED
 }
 
 enum FulfillmentStatus {
@@ -457,6 +454,7 @@ model Customer {
   firstName            String?
   lastName             String?
   phone                String?
+  passwordHash         String?
   status               CustomerStatus        @default(LEAD)
   marketingEmailConsent Boolean              @default(false)
   marketingSmsConsent  Boolean               @default(false)
@@ -639,6 +637,10 @@ model Cart {
   taxAmount        Decimal       @default(0) @db.Decimal(12, 2)
   shippingAmount   Decimal       @default(0) @db.Decimal(12, 2)
   totalAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  lastActivityAt   DateTime      @default(now())
+  abandonedAt      DateTime?
+  reminderSentAt   DateTime?
+  clearedAt        DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   customer         Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -675,8 +677,13 @@ model Order {
   orderNumber      String            @unique
   cartId           String?           @unique
   customerId       String?
-  status           OrderStatus       @default(PLACED)
-  paymentStatus    PaymentStatus     @default(PENDING)
+  status           OrderStatus       @default(PENDING)
+  paymentStatus    PaymentStatus     @default(AWAITING_PAYMENT)
+  stitchReference  String?           @unique
+  trackingNumber   String?
+  courier          String?
+  shippedAt        DateTime?
+  deliveredAt      DateTime?
   fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)
   currency         String            @default("USD")
   couponId         String?

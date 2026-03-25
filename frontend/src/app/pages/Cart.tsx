@@ -2,11 +2,13 @@ import { Link, useNavigate } from "react-router";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useState } from "react";
+import { useCustomerAuth } from "../context/CustomerAuthContext";
 
 export default function Cart() {
   const { cartItems, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
   const [promoCode, setPromoCode] = useState("");
+  const { customer } = useCustomerAuth();
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
 
@@ -179,7 +181,7 @@ export default function Cart() {
               </div>
 
               <button
-                onClick={() => navigate("/checkout")}
+                onClick={() => navigate(customer ? "/checkout" : "/account/login?next=%2Fcheckout")}
                 className="w-full py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black text-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
               >
                 Checkout <ArrowRight size={18} />

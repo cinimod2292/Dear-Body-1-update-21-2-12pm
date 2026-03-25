@@ -5,6 +5,7 @@ import "@fastify/jwt";
 declare module "fastify" {
   interface FastifyInstance {
     verifyAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    verifyCustomer: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requirePermission: (permission: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 
@@ -12,10 +13,15 @@ declare module "fastify" {
     user: {
       sub: string;
       email: string;
-      role: StaffRole;
-      permissions: string[];
+      role?: StaffRole;
+      permissions?: string[];
+      tokenType?: "customer" | "refresh";
       iat?: number;
       exp?: number;
+    };
+    customer: {
+      id: string;
+      email: string;
     };
   }
 }
@@ -25,14 +31,16 @@ declare module "@fastify/jwt" {
     payload: {
       sub: string;
       email: string;
-      role: StaffRole;
-      permissions: string[];
+      role?: StaffRole;
+      permissions?: string[];
+      tokenType?: "customer" | "refresh";
     };
     user: {
       sub: string;
       email: string;
-      role: StaffRole;
-      permissions: string[];
+      role?: StaffRole;
+      permissions?: string[];
+      tokenType?: "customer" | "refresh";
       iat?: number;
       exp?: number;
     };

@@ -48,6 +48,16 @@ interface XeroSyncRecord {
   updatedAt: string;
 }
 
+interface AbandonedCartConfig {
+  enabled: boolean;
+  inactivityThresholdMinutes: number;
+  reminderDelayMinutes: number;
+  clearDelayMinutes: number;
+  reminderEnabled: boolean;
+  templateKey: string;
+  helpText: string;
+}
+
 export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
@@ -78,18 +88,28 @@ export default function AdminSettings() {
   const [xeroTokenExpiresAt, setXeroTokenExpiresAt] = useState<string | null>(null);
   const [xeroSecretConfigured, setXeroSecretConfigured] = useState(false);
   const [xeroSyncRecords, setXeroSyncRecords] = useState<XeroSyncRecord[]>([]);
+  const [abandonedConfig, setAbandonedConfig] = useState<AbandonedCartConfig>({
+    enabled: true,
+    inactivityThresholdMinutes: 30,
+    reminderDelayMinutes: 60,
+    clearDelayMinutes: 120,
+    reminderEnabled: true,
+    templateKey: "abandoned_cart_reminder",
+    helpText: "When a cart is auto-cleared, any reserved stock is released.",
+  });
 
   const load = async () => {
     if (!session?.accessToken) return;
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
         apiRequest<{ data: XeroSettings }>("/admin/integrations/xero/settings", {}, session.accessToken),
         apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
+        apiRequest<{ data: AbandonedCartConfig }>("/admin/ops/abandoned-carts/config", {}, session.accessToken),
       ]);
 
       if (settingsRes.status === "fulfilled") {
@@ -119,8 +139,9 @@ export default function AdminSettings() {
         setXeroSecretConfigured(xeroSettingsRes.value.data.clientSecretConfigured);
       }
       if (xeroSyncRes.status === "fulfilled") setXeroSyncRecords(xeroSyncRes.value.data.items);
+      if (abandonedConfigRes.status === "fulfilled") setAbandonedConfig(abandonedConfigRes.value.data);
 
-      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes].filter((r) => r.status === "rejected");
+      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         toast.error(`Loaded with partial failures (${failed.length})`);
       }
@@ -229,6 +250,20 @@ export default function AdminSettings() {
     }
   };
 
+  const saveAbandonedCartConfig = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || saving) return;
+    try {
+      setSaving(true);
+      await apiRequest("/admin/ops/abandoned-carts/config", { method: "PUT", body: JSON.stringify(abandonedConfig) }, session.accessToken);
+      toast.success("Abandoned cart settings saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save abandoned cart settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading settings..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
@@ -276,6 +311,20 @@ export default function AdminSettings() {
           ))}
         </div>
       </section>
+
+      <form onSubmit={saveAbandonedCartConfig} className="space-y-4">
+        <h2 className="text-2xl font-black text-gray-900">Abandoned Cart Automation</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.enabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable abandoned cart handling</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.reminderEnabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderEnabled: e.target.checked }))} />Enable reminder email</label>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.inactivityThresholdMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, inactivityThresholdMinutes: Number(e.target.value) }))} placeholder="Inactivity threshold (minutes)" />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.reminderDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderDelayMinutes: Number(e.target.value) }))} placeholder="Reminder delay (minutes)" />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.clearDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, clearDelayMinutes: Number(e.target.value) }))} placeholder="Clear/release delay (minutes)" />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.templateKey} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, templateKey: e.target.value }))} placeholder="Abandoned cart email template key" />
+          <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.helpText} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, helpText: e.target.value }))} />
+        </div>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Abandoned Cart Settings"}</button>
+      </form>
 
       <form onSubmit={saveXero} className="space-y-4">
         <h2 className="text-2xl font-black text-gray-900">Xero Accounting</h2>

@@ -11,6 +11,10 @@ interface OrderDetail {
   status: string;
   paymentStatus: string;
   fulfillmentStatus: string;
+  trackingNumber?: string | null;
+  courier?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
   currency: string;
   subtotalAmount: number;
   discountAmount: number;
@@ -37,6 +41,8 @@ export default function AdminOrderDetail() {
   const [statusValue, setStatusValue] = useState("PROCESSING");
   const [paymentValue, setPaymentValue] = useState("PAID");
   const [fulfillmentValue, setFulfillmentValue] = useState("FULFILLED");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [courier, setCourier] = useState("");
   const [note, setNote] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
@@ -55,6 +61,8 @@ export default function AdminOrderDetail() {
       setStatusValue(res.data.status);
       setPaymentValue(res.data.paymentStatus);
       setFulfillmentValue(res.data.fulfillmentStatus);
+      setTrackingNumber(res.data.trackingNumber ?? "");
+      setCourier(res.data.courier ?? "");
       setRefundAmount(String(Number(res.data.totalAmount).toFixed(2)));
       setVerificationReference(res.data.payments?.[0]?.referenceId ?? "");
     } catch (err) {
@@ -76,7 +84,7 @@ export default function AdminOrderDetail() {
 
   const updateStatus = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/status`, { value: statusValue }); } catch (err) { toast.error(err instanceof Error ? err.message : "Status update failed"); } };
   const updatePayment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/payment-status`, { value: paymentValue }); } catch (err) { toast.error(err instanceof Error ? err.message : "Payment update failed"); } };
-  const updateFulfillment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/fulfillment-status`, { value: fulfillmentValue }); } catch (err) { toast.error(err instanceof Error ? err.message : "Fulfillment update failed"); } };
+  const updateFulfillment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/fulfillment-status`, { value: fulfillmentValue, trackingNumber: trackingNumber || undefined, courier: courier || undefined, shippedAt: fulfillmentValue === "FULFILLED" || fulfillmentValue === "PARTIALLY_FULFILLED" ? new Date().toISOString() : undefined, deliveredAt: fulfillmentValue === "FULFILLED" ? new Date().toISOString() : undefined }); } catch (err) { toast.error(err instanceof Error ? err.message : "Fulfillment update failed"); } };
   const addNote = async (e: FormEvent) => { e.preventDefault(); if (!note) return; try { await post(`/admin/orders/${orderId}/notes`, { note, isInternal: true }); setNote(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Note failed"); } };
   const cancelOrder = async (e: FormEvent) => { e.preventDefault(); if (!cancelReason) return; try { await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason }); setCancelReason(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Cancel failed"); } };
   const createRefund = async (e: FormEvent) => { e.preventDefault(); const amount = Number(refundAmount); if (!amount) return; try { await post(`/admin/orders/${orderId}/refunds`, { amount, reason: "Manual refund" }); } catch (err) { toast.error(err instanceof Error ? err.message : "Refund failed"); } };
@@ -171,9 +179,9 @@ export default function AdminOrderDetail() {
 
         <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
           <h3 className="font-bold">Manual Actions</h3>
-          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option>PLACED</option><option>CONFIRMED</option><option>PROCESSING</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option><option>REFUNDED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
-          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option>PENDING</option><option>AUTHORIZED</option><option>PAID</option><option>PARTIALLY_REFUNDED</option><option>REFUNDED</option><option>FAILED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
-          <form onSubmit={updateFulfillment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={fulfillmentValue} onChange={(e) => setFulfillmentValue(e.target.value)}><option>UNFULFILLED</option><option>PARTIALLY_FULFILLED</option><option>FULFILLED</option><option>RETURNED</option><option>CANCELLED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Fulfillment</button></form>
+          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option>PENDING</option><option>AWAITING_PAYMENT</option><option>PAID</option><option>PROCESSING</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option><option>PAYMENT_FAILED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
+          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option>PENDING</option><option>AWAITING_PAYMENT</option><option>PAID</option><option>FAILED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
+          <form onSubmit={updateFulfillment} className="space-y-2"><div className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={fulfillmentValue} onChange={(e) => setFulfillmentValue(e.target.value)}><option>UNFULFILLED</option><option>PARTIALLY_FULFILLED</option><option>FULFILLED</option><option>RETURNED</option><option>CANCELLED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Fulfillment</button></div><div className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Courier" value={courier} onChange={(e) => setCourier(e.target.value)} /><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Tracking number" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} /></div></form>
 
           <form onSubmit={addNote} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Internal note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Add Note</button></form>
 

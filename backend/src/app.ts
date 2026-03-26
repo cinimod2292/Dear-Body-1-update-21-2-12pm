@@ -22,6 +22,7 @@ import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
+import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -96,6 +97,7 @@ export async function buildApp() {
     await api.register(inventoryRoutes);
     await api.register(crmRoutes);
     await api.register(ordersRoutes);
+    await api.register(storeAccountRoutes);
     await api.register(emailTemplateRoutes);
     await api.register(paymentsRoutes);
     await api.register(xeroRoutes);

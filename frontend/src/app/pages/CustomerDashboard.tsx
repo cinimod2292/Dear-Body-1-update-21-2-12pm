@@ -32,6 +32,15 @@ const emptyAddress = {
   isDefaultBilling: false,
 };
 
+const parseApiError = async (response: Response, fallback: string) => {
+  try {
+    const payload = await response.json();
+    return payload?.error?.message || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export default function CustomerDashboard() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { customer, token, logout } = useCustomerAuth();
@@ -41,6 +50,8 @@ export default function CustomerDashboard() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressForm, setAddressForm] = useState(emptyAddress);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   const authHeaders = token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined;
 
@@ -94,9 +105,14 @@ export default function CustomerDashboard() {
   const saveProfile = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    setProfileError(null);
     setProfileSaving(true);
     try {
-      await fetch(`${API_BASE}/store/account/profile`, { method: "PATCH", headers: authHeaders, body: JSON.stringify(profileForm) });
+      const res = await fetch(`${API_BASE}/store/account/profile`, { method: "PATCH", headers: authHeaders, body: JSON.stringify(profileForm) });
+      if (!res.ok) {
+        setProfileError(await parseApiError(res, "Failed to update profile"));
+        return;
+      }
       loadProfile();
     } finally {
       setProfileSaving(false);
@@ -106,9 +122,14 @@ export default function CustomerDashboard() {
   const saveAddress = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    setAddressError(null);
     const url = editingAddressId ? `${API_BASE}/store/account/addresses/${editingAddressId}` : `${API_BASE}/store/account/addresses`;
     const method = editingAddressId ? "PATCH" : "POST";
-    await fetch(url, { method, headers: authHeaders, body: JSON.stringify(addressForm) });
+    const res = await fetch(url, { method, headers: authHeaders, body: JSON.stringify(addressForm) });
+    if (!res.ok) {
+      setAddressError(await parseApiError(res, editingAddressId ? "Failed to update address" : "Failed to add address"));
+      return;
+    }
     setAddressForm(emptyAddress);
     setEditingAddressId(null);
     loadAddresses();
@@ -133,17 +154,27 @@ export default function CustomerDashboard() {
 
   const deleteAddress = async (addressId: string) => {
     if (!token) return;
-    await fetch(`${API_BASE}/store/account/addresses/${addressId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    setAddressError(null);
+    const res = await fetch(`${API_BASE}/store/account/addresses/${addressId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      setAddressError(await parseApiError(res, "Failed to delete address"));
+      return;
+    }
     loadAddresses();
   };
 
   const setDefault = async (addressId: string, type: "shipping" | "billing") => {
     if (!token) return;
-    await fetch(`${API_BASE}/store/account/addresses/${addressId}/default`, {
+    setAddressError(null);
+    const res = await fetch(`${API_BASE}/store/account/addresses/${addressId}/default`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({ type }),
     });
+    if (!res.ok) {
+      setAddressError(await parseApiError(res, `Failed to set default ${type} address`));
+      return;
+    }
     loadAddresses();
   };
 
@@ -163,6 +194,7 @@ export default function CustomerDashboard() {
           <input className="border rounded-lg px-3 py-2" placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
           <input className="border rounded-lg px-3 py-2" placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
           <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+          {profileError ? <p className="sm:col-span-3 text-sm text-red-600">{profileError}</p> : null}
           <div className="sm:col-span-3">
             <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{profileSaving ? "Saving..." : "Save profile"}</button>
           </div>
@@ -172,6 +204,7 @@ export default function CustomerDashboard() {
       <section className="bg-white rounded-2xl border p-5">
         <h2 className="font-bold mb-4">Addresses</h2>
         <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" onSubmit={saveAddress}>
+          {addressError ? <p className="sm:col-span-2 text-sm text-red-600">{addressError}</p> : null}
           <input className="border rounded-lg px-3 py-2" placeholder="Recipient name" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
           <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
           <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 1" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />

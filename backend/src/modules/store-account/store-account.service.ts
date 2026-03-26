@@ -67,8 +67,8 @@ export async function addMyAddress(customerId: string, rawBody: unknown) {
       postalCode: body.postalCode,
       country: body.country,
       deliveryNotes: body.deliveryNotes,
-      isDefaultShipping: body.isDefaultShipping ?? existingCount === 0,
-      isDefaultBilling: body.isDefaultBilling ?? existingCount === 0,
+      isDefaultShipping: existingCount === 0 ? true : body.isDefaultShipping === true,
+      isDefaultBilling: existingCount === 0 ? true : body.isDefaultBilling === true,
     },
   });
 
@@ -86,12 +86,18 @@ export async function updateMyAddress(customerId: string, addressId: string, raw
   await getOwnedAddress(customerId, addressId);
   const body = customerAddressUpdateSchema.parse(rawBody);
 
+  const { isDefaultShipping, isDefaultBilling, ...addressData } = body;
+
   const updated = await prisma.address.update({
     where: { id: addressId },
-    data: body,
+    data: {
+      ...addressData,
+      ...(isDefaultShipping === true ? { isDefaultShipping: true } : {}),
+      ...(isDefaultBilling === true ? { isDefaultBilling: true } : {}),
+    },
   });
 
-  await enforceDefaults(customerId, updated.id, Boolean(body.isDefaultShipping), Boolean(body.isDefaultBilling));
+  await enforceDefaults(customerId, updated.id, isDefaultShipping === true, isDefaultBilling === true);
   return prisma.address.findUniqueOrThrow({ where: { id: addressId } });
 }
 

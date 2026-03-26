@@ -13,7 +13,7 @@ interface CustomerAuthContextValue {
   customer: Customer | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }) => Promise<void>;
+  register: (input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string; address?: { recipientName?: string; line1: string; line2?: string; city: string; state?: string; postalCode: string; country: string; phone?: string } }) => Promise<void>;
   logout: () => void;
 }
 
@@ -48,7 +48,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     persist(payload.data.accessToken, payload.data.customer);
   };
 
-  const register = async (input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }) => {
+  const register = async (input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string; address?: { recipientName?: string; line1: string; line2?: string; city: string; state?: string; postalCode: string; country: string; phone?: string } }) => {
     const res = await fetch(`${API_BASE}/auth/customer/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

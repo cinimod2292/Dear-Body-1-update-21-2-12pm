@@ -186,7 +186,7 @@ async function issueCustomerAccessToken(customer: Customer, app: any): Promise<C
   };
 }
 
-export async function registerCustomer(input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }, app: any) {
+export async function registerCustomer(input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string; address?: { recipientName?: string; line1: string; line2?: string; city: string; state?: string; postalCode: string; country: string; phone?: string } }, app: any) {
   const existing = await prisma.customer.findUnique({ where: { email: input.email } });
   if (existing?.passwordHash) throw new AppError(409, "Customer account already exists", "CUSTOMER_EXISTS");
 
@@ -212,6 +212,27 @@ export async function registerCustomer(input: { email: string; password: string;
           phone: input.phone,
         },
       });
+
+  if (input.address) {
+    const hasAddresses = await prisma.address.count({ where: { customerId: customer.id } });
+    await prisma.address.create({
+      data: {
+        customerId: customer.id,
+        recipientName: input.address.recipientName,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.address.phone ?? input.phone,
+        line1: input.address.line1,
+        line2: input.address.line2,
+        city: input.address.city,
+        state: input.address.state,
+        postalCode: input.address.postalCode,
+        country: input.address.country,
+        isDefaultShipping: hasAddresses === 0,
+        isDefaultBilling: hasAddresses === 0,
+      },
+    });
+  }
 
   return issueCustomerAccessToken(customer, app);
 }

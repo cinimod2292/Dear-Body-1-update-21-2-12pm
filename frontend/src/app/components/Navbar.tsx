@@ -21,6 +21,7 @@ export function Navbar() {
   const { cartCount } = useCart();
   const { customer, logout } = useCustomerAuth();
   const navigate = useNavigate();
+  const accountHref = customer ? "/account" : "/account/login";
 
   useEffect(() => {
     fetchCmsBootstrap()

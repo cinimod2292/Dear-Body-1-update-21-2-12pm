@@ -42,6 +42,19 @@ type StorefrontProductApi = {
   }>;
 };
 
+function normalizePrice(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  if (value && typeof value === "object" && "toString" in value && typeof value.toString === "function") {
+    const parsed = Number(value.toString());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 const palette = [
   { color: "#FF69B4", bgColor: "#FFF0F8", textColor: "#C71585" },
   { color: "#F97316", bgColor: "#FFF7ED", textColor: "#C2410C" },
@@ -63,6 +76,10 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const colorSet = palette[index % palette.length];
   const image = api.galleries?.find((gallery) => gallery.mediaAsset?.publicUrl)?.mediaAsset?.publicUrl ?? "";
   const tagDetails = parseJsonSafe<{ ingredients?: string; howToUse?: string; size?: string; scent?: string; tagline?: string }>(api.shortDescription ?? "");
+  const basePrice = normalizePrice(primaryVariant?.price);
+  const salePrice = primaryVariant?.salePrice === null || primaryVariant?.salePrice === undefined
+    ? undefined
+    : normalizePrice(primaryVariant.salePrice, basePrice);
 
   return {
     id: api.id,
@@ -70,8 +87,8 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     variantId: primaryVariant?.id ?? null,
     name: api.name,
     tagline: tagDetails?.tagline ?? api.shortDescription ?? "",
-    price: primaryVariant?.salePrice ?? primaryVariant?.price ?? 0,
-    originalPrice: primaryVariant?.salePrice ? primaryVariant.price : undefined,
+    price: salePrice ?? basePrice,
+    originalPrice: salePrice !== undefined ? basePrice : undefined,
     category: api.category?.name ?? "Products",
     color: colorSet.color,
     bgColor: colorSet.bgColor,

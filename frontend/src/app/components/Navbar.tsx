@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ShoppingBag, Search, Menu, X, Heart } from "lucide-react";
+import { ShoppingBag, Search, Menu, X, Heart, User } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { fetchCmsBootstrap } from "../lib/cms";
+import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -17,7 +19,9 @@ export function Navbar() {
     { label: "About", href: "/pages/about" },
   ]);
   const { cartCount } = useCart();
+  const { customer, logout } = useCustomerAuth();
   const navigate = useNavigate();
+  const accountHref = customer ? "/account" : "/account/login";
 
   useEffect(() => {
     fetchCmsBootstrap()
@@ -29,6 +33,13 @@ export function Navbar() {
       })
       .catch(() => undefined);
   }, []);
+
+
+
+  const handleLogout = () => {
+    logout();
+    navigate("/account/login");
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +71,37 @@ export function Navbar() {
           <div className="flex items-center gap-3">
             <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 text-gray-600 hover:text-pink-500 transition-colors" aria-label="Search"><Search size={20} /></button>
             <button className="p-2 text-gray-600 hover:text-pink-500 transition-colors hidden sm:block" aria-label="Wishlist"><Heart size={20} /></button>
-            <Link to="/cart" className="relative p-2 text-gray-600 hover:text-pink-500 transition-colors">
+            {customer ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="p-2 text-gray-600 hover:text-pink-500 focus-visible:text-pink-500 focus-visible:outline-none transition-colors"
+                    aria-label="My account"
+                  >
+                    <User size={20} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem asChild>
+                    <Link to="/account">My Account</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/account">Orders</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link
+                to="/account/login"
+                className="p-2 text-gray-600 hover:text-pink-500 focus-visible:text-pink-500 focus-visible:outline-none transition-colors"
+                aria-label="Customer login"
+              >
+                <User size={20} />
+              </Link>
+            )}
+            <Link to="/cart" className="relative p-2 text-gray-600 hover:text-pink-500 focus-visible:text-pink-500 focus-visible:outline-none transition-colors" aria-label="Cart">
               <ShoppingBag size={20} />
               {cartCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-pink-500 to-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold">{cartCount > 9 ? "9+" : cartCount}</span>}
             </Link>

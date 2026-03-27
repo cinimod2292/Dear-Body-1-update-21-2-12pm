@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 export interface PreparedUpload {
   storageKey: string;
   uploadUrl: string;
+  publicUrl: string;
   method: "PUT";
   headers: Record<string, string>;
 }
@@ -14,9 +15,11 @@ export async function prepareUpload(filename: string, mimeType: string): Promise
 
   if (env.UPLOAD_PROVIDER === "s3") {
     const endpoint = env.UPLOAD_ENDPOINT || `https://${env.UPLOAD_BUCKET}.s3.${env.UPLOAD_REGION}.amazonaws.com`;
+    const objectUrl = `${endpoint}/${storageKey}`;
     return {
       storageKey,
-      uploadUrl: `${endpoint}/${storageKey}`,
+      uploadUrl: objectUrl,
+      publicUrl: objectUrl,
       method: "PUT",
       headers: {
         "content-type": mimeType,
@@ -29,6 +32,7 @@ export async function prepareUpload(filename: string, mimeType: string): Promise
   return {
     storageKey,
     uploadUrl: `${localBaseUrl}/local-upload/${storageKey}`,
+    publicUrl: `${localBaseUrl}/local-upload/${storageKey}`,
     method: "PUT",
     headers: {
       "content-type": mimeType,

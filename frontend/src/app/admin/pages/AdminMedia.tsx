@@ -605,7 +605,7 @@ export default function AdminMedia() {
     try {
       setUploading(true);
       const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
-      const prep = await apiRequest<{ data: { uploadUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+      const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
         "/admin/media/uploads/prepare",
         {
           method: "POST",
@@ -629,7 +629,7 @@ export default function AdminMedia() {
         method: "POST",
         body: JSON.stringify({
           storageKey: prep.data.storageKey,
-          publicUrl: prep.data.uploadUrl,
+          publicUrl: prep.data.publicUrl,
           kind,
           metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
           altText: file.name,

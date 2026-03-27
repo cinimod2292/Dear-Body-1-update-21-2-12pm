@@ -35,6 +35,7 @@ type StorefrontProductApi = {
   galleries?: Array<{ mediaAsset?: { publicUrl?: string | null } | null }>;
   variants?: Array<{
     id: string;
+    isActive?: boolean;
     price: number;
     salePrice?: number | null;
     inventoryLevel?: { quantityOnHand: number } | null;
@@ -57,7 +58,8 @@ function parseJsonSafe<T>(value: string): T | null {
 }
 
 function toProduct(api: StorefrontProductApi, index: number): Product {
-  const primaryVariant = api.variants?.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? api.variants?.[0];
+  const activeVariants = (api.variants ?? []).filter((variant) => variant.isActive !== false);
+  const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
   const image = api.galleries?.find((gallery) => gallery.mediaAsset?.publicUrl)?.mediaAsset?.publicUrl ?? "";
   const tagDetails = parseJsonSafe<{ ingredients?: string; howToUse?: string; size?: string; scent?: string; tagline?: string }>(api.shortDescription ?? "");
@@ -94,7 +96,9 @@ export async function fetchStoreProducts(): Promise<Product[]> {
     throw new Error(payload?.error?.message || "Failed to load products");
   }
   const items = (payload?.data?.items || []) as StorefrontProductApi[];
-  return items.map((item, index) => toProduct(item, index));
+  return items
+    .map((item, index) => toProduct(item, index))
+    .filter((product) => Boolean(product.variantId));
 }
 
 export async function fetchStoreProductById(productId: string): Promise<Product | null> {
@@ -104,7 +108,9 @@ export async function fetchStoreProductById(productId: string): Promise<Product 
   if (!response.ok) {
     throw new Error(payload?.error?.message || "Failed to load product");
   }
-  return toProduct(payload.data as StorefrontProductApi, 0);
+  const mapped = toProduct(payload.data as StorefrontProductApi, 0);
+  if (!mapped.variantId) return null;
+  return mapped;
 }
 
 export function getCategories(products: Product[]) {

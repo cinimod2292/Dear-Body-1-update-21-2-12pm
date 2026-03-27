@@ -30,7 +30,7 @@ function sanitizeStoredCart(raw: unknown): CartItem[] {
     const quantity = (entry as { quantity?: unknown })?.quantity;
     const product = (entry as { product?: Product })?.product;
     if (!product || !isCuid(product.id)) return false;
-    if (product.variantId !== null && !isCuid(product.variantId)) return false;
+    if (!isCuid(product.variantId)) return false;
     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) return false;
     return true;
   });
@@ -48,6 +48,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   });
 
   const addToCart = (product: Product, quantity = 1) => {
+    if (!isCuid(product.variantId)) return;
     setCartItems(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {

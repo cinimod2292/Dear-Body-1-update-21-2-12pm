@@ -60,12 +60,14 @@ export default function ProductDetail() {
   }
 
   const handleAddToCart = () => {
+    if (!product.variantId || !product.inStock) return;
     addToCart(product, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
+    if (!product.variantId || !product.inStock) return;
     addToCart(product, quantity);
     navigate("/cart");
   };
@@ -218,16 +220,20 @@ export default function ProductDetail() {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleAddToCart}
+                disabled={!product.variantId || !product.inStock}
                 className={`flex-1 py-4 rounded-full font-bold flex items-center justify-center gap-2 transition-all duration-300 ${
                   added
                     ? "bg-green-500 text-white"
-                    : "bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:opacity-90 hover:scale-[1.02] shadow-lg shadow-pink-200"
+                    : product.variantId && product.inStock
+                      ? "bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:opacity-90 hover:scale-[1.02] shadow-lg shadow-pink-200"
+                      : "bg-gray-300 text-gray-600 cursor-not-allowed"
                 }`}
               >
-                {added ? <><Check size={18} /> Added to Cart!</> : <><ShoppingBag size={18} /> Add to Cart</>}
+                {added ? <><Check size={18} /> Added to Cart!</> : <><ShoppingBag size={18} /> {product.variantId && product.inStock ? "Add to Cart" : "Unavailable"}</>}
               </button>
               <button
                 onClick={handleBuyNow}
+                disabled={!product.variantId || !product.inStock}
                 className="flex-1 py-4 rounded-full font-bold border-2 text-gray-800 hover:border-pink-400 hover:text-pink-500 transition-all duration-200"
                 style={{ borderColor: product.color }}
               >

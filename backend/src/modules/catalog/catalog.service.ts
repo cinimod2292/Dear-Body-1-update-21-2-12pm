@@ -925,11 +925,36 @@ export async function listProducts(rawQuery: unknown) {
 
 export async function listStorefrontProducts(rawQuery: unknown) {
   const query = productFilterSchema.parse(rawQuery);
-  return listProducts({
-    ...query,
-    status: "ACTIVE",
-    visibility: "PUBLIC",
-  });
+  const skip = (query.page - 1) * query.perPage;
+  const take = query.perPage;
+
+  const where = {
+    ...(query.q ? { OR: [{ name: { contains: query.q, mode: "insensitive" as const } }, { slug: { contains: query.q, mode: "insensitive" as const } }] } : {}),
+    status: "ACTIVE" as const,
+    visibility: "PUBLIC" as const,
+    ...(query.brandId ? { brandId: query.brandId } : {}),
+    ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+    ...(query.featured !== undefined ? { featured: query.featured } : {}),
+    ...(query.tag ? { tags: { some: { tag: { slug: query.tag } } } } : {}),
+    variants: { some: { isActive: true } },
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { [query.sortBy]: query.sortDir },
+      include: {
+        category: true,
+        galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+        variants: { where: { isActive: true }, include: { inventoryLevel: true } },
+      },
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return toPaginatedResponse(items, total, query);
 }
 
 export async function getProductById(productId: string) {
@@ -955,11 +980,12 @@ export async function getStorefrontProductById(productId: string) {
       id: productId,
       status: "ACTIVE",
       visibility: "PUBLIC",
+      variants: { some: { isActive: true } },
     },
     include: {
       category: true,
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-      variants: { include: { inventoryLevel: true } },
+      variants: { where: { isActive: true }, include: { inventoryLevel: true } },
     },
   });
 

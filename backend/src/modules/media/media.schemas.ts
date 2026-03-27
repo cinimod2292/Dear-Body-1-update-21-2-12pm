@@ -10,6 +10,7 @@ export const createUploadSchema = z.object({
 export const finalizeUploadSchema = z.object({
   storageKey: z.string().min(1),
   publicUrl: z.string().url().optional(),
+  kind: z.enum(["IMAGE", "VIDEO", "FILE"]).optional(),
   altText: z.string().max(255).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });

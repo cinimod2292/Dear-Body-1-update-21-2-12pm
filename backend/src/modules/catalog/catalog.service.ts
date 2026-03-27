@@ -306,6 +306,7 @@ async function buildImportPreview(rawRows: Array<Record<string, string>>) {
       product_name: row.productName,
       operation: row.operation,
       errors: row.errors,
+      rowData: row.raw,
     })),
     summary: {
       total: rows.length,
@@ -479,7 +480,7 @@ export async function commitProductImport(input: { csvContent?: string; rows?: A
   }
 
   const preview = await buildImportPreview(rawRows);
-  const results: Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string }> = [];
+  const results: Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string; rowData?: Record<string, string> }> = [];
   let created = 0;
   let updated = 0;
   let failed = 0;
@@ -487,7 +488,12 @@ export async function commitProductImport(input: { csvContent?: string; rows?: A
   for (const row of preview.internalRows) {
     if (row.errors.length || row.operation === "error") {
       failed += 1;
-      results.push({ rowNumber: row.rowNumber, status: "failed", error: row.errors.join("; ") || "Validation failed" });
+      results.push({
+        rowNumber: row.rowNumber,
+        status: "failed",
+        error: row.errors.join("; ") || "Validation failed",
+        rowData: row.raw,
+      });
       continue;
     }
 
@@ -506,6 +512,7 @@ export async function commitProductImport(input: { csvContent?: string; rows?: A
         rowNumber: row.rowNumber,
         status: "failed",
         error: error instanceof Error ? error.message : "Unexpected error while importing row",
+        rowData: row.raw,
       });
     }
   }

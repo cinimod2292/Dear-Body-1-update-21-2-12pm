@@ -18,6 +18,7 @@ interface ImportPreviewRow {
   product_name: string;
   operation: "create" | "update" | "error";
   errors: string[];
+  rowData?: Record<string, string>;
 }
 
 interface ImportPreviewSummary {
@@ -41,7 +42,7 @@ interface ImportCommitResponse {
       updated: number;
       failed: number;
     };
-    results: Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string }>;
+    results: Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string; rowData?: Record<string, string> }>;
   };
 }
 
@@ -63,11 +64,60 @@ function BulkUploadModal({
   const [previewRows, setPreviewRows] = useState<ImportPreviewRow[]>([]);
   const [previewSummary, setPreviewSummary] = useState<ImportPreviewSummary | null>(null);
   const [importSummary, setImportSummary] = useState<{ created: number; updated: number; failed: number } | null>(null);
-  const [importResults, setImportResults] = useState<Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string }>>([]);
+  const [importResults, setImportResults] = useState<Array<{ rowNumber: number; status: "created" | "updated" | "failed"; error?: string; rowData?: Record<string, string> }>>([]);
   const [error, setError] = useState<string | null>(null);
 
   const fatalErrors = previewRows.some((row) => row.operation === "error");
   const failedRows = importResults.filter((row) => row.status === "failed");
+  const previewErrorRows = previewRows.filter((row) => row.operation === "error");
+
+  const csvEscape = (value: unknown) => {
+    const text = String(value ?? "");
+    if (/[\",\n]/.test(text)) return `"${text.replace(/"/g, "\"\"")}"`;
+    return text;
+  };
+
+  const downloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
+    if (!rows.length) return;
+    const headers = Array.from(
+      rows.reduce((set, row) => {
+        Object.keys(row).forEach((key) => set.add(key));
+        return set;
+      }, new Set<string>()),
+    );
+    const csv = [
+      headers.map(csvEscape).join(","),
+      ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(href);
+  };
+
+  const downloadPreviewErrors = () => {
+    const rows = previewErrorRows.map((row) => ({
+      row_number: row.rowNumber,
+      ...(row.rowData ?? {}),
+      operation: row.operation,
+      error_messages: row.errors.join(" | "),
+    }));
+    downloadCsv("bulk-upload-preview-errors.csv", rows);
+  };
+
+  const downloadImportFailures = () => {
+    const rows = failedRows.map((row) => ({
+      row_number: row.rowNumber,
+      ...(row.rowData ?? {}),
+      status: row.status,
+      error_messages: row.error ?? "",
+    }));
+    downloadCsv("bulk-upload-import-failures.csv", rows);
+  };
 
   const reset = () => {
     setUploadState("idle");
@@ -216,6 +266,14 @@ function BulkUploadModal({
             </div>
           ) : null}
 
+          {previewErrorRows.length > 0 ? (
+            <div>
+              <button onClick={downloadPreviewErrors} className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-700 bg-red-50">
+                Download Error CSV
+              </button>
+            </div>
+          ) : null}
+
           {previewRows.length > 0 ? (
             <div className="rounded-xl border border-gray-200 overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -254,8 +312,11 @@ function BulkUploadModal({
                 <p>Created: {importSummary.created} · Updated: {importSummary.updated} · Failed: {importSummary.failed}</p>
               </div>
               {failedRows.length > 0 ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  Failed rows: {failedRows.map((row) => row.rowNumber).join(", ")}
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 space-y-2">
+                  <p>Failed rows: {failedRows.map((row) => row.rowNumber).join(", ")}</p>
+                  <button onClick={downloadImportFailures} className="px-3 py-2 rounded-lg border border-amber-300 bg-white text-sm">
+                    Download Failed Rows CSV
+                  </button>
                 </div>
               ) : null}
             </div>

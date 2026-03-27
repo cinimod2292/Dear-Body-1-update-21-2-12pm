@@ -15,6 +15,7 @@ export const paymentInitiationSchema = z.object({
   gateway: z.enum(["stitch"]).default("stitch"),
   returnUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
+  force: z.boolean().optional().default(false),
 });
 
 export const paymentVerifySchema = z.object({

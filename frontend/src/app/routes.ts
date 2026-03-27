@@ -6,6 +6,11 @@ import ProductDetail from "./pages/ProductDetail";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import CmsPage from "./pages/CmsPage";
+import CustomerLogin from "./pages/CustomerLogin";
+import CustomerRegister from "./pages/CustomerRegister";
+import CustomerDashboard from "./pages/CustomerDashboard";
+import CustomerOrderDetail from "./pages/CustomerOrderDetail";
+import { CustomerProtectedRoute } from "./components/CustomerProtectedRoute";
 import AdminLogin from "./admin/pages/AdminLogin";
 import AdminLayout from "./admin/components/AdminLayout";
 import { AdminProtectedRoute } from "./admin/components/AdminProtectedRoute";
@@ -32,6 +37,9 @@ export const router = createBrowserRouter([
       { path: "product/:id", Component: ProductDetail },
       { path: "cart", Component: Cart },
       { path: "checkout", Component: Checkout },
+      { path: "account/login", Component: CustomerLogin },
+      { path: "account/register", Component: CustomerRegister },
+      { path: "account", Component: CustomerProtectedRoute, children: [{ index: true, Component: CustomerDashboard }, { path: "orders/:orderId", Component: CustomerOrderDetail }] },
       { path: "about", Component: CmsPage },
       { path: "contact", Component: CmsPage },
       { path: "privacy-policy", Component: CmsPage },

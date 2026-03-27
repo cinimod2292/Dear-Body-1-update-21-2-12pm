@@ -59,6 +59,14 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     placeholderKeys: ["orderNumber", "eventType", "amount"],
   },
   {
+    key: "abandoned_cart_reminder",
+    name: "Abandoned Cart Reminder",
+    category: "MARKETING",
+    subject: "You left something behind, {{firstName}}",
+    htmlBody: `<p>Your cart is waiting for you. Complete your order here: <a href="{{checkoutUrl}}">Checkout</a></p>`, 
+    placeholderKeys: ["firstName", "checkoutUrl"],
+  },
+  {
     key: "contact_notification",
     name: "Contact Notification",
     category: "SUPPORT",

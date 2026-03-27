@@ -77,6 +77,28 @@ export const authPlugin = fp(async (app) => {
     }
   });
 
+
+  app.decorate("verifyCustomer", async (request: any, _reply: any) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+    }
+
+    const tokenType = request.user?.tokenType;
+    if (tokenType !== "customer") {
+      throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: request.user.sub },
+      select: { id: true, email: true },
+    });
+
+    if (!customer) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+    request.customer = customer;
+  });
+
   app.decorate("requirePermission", (permission: string) => async (request: any, _reply: any) => {
     const role = request.user?.role;
     if (!role || !hasPermission(role, permission)) {

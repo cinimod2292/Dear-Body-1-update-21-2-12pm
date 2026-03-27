@@ -30,6 +30,30 @@ interface StoredCustomerSession {
   customer: Customer;
 }
 
+const emptySessionState = {
+  token: null,
+  refreshToken: null,
+  accessTokenExpiresAt: null,
+  refreshTokenExpiresAt: null,
+  customer: null,
+} as const;
+
+function parseStoredSession(raw: string | null) {
+  if (!raw) return emptySessionState;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredCustomerSession>;
+    return {
+      token: parsed.token ?? null,
+      refreshToken: parsed.refreshToken ?? null,
+      accessTokenExpiresAt: parsed.accessTokenExpiresAt ?? null,
+      refreshTokenExpiresAt: parsed.refreshTokenExpiresAt ?? null,
+      customer: parsed.customer ?? null,
+    };
+  } catch {
+    return emptySessionState;
+  }
+}
+
 function parseTime(input?: string | null) {
   if (!input) return null;
   const t = new Date(input).getTime();
@@ -61,19 +85,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     customer: Customer | null;
   }>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { token: null, refreshToken: null, accessTokenExpiresAt: null, refreshTokenExpiresAt: null, customer: null };
-    try {
-      const parsed = JSON.parse(raw) as Partial<StoredCustomerSession>;
-      return {
-        token: parsed.token ?? null,
-        refreshToken: parsed.refreshToken ?? null,
-        accessTokenExpiresAt: parsed.accessTokenExpiresAt ?? null,
-        refreshTokenExpiresAt: parsed.refreshTokenExpiresAt ?? null,
-        customer: parsed.customer ?? null,
-      };
-    } catch {
-      return { token: null, refreshToken: null, accessTokenExpiresAt: null, refreshTokenExpiresAt: null, customer: null };
-    }
+    return parseStoredSession(raw);
   });
 
   const [showExpiryWarning, setShowExpiryWarning] = useState(false);
@@ -103,13 +115,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const persist = useCallback((session: StoredCustomerSession | null) => {
     if (!session) {
       localStorage.removeItem(STORAGE_KEY);
-      setState({
-        token: null,
-        refreshToken: null,
-        accessTokenExpiresAt: null,
-        refreshTokenExpiresAt: null,
-        customer: null,
-      });
+      setState(emptySessionState);
       return;
     }
 
@@ -266,6 +272,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       void refreshSession();
     }
   }, [getAccessExpiryMs, refreshSession, state.customer, state.token]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+
+      const next = parseStoredSession(event.newValue);
+      clearTimers();
+      setShowExpiryWarning(false);
+      setState(next);
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [clearTimers]);
 
   const value = useMemo(() => ({ customer: state.customer, token: state.token, login, register, logout, refreshSession }), [state.customer, state.token, refreshSession]);
 

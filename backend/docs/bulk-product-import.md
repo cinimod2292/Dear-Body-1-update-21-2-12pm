@@ -55,7 +55,7 @@ The **Bulk Upload** feature lets admins create or update products in one CSV imp
 
 ### Template download options
 - **Full template**: includes required + common optional columns.
-- **Simple template**: `sku,product_name,price,brand_name,category_name,quantity_on_hand`
+- **Simple template**: `sku,product_name,price,brand_name,parent_category_name,category_name,quantity_on_hand,description,status,visibility,featured`
 
 ---
 

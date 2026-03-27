@@ -35,8 +35,13 @@ const SIMPLE_IMPORT_TEMPLATE_HEADERS = [
   "product_name",
   "price",
   "brand_name",
+  "parent_category_name",
   "category_name",
   "quantity_on_hand",
+  "description",
+  "status",
+  "visibility",
+  "featured",
 ];
 
 const DEFAULT_TEMPLATE_ROW = {
@@ -62,8 +67,13 @@ const SIMPLE_TEMPLATE_ROW = {
   product_name: "Vitamin C Serum",
   price: "29.99",
   brand_name: "Dear Body",
+  parent_category_name: "Body Care",
   category_name: "Serums",
   quantity_on_hand: "100",
+  description: "Brightening daily serum for all skin types.",
+  status: "ACTIVE",
+  visibility: "PUBLIC",
+  featured: "false",
 } as const;
 
 type ImportOperation = "create" | "update" | "error";

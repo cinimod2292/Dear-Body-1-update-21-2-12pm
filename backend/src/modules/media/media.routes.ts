@@ -26,7 +26,7 @@ export async function mediaRoutes(app: FastifyInstance) {
           filename: body.storageKey.split("/").pop() ?? body.storageKey,
           mimeType: body.metadata?.mimeType as string ?? "application/octet-stream",
           byteSize: Number(body.metadata?.byteSize ?? 0),
-          kind: "FILE",
+          kind: body.kind ?? "FILE",
           storageKey: body.storageKey,
           publicUrl: body.publicUrl,
           altText: body.altText,

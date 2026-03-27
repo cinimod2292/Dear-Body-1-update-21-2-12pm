@@ -10,6 +10,21 @@ interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
 }
 
+interface MediaDetailResponse {
+  data: MediaAsset & {
+    storageKey: string;
+    updatedAt: string;
+    usage: {
+      galleryCount: number;
+      products: Array<{ id: string; name: string }>;
+    };
+  };
+}
+
+interface MediaUpdateResponse {
+  data: MediaAsset;
+}
+
 interface ImageImportPreviewRow {
   rowNumber: number;
   sku: string;
@@ -320,21 +335,250 @@ function BulkImageImportModal({
   );
 }
 
+function MediaDetailsModal({
+  mediaId,
+  accessToken,
+  onClose,
+  onChanged,
+}: {
+  mediaId: string | null;
+  accessToken?: string;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [asset, setAsset] = useState<MediaDetailResponse["data"] | null>(null);
+  const [filename, setFilename] = useState("");
+  const [altText, setAltText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const loadAsset = async () => {
+    if (!accessToken || !mediaId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await apiRequest<MediaDetailResponse>(`/admin/media/${mediaId}`, {}, accessToken);
+      setAsset(res.data);
+      setFilename(res.data.filename);
+      setAltText(res.data.altText ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load media details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mediaId) loadAsset();
+    if (!mediaId) {
+      setAsset(null);
+      setFilename("");
+      setAltText("");
+      setError(null);
+      setShowDeleteConfirm(false);
+    }
+  }, [mediaId, accessToken]);
+
+  const saveChanges = async () => {
+    if (!accessToken || !mediaId) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await apiRequest<MediaUpdateResponse>(`/admin/media/${mediaId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          filename: filename.trim(),
+          altText: altText.trim() || null,
+        }),
+      }, accessToken);
+      setAsset((current) => (current ? { ...current, ...res.data } : current));
+      toast.success("Media details updated");
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyUrl = async () => {
+    if (!asset?.publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(asset.publicUrl);
+      toast.success("Media URL copied");
+    } catch {
+      toast.error("Unable to copy URL");
+    }
+  };
+
+  const deleteAsset = async () => {
+    if (!accessToken || !mediaId) return;
+    try {
+      setDeleting(true);
+      setError(null);
+      await fetch(`${API_BASE}/admin/media/${mediaId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).then(async (res) => {
+        if (res.status === 204) return;
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error?.message || `Delete failed (${res.status})`);
+      });
+      toast.success("Media asset deleted");
+      await onChanged();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete media asset");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (!mediaId) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-3xl rounded-xl border border-gray-200 shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Media Details</h3>
+            <p className="text-xs text-gray-500">Inspect and manage this media asset.</p>
+          </div>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm">Close</button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-auto">
+          {loading ? <LoadingState label="Loading media details..." /> : null}
+          {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+          {asset ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 flex items-center justify-center min-h-[220px]">
+                  {asset.publicUrl && asset.mimeType.startsWith("image") ? (
+                    <img src={asset.publicUrl} alt={asset.altText ?? asset.filename} className="max-h-64 w-auto rounded object-contain" />
+                  ) : (
+                    <span className="text-xs text-gray-500">{asset.mimeType}</span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <label className="block text-sm text-gray-700">
+                    Display name
+                    <input
+                      value={filename}
+                      onChange={(e) => setFilename(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm text-gray-700">
+                    Alt text
+                    <input
+                      value={altText}
+                      onChange={(e) => setAltText(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <div className="text-xs text-gray-600 space-y-1">
+                    <p><strong>Kind:</strong> {asset.kind}</p>
+                    <p><strong>MIME:</strong> {asset.mimeType}</p>
+                    <p><strong>Size:</strong> {Math.round(asset.byteSize / 1024)} KB</p>
+                    <p><strong>Created:</strong> {new Date(asset.createdAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3 text-sm">
+                <p className="font-medium text-gray-900">Public URL</p>
+                <p className="text-xs text-gray-600 break-all">{asset.publicUrl ?? "No public URL available"}</p>
+                <button
+                  onClick={copyUrl}
+                  disabled={!asset.publicUrl}
+                  className="mt-2 px-3 py-1.5 rounded-lg border border-gray-200 text-xs disabled:opacity-50"
+                >
+                  Copy URL
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3 text-sm space-y-2">
+                <p className="font-medium text-gray-900">Usage</p>
+                <p className="text-xs text-gray-600">
+                  Attached to {asset.usage.galleryCount} product gallery {asset.usage.galleryCount === 1 ? "entry" : "entries"}.
+                </p>
+                {asset.usage.products.length > 0 ? (
+                  <p className="text-xs text-gray-600">Products: {asset.usage.products.map((p) => p.name).join(", ")}</p>
+                ) : null}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3 text-sm space-y-3">
+                <p className="font-medium text-gray-900">Danger Zone</p>
+                {asset.usage.galleryCount > 0 ? (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+                    This image is currently attached to products and cannot be deleted until it is removed from those products.
+                  </p>
+                ) : (
+                  <>
+                    {!showDeleteConfirm ? (
+                      <button onClick={() => setShowDeleteConfirm(true)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 bg-red-50 text-xs">
+                        Delete Asset
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-red-700">Confirm deletion. This action cannot be undone.</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={deleteAsset}
+                            disabled={deleting}
+                            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs disabled:opacity-50"
+                          >
+                            {deleting ? "Deleting..." : "Confirm Delete"}
+                          </button>
+                          <button onClick={() => setShowDeleteConfirm(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Close</button>
+          <button
+            onClick={saveChanges}
+            disabled={!asset || saving || !filename.trim()}
+            className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminMedia() {
   const { session } = useAdminAuth();
   const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"ALL" | "IMAGE" | "VIDEO" | "FILE">("ALL");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<PaginatedResult<MediaAsset> | null>(null);
   const [uploading, setUploading] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
 
   const params = useMemo(() => {
-    const sp = new URLSearchParams({ page: String(page), perPage: "18" });
+    const sp = new URLSearchParams({ page: String(page), perPage: "18", sortBy: "createdAt", sortDir });
     if (query) sp.set("q", query);
+    if (kindFilter !== "ALL") sp.set("kind", kindFilter);
     return sp.toString();
-  }, [page, query]);
+  }, [page, query, kindFilter, sortDir]);
 
   const loadMedia = async () => {
     if (!session?.accessToken) return;
@@ -414,6 +658,12 @@ export default function AdminMedia() {
         onClose={() => setBulkImportOpen(false)}
         onImported={loadMedia}
       />
+      <MediaDetailsModal
+        mediaId={selectedMediaId}
+        accessToken={session?.accessToken}
+        onClose={() => setSelectedMediaId(null)}
+        onChanged={loadMedia}
+      />
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
@@ -429,16 +679,35 @@ export default function AdminMedia() {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-3">
+      <div className="bg-white border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
         <input
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setPage(1);
           }}
-          placeholder="Search media"
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          placeholder="Search filename, alt text, or URL"
+          className="md:col-span-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
         />
+        <select
+          value={kindFilter}
+          onChange={(e) => {
+            setKindFilter(e.target.value as "ALL" | "IMAGE" | "VIDEO" | "FILE");
+            setPage(1);
+          }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        >
+          <option value="ALL">All kinds</option>
+          <option value="IMAGE">Images</option>
+          <option value="VIDEO">Videos</option>
+          <option value="FILE">Files</option>
+        </select>
+        <button
+          onClick={() => setSortDir((current) => (current === "desc" ? "asc" : "desc"))}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        >
+          {sortDir === "desc" ? "Newest first" : "Oldest first"}
+        </button>
       </div>
 
       {payload.items.length === 0 ? (
@@ -446,7 +715,11 @@ export default function AdminMedia() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {payload.items.map((asset) => (
-            <div key={asset.id} className="rounded-xl border border-gray-200 bg-white p-2">
+            <button
+              key={asset.id}
+              onClick={() => setSelectedMediaId(asset.id)}
+              className="text-left rounded-xl border border-gray-200 bg-white p-2 hover:border-gray-300"
+            >
               <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center">
                 {asset.publicUrl && asset.mimeType.startsWith("image") ? (
                   <img src={asset.publicUrl} alt={asset.filename} className="w-full h-full object-cover" />
@@ -455,8 +728,9 @@ export default function AdminMedia() {
                 )}
               </div>
               <p className="mt-2 text-xs font-medium text-gray-700 truncate" title={asset.filename}>{asset.filename}</p>
+              <p className="text-[11px] text-gray-500">{asset.kind}</p>
               <p className="text-[11px] text-gray-400">{Math.round(asset.byteSize / 1024)} KB</p>
-            </div>
+            </button>
           ))}
         </div>
       )}

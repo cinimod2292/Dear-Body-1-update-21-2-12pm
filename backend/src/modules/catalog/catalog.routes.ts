@@ -1,5 +1,28 @@
 import { FastifyInstance } from "fastify";
-import { bulkProductAction, createProduct, createVariant, getProductById, listProducts, updateProduct, updateVariant } from "./catalog.service.js";
+import {
+  bulkProductAction,
+  commitProductImageImport,
+  commitProductImport,
+  createProduct,
+  createVariant,
+  getProductById,
+  getProductImportTemplateCsv,
+  listProducts,
+  previewProductImportCsv,
+  previewProductImageImportCsv,
+  updateProduct,
+  updateVariant,
+} from "./catalog.service.js";
+
+async function readCsvFromRequest(request: any) {
+  const part = await request.file();
+  if (!part) return null;
+  const chunks: Buffer[] = [];
+  for await (const chunk of part.file) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
 
 export async function catalogRoutes(app: FastifyInstance) {
   app.get("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
@@ -10,6 +33,60 @@ export async function catalogRoutes(app: FastifyInstance) {
   app.post("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
     const product = await createProduct(request.body);
     return reply.status(201).send({ data: product });
+  });
+
+  app.get("/admin/products/import/template.csv", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (_request, reply) => {
+    const query = _request.query as { simple?: string };
+    const csv = getProductImportTemplateCsv({ simple: query.simple === "1" || query.simple === "true" });
+    reply.header("Content-Type", "text/csv");
+    reply.header("Content-Disposition", "attachment; filename=product-import-template.csv");
+    return reply.send(csv);
+  });
+
+  app.post("/admin/products/import/preview", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const csvContent = await readCsvFromRequest(request);
+    if (!csvContent) {
+      return reply.status(400).send({ error: { message: "CSV file is required" } });
+    }
+
+    const result = await previewProductImportCsv(csvContent);
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/import/commit", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const contentType = request.headers["content-type"] ?? "";
+
+    if (typeof contentType === "string" && contentType.includes("multipart/form-data")) {
+      const csvContent = await readCsvFromRequest(request);
+      if (!csvContent) {
+        return reply.status(400).send({ error: { message: "CSV file is required" } });
+      }
+      const result = await commitProductImport({ csvContent });
+      return reply.send({ data: result });
+    }
+
+    const body = request.body as { rows?: Array<Record<string, unknown>> };
+    const result = await commitProductImport({ rows: body?.rows });
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/images/import/preview", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const csvContent = await readCsvFromRequest(request);
+    if (!csvContent) {
+      return reply.status(400).send({ error: { message: "CSV file is required" } });
+    }
+
+    const result = await previewProductImageImportCsv(csvContent);
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/images/import/commit", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const csvContent = await readCsvFromRequest(request);
+    if (!csvContent) {
+      return reply.status(400).send({ error: { message: "CSV file is required" } });
+    }
+    const result = await commitProductImageImport(csvContent, request.user.sub);
+    return reply.send({ data: result });
   });
 
   app.get("/admin/products/:productId", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {

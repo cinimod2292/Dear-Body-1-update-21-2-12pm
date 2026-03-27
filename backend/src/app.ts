@@ -1,8 +1,11 @@
 import Fastify from "fastify";
+import fs from "node:fs/promises";
+import path from "node:path";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
 import { registerErrorHandler } from "./lib/errors.js";
+import { prisma } from "./lib/prisma.js";
 import { authPlugin } from "./plugins/auth.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { settingsRoutes } from "./modules/settings/settings.routes.js";
@@ -47,6 +50,52 @@ export async function buildApp() {
   });
 
   app.register(authPlugin);
+
+  const localUploadRoot = path.resolve(process.cwd(), ".local-uploads");
+  const resolveLocalUploadPath = (storageKey: string) => {
+    const sanitized = storageKey.replace(/^\/+/, "");
+    const resolved = path.resolve(localUploadRoot, sanitized);
+    if (!resolved.startsWith(localUploadRoot)) {
+      throw new Error("Invalid storage key path");
+    }
+    return resolved;
+  };
+
+  app.put("/local-upload/*", async (request, reply) => {
+    const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
+    if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
+
+    const filePath = resolveLocalUploadPath(storageKey);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of request.raw) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    await fs.writeFile(filePath, Buffer.concat(chunks));
+
+    return reply.status(200).send({ ok: true });
+  });
+
+  app.get("/local-upload/*", async (request, reply) => {
+    const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
+    if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
+
+    const filePath = resolveLocalUploadPath(storageKey);
+    let file: Buffer;
+    try {
+      file = await fs.readFile(filePath);
+    } catch {
+      return reply.status(404).send({ error: { message: "File not found" } });
+    }
+
+    const asset = await prisma.mediaAsset.findUnique({
+      where: { storageKey },
+      select: { mimeType: true },
+    });
+    reply.header("Content-Type", asset?.mimeType || "application/octet-stream");
+    return reply.send(file);
+  });
 
   app.addHook("onResponse", async (request, reply) => {
     if (!request.url.startsWith(`${env.API_PREFIX}/admin`)) {

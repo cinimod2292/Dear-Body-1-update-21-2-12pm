@@ -88,44 +88,6 @@ export default function Checkout() {
     }
   }, [customer, navigate]);
 
-  useEffect(() => {
-    if (!token) return;
-    fetch(`${API_BASE}/store/account/profile`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((payload) => {
-        const profile = payload?.data;
-        if (!profile) return;
-        setForm((prev) => ({
-          ...prev,
-          firstName: prev.firstName || profile.firstName || "",
-          lastName: prev.lastName || profile.lastName || "",
-          email: prev.email || customer?.email || profile.email || "",
-          phone: prev.phone || profile.phone || "",
-        }));
-      })
-      .catch(() => undefined);
-
-    fetch(`${API_BASE}/store/account/addresses`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((payload) => {
-        const addresses = (payload?.data || []) as SavedAddress[];
-        setSavedAddresses(addresses);
-        const preferred = addresses.find((a) => a.isDefaultShipping) || addresses[0];
-        if (!preferred) return;
-        setSelectedAddressId(preferred.id);
-        setForm((prev) => ({
-          ...prev,
-          address: prev.address || preferred.line1,
-          city: prev.city || preferred.city,
-          state: prev.state || preferred.state || "",
-          zip: prev.zip || preferred.postalCode,
-          country: prev.country || preferred.country,
-          phone: prev.phone || preferred.phone || "",
-        }));
-      })
-      .catch(() => undefined);
-  }, [token, customer?.email]);
-
 
   useEffect(() => {
     if (!processingPayment) return;
@@ -159,21 +121,6 @@ export default function Checkout() {
 
     return () => window.clearInterval(timer);
   }, [processingPayment, searchParams, token, clearCart]);
-
-  const applySavedAddress = (addressId: string) => {
-    setSelectedAddressId(addressId);
-    const selected = savedAddresses.find((address) => address.id === addressId);
-    if (!selected) return;
-    setForm((prev) => ({
-      ...prev,
-      address: selected.line1,
-      city: selected.city,
-      state: selected.state || "",
-      zip: selected.postalCode,
-      country: selected.country,
-      phone: prev.phone || selected.phone || "",
-    }));
-  };
 
   const handlePlaceOrder = async (e: FormEvent) => {
     e.preventDefault();

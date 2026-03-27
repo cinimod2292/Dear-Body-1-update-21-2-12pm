@@ -923,6 +923,15 @@ export async function listProducts(rawQuery: unknown) {
   return toPaginatedResponse(items, total, query);
 }
 
+export async function listStorefrontProducts(rawQuery: unknown) {
+  const query = productFilterSchema.parse(rawQuery);
+  return listProducts({
+    ...query,
+    status: "ACTIVE",
+    visibility: "PUBLIC",
+  });
+}
+
 export async function getProductById(productId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -933,6 +942,24 @@ export async function getProductById(productId: string) {
       tags: { include: { tag: true } },
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
       variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
+    },
+  });
+
+  if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
+  return product;
+}
+
+export async function getStorefrontProductById(productId: string) {
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      status: "ACTIVE",
+      visibility: "PUBLIC",
+    },
+    include: {
+      category: true,
+      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      variants: { include: { inventoryLevel: true } },
     },
   });
 

@@ -471,6 +471,7 @@ model Customer {
   inquiries            SupportInquiry[]
   carts                Cart[]
   ordersV2             Order[]
+  addresses            Address[]
 
   @@index([status])
   @@index([lastOrderAt])
@@ -559,22 +560,32 @@ model SupportInquiry {
 
 
 model Address {
-  id             String   @id @default(cuid())
-  firstName      String?
-  lastName       String?
-  company        String?
-  phone          String?
-  line1          String
-  line2          String?
-  city           String
-  state          String?
-  postalCode     String
-  country        String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  cartsShipping  Cart[]   @relation("CartShippingAddress")
-  ordersShipping Order[]  @relation("OrderShippingAddress")
-  ordersBilling  Order[]  @relation("OrderBillingAddress")
+  id                String    @id @default(cuid())
+  customerId        String?
+  recipientName     String?
+  label             String?
+  firstName         String?
+  lastName          String?
+  company           String?
+  phone             String?
+  line1             String
+  line2             String?
+  city              String
+  state             String?
+  postalCode        String
+  country           String
+  deliveryNotes     String?
+  isDefaultShipping Boolean   @default(false)
+  isDefaultBilling  Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  cartsShipping     Cart[]    @relation("CartShippingAddress")
+  ordersShipping    Order[]   @relation("OrderShippingAddress")
+  ordersBilling     Order[]   @relation("OrderBillingAddress")
+
+  @@index([customerId, isDefaultShipping])
+  @@index([customerId, isDefaultBilling])
 }
 
 model ShippingMethod {

@@ -8,6 +8,19 @@ import { useCustomerAuth } from "../context/CustomerAuthContext";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
+type SavedAddress = {
+  id: string;
+  recipientName?: string | null;
+  phone?: string | null;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+  isDefaultShipping: boolean;
+};
+
 export default function Checkout() {
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
@@ -30,6 +43,8 @@ export default function Checkout() {
     address: "", city: "", state: "", zip: "", country: "United States",
     sameAsShipping: true,
   });
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
 
   const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
 
@@ -349,6 +364,22 @@ export default function Checkout() {
             {step === "contact" && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h2 className="font-black text-gray-900 text-xl mb-6">Contact Information</h2>
+                {savedAddresses.length > 0 ? (
+                  <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                    <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
+                    <select
+                      value={selectedAddressId}
+                      onChange={(e) => applySavedAddress(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      {savedAddresses.map((address) => (
+                        <option value={address.id} key={address.id}>
+                          {(address.recipientName || "Address")} — {address.line1}, {address.city}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },

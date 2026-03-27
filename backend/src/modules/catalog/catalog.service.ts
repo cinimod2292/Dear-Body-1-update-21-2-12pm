@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import {
@@ -5,6 +6,7 @@ import {
   createProductSchema,
   createVariantSchema,
   importCommitPayloadSchema,
+  importProductImageRowSchema,
   importProductRowSchema,
   productFilterSchema,
   updateProductSchema,
@@ -85,6 +87,15 @@ type ParsedImportRow = {
   sku: string;
   productName: string;
   operation: ImportOperation;
+  errors: string[];
+};
+
+type ParsedImageImportRow = {
+  rowNumber: number;
+  raw: Record<string, string>;
+  normalized: Record<string, unknown>;
+  sku: string;
+  imageUrl: string;
   errors: string[];
 };
 
@@ -321,6 +332,111 @@ async function normalizeRow(rawRow: Record<string, string>) {
   }
 
   return { data: parsed.data as Record<string, unknown>, errors: [] as string[] };
+}
+
+async function normalizeImageImportRow(rawRow: Record<string, string>) {
+  const lowered: Record<string, string> = {};
+  Object.entries(rawRow).forEach(([key, value]) => {
+    lowered[key.trim().toLowerCase()] = typeof value === "string" ? value.trim() : "";
+  });
+
+  const parsed = importProductImageRowSchema.safeParse(lowered);
+  if (!parsed.success) {
+    return { data: lowered as Record<string, unknown>, errors: parsed.error.issues.map((issue) => issue.message) };
+  }
+
+  return { data: parsed.data as Record<string, unknown>, errors: [] as string[] };
+}
+
+function validateImageImportRow(row: Record<string, unknown>, rowNumber: number, duplicateRows: Set<number>) {
+  const errors: string[] = [];
+  const sku = toOptionalString(row.sku) ?? "";
+  const imageUrl = toOptionalString(row.image_url) ?? "";
+  const parsedPosition = toOptionalString(row.position);
+
+  if (!sku) errors.push("SKU is required");
+  if (!imageUrl) errors.push("image_url is required");
+  if (imageUrl) {
+    try {
+      const url = new URL(imageUrl);
+      if (!["http:", "https:"].includes(url.protocol)) errors.push("image_url must use http or https");
+    } catch {
+      errors.push("image_url must be a valid URL");
+    }
+  }
+
+  if (parsedPosition !== undefined) {
+    const position = Number(parsedPosition);
+    if (!Number.isInteger(position) || position < 0) {
+      errors.push("position must be a non-negative integer");
+    }
+  }
+
+  if (duplicateRows.has(rowNumber)) {
+    errors.push("Duplicate sku + image_url row in file");
+  }
+
+  return { sku, imageUrl, errors };
+}
+
+async function buildImageImportPreview(rawRows: Array<Record<string, string>>) {
+  const keyCount = new Map<string, number>();
+  rawRows.forEach((rawRow) => {
+    const sku = (rawRow.sku ?? "").trim().toLowerCase();
+    const imageUrl = (rawRow.image_url ?? "").trim().toLowerCase();
+    if (!sku || !imageUrl) return;
+    const key = `${sku}||${imageUrl}`;
+    keyCount.set(key, (keyCount.get(key) ?? 0) + 1);
+  });
+
+  const duplicateRows = new Set<number>();
+  rawRows.forEach((rawRow, idx) => {
+    const sku = (rawRow.sku ?? "").trim().toLowerCase();
+    const imageUrl = (rawRow.image_url ?? "").trim().toLowerCase();
+    if (!sku || !imageUrl) return;
+    const key = `${sku}||${imageUrl}`;
+    if ((keyCount.get(key) ?? 0) > 1) duplicateRows.add(idx + 2);
+  });
+
+  const rows: ParsedImageImportRow[] = [];
+  for (let index = 0; index < rawRows.length; index += 1) {
+    const rowNumber = index + 2;
+    const raw = rawRows[index];
+    const normalizedResult = await normalizeImageImportRow(raw);
+    const validation = validateImageImportRow(normalizedResult.data, rowNumber, duplicateRows);
+    const errors = [...normalizedResult.errors, ...validation.errors];
+
+    if (!errors.length && validation.sku) {
+      const variant = await prisma.productVariant.findUnique({ where: { sku: validation.sku }, select: { id: true } });
+      if (!variant) errors.push(`SKU "${validation.sku}" not found`);
+    }
+
+    rows.push({
+      rowNumber,
+      raw,
+      normalized: normalizedResult.data,
+      sku: validation.sku,
+      imageUrl: validation.imageUrl,
+      errors,
+    });
+  }
+
+  return {
+    rows: rows.map((row) => ({
+      rowNumber: row.rowNumber,
+      sku: row.sku,
+      image_url: row.imageUrl,
+      operation: row.errors.length ? "error" : "attach",
+      errors: row.errors,
+      rowData: row.raw,
+    })),
+    summary: {
+      total: rows.length,
+      attachable: rows.filter((row) => row.errors.length === 0).length,
+      errors: rows.filter((row) => row.errors.length > 0).length,
+    },
+    internalRows: rows,
+  };
 }
 
 function validateRow(row: Record<string, unknown>, rowNumber: number, duplicateSkuRows: Set<number>) {
@@ -649,6 +765,122 @@ export async function commitProductImport(input: { csvContent?: string; rows?: A
     summary: {
       created,
       updated,
+      failed,
+    },
+    results,
+  };
+}
+
+export async function previewProductImageImportCsv(csvContent: string) {
+  const rawRows = parseCsv(csvContent);
+  const preview = await buildImageImportPreview(rawRows);
+  return {
+    rows: preview.rows,
+    summary: preview.summary,
+  };
+}
+
+export async function commitProductImageImport(csvContent: string, actorUserId?: string) {
+  const rawRows = parseCsv(csvContent);
+  const preview = await buildImageImportPreview(rawRows);
+  const results: Array<{ rowNumber: number; status: "attached" | "failed"; error?: string; rowData?: Record<string, string> }> = [];
+  let attached = 0;
+  let failed = 0;
+
+  for (const row of preview.internalRows) {
+    if (row.errors.length) {
+      failed += 1;
+      results.push({ rowNumber: row.rowNumber, status: "failed", error: row.errors.join("; "), rowData: row.raw });
+      continue;
+    }
+
+    try {
+      const sku = String(row.normalized.sku);
+      const imageUrl = String(row.normalized.image_url);
+      const altText = toOptionalString(row.normalized.alt_text);
+      const explicitPositionRaw = toOptionalString(row.normalized.position);
+      const explicitPosition = explicitPositionRaw !== undefined ? Number(explicitPositionRaw) : undefined;
+
+      const variant = await prisma.productVariant.findUnique({
+        where: { sku },
+        include: { product: { select: { id: true } } },
+      });
+      if (!variant) throw new Error(`SKU "${sku}" not found`);
+
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error(`Failed to fetch image URL (${response.status})`);
+      const mimeType = response.headers.get("content-type") ?? "application/octet-stream";
+      if (!mimeType.toLowerCase().startsWith("image/")) {
+        throw new Error("URL does not point to an image MIME type");
+      }
+
+      const contentLength = Number(response.headers.get("content-length") ?? 0);
+      const filenameFromUrl = (() => {
+        try {
+          const pathname = new URL(imageUrl).pathname;
+          const filename = pathname.split("/").pop();
+          return filename && filename.length ? filename : `image-${randomUUID()}`;
+        } catch {
+          return `image-${randomUUID()}`;
+        }
+      })();
+
+      const mediaAsset = await prisma.mediaAsset.findFirst({ where: { publicUrl: imageUrl } })
+        ?? await prisma.mediaAsset.create({
+          data: {
+            filename: filenameFromUrl,
+            mimeType,
+            kind: "IMAGE",
+            byteSize: Number.isFinite(contentLength) ? contentLength : 0,
+            storageKey: `remote-import/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${filenameFromUrl}`,
+            publicUrl: imageUrl,
+            altText,
+            uploadedById: actorUserId,
+            metadata: { source: "bulk-image-import", url: imageUrl } as any,
+          },
+        });
+
+      const appendPosition = await prisma.productGalleryImage.aggregate({
+        where: { productId: variant.product.id },
+        _max: { position: true },
+      });
+      const finalPosition = explicitPosition ?? ((appendPosition._max.position ?? -1) + 1);
+
+      await prisma.productGalleryImage.upsert({
+        where: {
+          productId_mediaAssetId: {
+            productId: variant.product.id,
+            mediaAssetId: mediaAsset.id,
+          },
+        },
+        create: {
+          productId: variant.product.id,
+          mediaAssetId: mediaAsset.id,
+          position: finalPosition,
+          altText,
+        },
+        update: {
+          position: finalPosition,
+          altText: altText ?? undefined,
+        },
+      });
+
+      attached += 1;
+      results.push({ rowNumber: row.rowNumber, status: "attached" });
+    } catch (error) {
+      failed += 1;
+      results.push({
+        rowNumber: row.rowNumber,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Failed to attach image",
+        rowData: row.raw,
+      });
+    }
+  }
+
+  return {
+    summary: {
+      attached,
       failed,
     },
     results,

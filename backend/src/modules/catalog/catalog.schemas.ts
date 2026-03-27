@@ -87,3 +87,10 @@ export const importProductRowSchema = z.object({
 export const importCommitPayloadSchema = z.object({
   rows: z.array(importProductRowSchema).min(1),
 });
+
+export const importProductImageRowSchema = z.object({
+  sku: z.string().trim(),
+  image_url: z.string().trim(),
+  position: z.string().trim().optional(),
+  alt_text: z.string().trim().optional(),
+}).passthrough();

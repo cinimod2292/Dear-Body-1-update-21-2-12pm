@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   bulkProductAction,
+  commitProductImageImport,
   commitProductImport,
   createProduct,
   createVariant,
@@ -8,6 +9,7 @@ import {
   getProductImportTemplateCsv,
   listProducts,
   previewProductImportCsv,
+  previewProductImageImportCsv,
   updateProduct,
   updateVariant,
 } from "./catalog.service.js";
@@ -65,6 +67,25 @@ export async function catalogRoutes(app: FastifyInstance) {
 
     const body = request.body as { rows?: Array<Record<string, unknown>> };
     const result = await commitProductImport({ rows: body?.rows });
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/images/import/preview", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const csvContent = await readCsvFromRequest(request);
+    if (!csvContent) {
+      return reply.status(400).send({ error: { message: "CSV file is required" } });
+    }
+
+    const result = await previewProductImageImportCsv(csvContent);
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/images/import/commit", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const csvContent = await readCsvFromRequest(request);
+    if (!csvContent) {
+      return reply.status(400).send({ error: { message: "CSV file is required" } });
+    }
+    const result = await commitProductImageImport(csvContent, request.user.sub);
     return reply.send({ data: result });
   });
 

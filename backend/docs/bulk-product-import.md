@@ -39,6 +39,7 @@ The **Bulk Upload** feature lets admins create or update products in one CSV imp
 - `cost_price`
 - `barcode`
 - `brand_name`
+- `parent_category_name`
 - `category_name`
 - `quantity_on_hand`
 - `description`
@@ -66,12 +67,15 @@ The **Bulk Upload** feature lets admins create or update products in one CSV imp
 - New SKU = create product + variant.
 
 ### Slug
-- If `product_slug` is empty, slug is generated from `product_name`.
+- Slug is generated from `product_name` during import.
 - Duplicate slugs are handled automatically (for example: `slug`, `slug-2`, `slug-3`).
 
 ### Category and Brand
 - Matching is by name (case-insensitive, trimmed).
 - If not found, category/brand is auto-created.
+- If `parent_category_name` is provided, `category_name` is resolved under that parent.
+- If `parent_category_name` is blank, `category_name` is treated as a top-level category.
+- If a child category name exists under a different parent, that row fails with an error to prevent incorrect assignment.
 
 ### Inventory
 - `quantity_on_hand` overwrites current quantity for that SKU.

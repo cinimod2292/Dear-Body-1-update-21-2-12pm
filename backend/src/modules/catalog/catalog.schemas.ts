@@ -75,6 +75,7 @@ export const importProductRowSchema = z.object({
   visibility: z.enum(["PUBLIC", "HIDDEN", "PRIVATE"]).optional(),
   featured: z.union([z.string(), z.boolean()]).optional(),
   brand_name: optionalText,
+  parent_category_name: optionalText,
   category_name: optionalText,
   quantity_on_hand: optionalText,
   low_stock_threshold: optionalText,

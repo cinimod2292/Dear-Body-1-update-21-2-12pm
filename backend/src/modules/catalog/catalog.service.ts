@@ -17,6 +17,7 @@ const IMPORT_TEMPLATE_HEADERS = [
   "product_name",
   "price",
   "brand_name",
+  "parent_category_name",
   "category_name",
   "quantity_on_hand",
   "description",
@@ -43,6 +44,7 @@ const DEFAULT_TEMPLATE_ROW = {
   product_name: "Vitamin C Serum",
   price: "29.99",
   brand_name: "Dear Body",
+  parent_category_name: "Body Care",
   category_name: "Serums",
   quantity_on_hand: "100",
   description: "Brightening daily serum for all skin types.",
@@ -201,18 +203,100 @@ async function findOrCreateBrand(brandName: string | undefined, tx: any) {
   return created.id;
 }
 
-async function findOrCreateCategory(categoryName: string | undefined, tx: any) {
-  if (!categoryName) return undefined;
-  const normalized = normalizeName(categoryName);
-  if (!normalized) return undefined;
+function normalizeCategoryName(value: string | undefined) {
+  if (!value) return undefined;
+  const normalized = normalizeName(value);
+  return normalized || undefined;
+}
 
-  const existing = await tx.category.findMany({ select: { id: true, name: true }, take: 2000 });
-  const matched = existing.find((category: { id: string; name: string }) => normalizeName(category.name) === normalized);
-  if (matched) return matched.id;
+async function resolveCategoryIdForImport(
+  tx: any,
+  categoryName: string | undefined,
+  parentCategoryName: string | undefined,
+  options: { createIfMissing: boolean },
+) {
+  const normalizedCategoryName = normalizeCategoryName(categoryName);
+  if (!normalizedCategoryName) return { categoryId: undefined as string | undefined, errors: [] as string[] };
 
-  const slug = await generateUniqueSlug(categoryName, "category", tx);
-  const created = await tx.category.create({ data: { name: categoryName.trim(), slug, isActive: true } });
-  return created.id;
+  const normalizedParentName = normalizeCategoryName(parentCategoryName);
+  const errors: string[] = [];
+  let parentCategory: { id: string; name: string } | null = null;
+
+  if (normalizedParentName) {
+    const parentMatches = await tx.category.findMany({
+      where: { name: { equals: normalizedParentName, mode: "insensitive" } },
+      select: { id: true, name: true },
+    });
+
+    if (parentMatches.length > 1) {
+      errors.push(`Parent category "${parentCategoryName}" is ambiguous`);
+      return { categoryId: undefined as string | undefined, errors };
+    }
+
+    if (parentMatches.length === 1) {
+      parentCategory = parentMatches[0];
+    } else if (options.createIfMissing) {
+      const slug = await generateUniqueSlug(parentCategoryName ?? normalizedParentName, "category", tx);
+      parentCategory = await tx.category.create({
+        data: { name: parentCategoryName?.trim() || normalizedParentName, slug, isActive: true },
+        select: { id: true, name: true },
+      });
+    } else {
+      return { categoryId: undefined as string | undefined, errors };
+    }
+  }
+
+  const scopedMatches = await tx.category.findMany({
+    where: {
+      name: { equals: normalizedCategoryName, mode: "insensitive" },
+      parentId: parentCategory ? parentCategory.id : null,
+    },
+    select: { id: true, parentId: true, name: true },
+  });
+
+  if (scopedMatches.length > 1) {
+    errors.push(`Category "${categoryName}" is ambiguous`);
+    return { categoryId: undefined as string | undefined, errors };
+  }
+
+  if (scopedMatches.length === 1) {
+    return { categoryId: scopedMatches[0].id, errors };
+  }
+
+  const conflicts = await tx.category.findMany({
+    where: {
+      name: { equals: normalizedCategoryName, mode: "insensitive" },
+      ...(parentCategory ? { parentId: { not: parentCategory.id } } : { parentId: { not: null } }),
+    },
+    select: { id: true },
+    take: 1,
+  });
+
+  if (conflicts.length > 0) {
+    errors.push(
+      parentCategory
+        ? `Category "${categoryName}" exists under a different parent category`
+        : `Category "${categoryName}" exists under a parent category; specify parent_category_name`,
+    );
+    return { categoryId: undefined as string | undefined, errors };
+  }
+
+  if (!options.createIfMissing) {
+    return { categoryId: undefined as string | undefined, errors };
+  }
+
+  const slug = await generateUniqueSlug(categoryName ?? normalizedCategoryName, "category", tx);
+  const created = await tx.category.create({
+    data: {
+      name: categoryName?.trim() || normalizedCategoryName,
+      slug,
+      parentId: parentCategory?.id,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  return { categoryId: created.id, errors };
 }
 
 async function normalizeRow(rawRow: Record<string, string>) {
@@ -295,6 +379,15 @@ async function buildImportPreview(rawRows: Array<Record<string, string>>) {
     const normalizedResult = await normalizeRow(raw);
     const validation = validateRow(normalizedResult.data, rowNumber, duplicateSkuRows);
     const errors = [...normalizedResult.errors, ...validation.errors];
+    if (!errors.length) {
+      const categoryResolution = await resolveCategoryIdForImport(
+        prisma,
+        toOptionalString(normalizedResult.data.category_name),
+        toOptionalString(normalizedResult.data.parent_category_name),
+        { createIfMissing: false },
+      );
+      errors.push(...categoryResolution.errors);
+    }
 
     let operation: ImportOperation = "error";
     if (!errors.length && validation.sku) {
@@ -340,7 +433,16 @@ async function upsertProductBySku(row: ParsedImportRow) {
 
   return prisma.$transaction(async (tx) => {
     const brandId = await findOrCreateBrand(toOptionalString(payload.brand_name), tx);
-    const categoryId = await findOrCreateCategory(toOptionalString(payload.category_name), tx);
+    const categoryResolution = await resolveCategoryIdForImport(
+      tx,
+      toOptionalString(payload.category_name),
+      toOptionalString(payload.parent_category_name),
+      { createIfMissing: true },
+    );
+    if (categoryResolution.errors.length) {
+      throw new AppError(400, categoryResolution.errors.join("; "), "VALIDATION_ERROR");
+    }
+    const categoryId = categoryResolution.categoryId;
 
     const existingVariant = await tx.productVariant.findUnique({ where: { sku }, include: { product: true, inventoryLevel: true } });
     const finalSlug = existingVariant

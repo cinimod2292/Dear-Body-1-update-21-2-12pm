@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { Dispatch, FormEvent, SetStateAction, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
@@ -18,7 +18,31 @@ type Address = {
   isDefaultBilling: boolean;
 };
 
-const emptyAddress = {
+type Order = {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  status: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  trackingNumber?: string | null;
+};
+
+type AddressFormState = {
+  recipientName: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  deliveryNotes: string;
+  isDefaultShipping: boolean;
+  isDefaultBilling: boolean;
+};
+
+const emptyAddress: AddressFormState = {
   recipientName: "",
   phone: "",
   line1: "",
@@ -41,14 +65,137 @@ const parseApiError = async (response: Response, fallback: string) => {
   }
 };
 
+function ProfileSection({
+  profileForm,
+  setProfileForm,
+  profileError,
+  profileSaving,
+  onSave,
+}: {
+  profileForm: { firstName: string; lastName: string; phone: string };
+  setProfileForm: Dispatch<SetStateAction<{ firstName: string; lastName: string; phone: string }>>;
+  profileError: string | null;
+  profileSaving: boolean;
+  onSave: (e: FormEvent) => Promise<void>;
+}) {
+  return (
+    <section className="bg-white rounded-2xl border p-5" data-testid="account-profile-section">
+      <h2 className="font-bold mb-4">Profile / Personal Details</h2>
+      <form onSubmit={(e) => void onSave(e)} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input className="border rounded-lg px-3 py-2" placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2" placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+        {profileError ? <p className="sm:col-span-3 text-sm text-red-600">{profileError}</p> : null}
+        <div className="sm:col-span-3">
+          <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{profileSaving ? "Saving..." : "Save profile"}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function AddressSection({
+  addressForm,
+  setAddressForm,
+  addressError,
+  editingAddressId,
+  addresses,
+  onSave,
+  onEdit,
+  onDelete,
+  onSetDefault,
+  onCancelEdit,
+}: {
+  addressForm: AddressFormState;
+  setAddressForm: Dispatch<SetStateAction<AddressFormState>>;
+  addressError: string | null;
+  editingAddressId: string | null;
+  addresses: Address[];
+  onSave: (e: FormEvent) => Promise<void>;
+  onEdit: (address: Address) => void;
+  onDelete: (addressId: string) => Promise<void>;
+  onSetDefault: (addressId: string, type: "shipping" | "billing") => Promise<void>;
+  onCancelEdit: () => void;
+}) {
+  return (
+    <section className="bg-white rounded-2xl border p-5" data-testid="account-address-section">
+      <h2 className="font-bold mb-4">Addresses</h2>
+      <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" onSubmit={(e) => void onSave(e)}>
+        {addressError ? <p className="sm:col-span-2 text-sm text-red-600">{addressError}</p> : null}
+        <input className="border rounded-lg px-3 py-2" placeholder="Recipient name" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 1" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
+        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 2" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2" placeholder="City / Suburb" value={addressForm.city} onChange={(e) => setAddressForm((p) => ({ ...p, city: e.target.value }))} required />
+        <input className="border rounded-lg px-3 py-2" placeholder="Province / State" value={addressForm.state} onChange={(e) => setAddressForm((p) => ({ ...p, state: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2" placeholder="Postal code" value={addressForm.postalCode} onChange={(e) => setAddressForm((p) => ({ ...p, postalCode: e.target.value }))} required />
+        <input className="border rounded-lg px-3 py-2" placeholder="Country" value={addressForm.country} onChange={(e) => setAddressForm((p) => ({ ...p, country: e.target.value }))} required />
+        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Delivery notes (optional)" value={addressForm.deliveryNotes} onChange={(e) => setAddressForm((p) => ({ ...p, deliveryNotes: e.target.value }))} />
+        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultShipping} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultShipping: e.target.checked }))} />Default shipping</label>
+        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultBilling} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultBilling: e.target.checked }))} />Default billing</label>
+        <div className="sm:col-span-2 flex gap-2">
+          <button className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{editingAddressId ? "Update address" : "Add address"}</button>
+          {editingAddressId ? <button type="button" onClick={onCancelEdit} className="px-4 py-2 rounded-lg border text-sm">Cancel</button> : null}
+        </div>
+      </form>
+
+      <div className="space-y-3">
+        {addresses.map((address) => (
+          <div key={address.id} className="border rounded-xl p-3 text-sm">
+            <p className="font-semibold">{address.recipientName || "Recipient"}</p>
+            <p>{address.line1}{address.line2 ? `, ${address.line2}` : ""}, {address.city}{address.state ? `, ${address.state}` : ""}, {address.postalCode}, {address.country}</p>
+            {address.phone ? <p>Phone: {address.phone}</p> : null}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {address.isDefaultShipping ? <span className="text-xs px-2 py-1 rounded-full bg-blue-100">Default shipping</span> : <button onClick={() => void onSetDefault(address.id, "shipping")} className="text-xs px-2 py-1 rounded-full border">Set shipping default</button>}
+              {address.isDefaultBilling ? <span className="text-xs px-2 py-1 rounded-full bg-purple-100">Default billing</span> : <button onClick={() => void onSetDefault(address.id, "billing")} className="text-xs px-2 py-1 rounded-full border">Set billing default</button>}
+              <button onClick={() => onEdit(address)} className="text-xs px-2 py-1 rounded-full border">Edit</button>
+              <button onClick={() => void onDelete(address.id)} className="text-xs px-2 py-1 rounded-full border text-red-600">Delete</button>
+            </div>
+          </div>
+        ))}
+        {addresses.length === 0 ? <p className="text-sm text-gray-500">No saved addresses yet.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function OrdersSection({
+  orders,
+  retryingId,
+  onRetryPayment,
+}: {
+  orders: Order[];
+  retryingId: string | null;
+  onRetryPayment: (orderId: string) => Promise<void>;
+}) {
+  return (
+    <section className="bg-white rounded-2xl border p-5" data-testid="account-orders-section">
+      <h2 className="font-bold mb-4">Orders</h2>
+      <div className="space-y-3">
+        {orders.map((o) => (
+          <div key={o.id} className="block border rounded-xl p-3">
+            <Link to={`/account/orders/${o.id}`} className="block hover:bg-gray-50">
+              <div className="flex justify-between"><p className="font-semibold">#{o.orderNumber}</p><p className="text-sm">{new Date(o.createdAt).toLocaleDateString()}</p></div>
+              <p className="text-sm">Order: {o.status} · Payment: {o.paymentStatus} · Fulfillment: {o.fulfillmentStatus}</p>
+              <p className="text-sm">Tracking: {o.trackingNumber || "—"}</p>
+            </Link>
+            {["AWAITING_PAYMENT", "PAYMENT_FAILED"].includes(o.status) ? <button disabled={retryingId === o.id} onClick={() => void onRetryPayment(o.id)} className="mt-2 px-3 py-1.5 rounded-lg text-xs bg-pink-600 text-white">{retryingId === o.id ? "Retrying..." : "Retry payment"}</button> : null}
+          </div>
+        ))}
+        {orders.length === 0 ? <p className="text-sm text-gray-500">No orders yet.</p> : null}
+      </div>
+    </section>
+  );
+}
+
 export default function CustomerDashboard() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { customer, token, logout } = useCustomerAuth();
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", phone: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
-  const [addressForm, setAddressForm] = useState(emptyAddress);
+  const [addressForm, setAddressForm] = useState<AddressFormState>(emptyAddress);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [addressError, setAddressError] = useState<string | null>(null);
@@ -188,74 +335,35 @@ export default function CustomerDashboard() {
         <button onClick={logout} className="px-3 py-2 border rounded-lg text-sm">Logout</button>
       </div>
 
-      <section className="bg-white rounded-2xl border p-5">
-        <h2 className="font-bold mb-4">Profile / Personal Details</h2>
-        <form onSubmit={saveProfile} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <input className="border rounded-lg px-3 py-2" placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
-          {profileError ? <p className="sm:col-span-3 text-sm text-red-600">{profileError}</p> : null}
-          <div className="sm:col-span-3">
-            <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{profileSaving ? "Saving..." : "Save profile"}</button>
-          </div>
-        </form>
-      </section>
+      <ProfileSection
+        profileForm={profileForm}
+        setProfileForm={setProfileForm}
+        profileError={profileError}
+        profileSaving={profileSaving}
+        onSave={saveProfile}
+      />
 
-      <section className="bg-white rounded-2xl border p-5">
-        <h2 className="font-bold mb-4">Addresses</h2>
-        <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" onSubmit={saveAddress}>
-          {addressError ? <p className="sm:col-span-2 text-sm text-red-600">{addressError}</p> : null}
-          <input className="border rounded-lg px-3 py-2" placeholder="Recipient name" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 1" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
-          <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 2" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2" placeholder="City / Suburb" value={addressForm.city} onChange={(e) => setAddressForm((p) => ({ ...p, city: e.target.value }))} required />
-          <input className="border rounded-lg px-3 py-2" placeholder="Province / State" value={addressForm.state} onChange={(e) => setAddressForm((p) => ({ ...p, state: e.target.value }))} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Postal code" value={addressForm.postalCode} onChange={(e) => setAddressForm((p) => ({ ...p, postalCode: e.target.value }))} required />
-          <input className="border rounded-lg px-3 py-2" placeholder="Country" value={addressForm.country} onChange={(e) => setAddressForm((p) => ({ ...p, country: e.target.value }))} required />
-          <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Delivery notes (optional)" value={addressForm.deliveryNotes} onChange={(e) => setAddressForm((p) => ({ ...p, deliveryNotes: e.target.value }))} />
-          <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultShipping} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultShipping: e.target.checked }))} />Default shipping</label>
-          <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultBilling} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultBilling: e.target.checked }))} />Default billing</label>
-          <div className="sm:col-span-2 flex gap-2">
-            <button className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{editingAddressId ? "Update address" : "Add address"}</button>
-            {editingAddressId ? <button type="button" onClick={() => { setEditingAddressId(null); setAddressForm(emptyAddress); }} className="px-4 py-2 rounded-lg border text-sm">Cancel</button> : null}
-          </div>
-        </form>
+      <AddressSection
+        addressForm={addressForm}
+        setAddressForm={setAddressForm}
+        addressError={addressError}
+        editingAddressId={editingAddressId}
+        addresses={addresses}
+        onSave={saveAddress}
+        onEdit={editAddress}
+        onDelete={deleteAddress}
+        onSetDefault={setDefault}
+        onCancelEdit={() => {
+          setEditingAddressId(null);
+          setAddressForm(emptyAddress);
+        }}
+      />
 
-        <div className="space-y-3">
-          {addresses.map((address) => (
-            <div key={address.id} className="border rounded-xl p-3 text-sm">
-              <p className="font-semibold">{address.recipientName || "Recipient"}</p>
-              <p>{address.line1}{address.line2 ? `, ${address.line2}` : ""}, {address.city}{address.state ? `, ${address.state}` : ""}, {address.postalCode}, {address.country}</p>
-              {address.phone ? <p>Phone: {address.phone}</p> : null}
-              <div className="flex flex-wrap gap-2 mt-2">
-                {address.isDefaultShipping ? <span className="text-xs px-2 py-1 rounded-full bg-blue-100">Default shipping</span> : <button onClick={() => setDefault(address.id, "shipping")} className="text-xs px-2 py-1 rounded-full border">Set shipping default</button>}
-                {address.isDefaultBilling ? <span className="text-xs px-2 py-1 rounded-full bg-purple-100">Default billing</span> : <button onClick={() => setDefault(address.id, "billing")} className="text-xs px-2 py-1 rounded-full border">Set billing default</button>}
-                <button onClick={() => editAddress(address)} className="text-xs px-2 py-1 rounded-full border">Edit</button>
-                <button onClick={() => deleteAddress(address.id)} className="text-xs px-2 py-1 rounded-full border text-red-600">Delete</button>
-              </div>
-            </div>
-          ))}
-          {addresses.length === 0 ? <p className="text-sm text-gray-500">No saved addresses yet.</p> : null}
-        </div>
-      </section>
-
-      <section className="bg-white rounded-2xl border p-5">
-        <h2 className="font-bold mb-4">Orders</h2>
-        <div className="space-y-3">
-          {orders.map((o) => (
-            <div key={o.id} className="block border rounded-xl p-3">
-              <Link to={`/account/orders/${o.id}`} className="block hover:bg-gray-50">
-                <div className="flex justify-between"><p className="font-semibold">#{o.orderNumber}</p><p className="text-sm">{new Date(o.createdAt).toLocaleDateString()}</p></div>
-                <p className="text-sm">Order: {o.status} · Payment: {o.paymentStatus} · Fulfillment: {o.fulfillmentStatus}</p>
-                <p className="text-sm">Tracking: {o.trackingNumber || "—"}</p>
-              </Link>
-              {["AWAITING_PAYMENT", "PAYMENT_FAILED"].includes(o.status) ? <button disabled={retryingId === o.id} onClick={() => retryPayment(o.id)} className="mt-2 px-3 py-1.5 rounded-lg text-xs bg-pink-600 text-white">{retryingId === o.id ? "Retrying..." : "Retry payment"}</button> : null}
-            </div>
-          ))}
-          {orders.length === 0 ? <p className="text-sm text-gray-500">No orders yet.</p> : null}
-        </div>
-      </section>
+      <OrdersSection
+        orders={orders}
+        retryingId={retryingId}
+        onRetryPayment={retryPayment}
+      />
     </div>
   );
 }

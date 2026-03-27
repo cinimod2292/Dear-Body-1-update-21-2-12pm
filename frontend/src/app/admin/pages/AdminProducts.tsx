@@ -133,10 +133,11 @@ function BulkUploadModal({
     if (!open) reset();
   }, [open]);
 
-  const downloadTemplate = async () => {
+  const downloadTemplate = async (simple = false) => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/products/import/template.csv`, {
+      const query = simple ? "?simple=1" : "";
+      const res = await fetch(`${API_BASE}/admin/products/import/template.csv${query}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) throw new Error(`Download failed (${res.status})`);
@@ -144,7 +145,7 @@ function BulkUploadModal({
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
-      a.download = "product-import-template.csv";
+      a.download = simple ? "product-import-template-simple.csv" : "product-import-template.csv";
       a.click();
       URL.revokeObjectURL(href);
     } catch (err) {
@@ -244,7 +245,14 @@ function BulkUploadModal({
 
         <div className="p-5 space-y-4 overflow-auto">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={downloadTemplate} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Download Template</button>
+            <div>
+              <button onClick={() => downloadTemplate(false)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Download Full Template</button>
+              <p className="mt-1 text-xs text-gray-500">Includes optional advanced fields</p>
+            </div>
+            <div>
+              <button onClick={() => downloadTemplate(true)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Download Simple Template</button>
+              <p className="mt-1 text-xs text-gray-500">Recommended for most uploads</p>
+            </div>
             <input type="file" accept=".csv,text/csv" onChange={onFileChange} className="text-sm" />
             <button
               onClick={previewUpload}

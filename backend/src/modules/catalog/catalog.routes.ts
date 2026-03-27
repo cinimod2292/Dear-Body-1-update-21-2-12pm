@@ -34,7 +34,8 @@ export async function catalogRoutes(app: FastifyInstance) {
   });
 
   app.get("/admin/products/import/template.csv", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (_request, reply) => {
-    const csv = getProductImportTemplateCsv();
+    const query = _request.query as { simple?: string };
+    const csv = getProductImportTemplateCsv({ simple: query.simple === "1" || query.simple === "true" });
     reply.header("Content-Type", "text/csv");
     reply.header("Content-Disposition", "attachment; filename=product-import-template.csv");
     return reply.send(csv);

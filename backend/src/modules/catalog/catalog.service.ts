@@ -16,38 +16,52 @@ const IMPORT_TEMPLATE_HEADERS = [
   "sku",
   "product_name",
   "price",
-  "product_slug",
-  "short_description",
-  "description",
-  "status",
-  "visibility",
-  "featured",
   "brand_name",
   "category_name",
   "quantity_on_hand",
-  "low_stock_threshold",
+  "description",
+  "short_description",
+  "status",
+  "visibility",
+  "featured",
   "sale_price",
   "cost_price",
   "barcode",
+];
+
+const SIMPLE_IMPORT_TEMPLATE_HEADERS = [
+  "sku",
+  "product_name",
+  "price",
+  "brand_name",
+  "category_name",
+  "quantity_on_hand",
 ];
 
 const DEFAULT_TEMPLATE_ROW = {
   sku: "DB-SERUM-001",
   product_name: "Vitamin C Serum",
   price: "29.99",
-  product_slug: "vitamin-c-serum",
-  short_description: "Brightening daily serum",
-  description: "Long form description",
-  status: "ACTIVE",
-  visibility: "PUBLIC",
-  featured: "false",
   brand_name: "Dear Body",
   category_name: "Serums",
   quantity_on_hand: "100",
-  low_stock_threshold: "5",
+  description: "Brightening daily serum for all skin types.",
+  short_description: "Brightening daily serum",
+  status: "ACTIVE",
+  visibility: "PUBLIC",
+  featured: "false",
   sale_price: "24.99",
   cost_price: "12.50",
   barcode: "6001234567890",
+} as const;
+
+const SIMPLE_TEMPLATE_ROW = {
+  sku: "DB-SERUM-001",
+  product_name: "Vitamin C Serum",
+  price: "29.99",
+  brand_name: "Dear Body",
+  category_name: "Serums",
+  quantity_on_hand: "100",
 } as const;
 
 type ImportOperation = "create" | "update" | "error";
@@ -445,10 +459,12 @@ async function upsertProductBySku(row: ParsedImportRow) {
   });
 }
 
-export function getProductImportTemplateCsv() {
+export function getProductImportTemplateCsv(options?: { simple?: boolean }) {
+  const headers = options?.simple ? SIMPLE_IMPORT_TEMPLATE_HEADERS : IMPORT_TEMPLATE_HEADERS;
+  const sampleRow = options?.simple ? SIMPLE_TEMPLATE_ROW : DEFAULT_TEMPLATE_ROW;
   const rows = [
-    IMPORT_TEMPLATE_HEADERS.map(csvEscape).join(","),
-    IMPORT_TEMPLATE_HEADERS.map((header) => csvEscape(DEFAULT_TEMPLATE_ROW[header as keyof typeof DEFAULT_TEMPLATE_ROW] ?? "")).join(","),
+    headers.map(csvEscape).join(","),
+    headers.map((header) => csvEscape(sampleRow[header as keyof typeof sampleRow] ?? "")).join(","),
   ];
 
   return rows.join("\n");

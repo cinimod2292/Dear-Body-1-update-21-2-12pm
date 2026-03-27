@@ -35,24 +35,26 @@ The **Bulk Upload** feature lets admins create or update products in one CSV imp
 - `price`
 
 ### Optional columns
-- `product_slug` *(auto-generated if missing)*
-- `short_description`
-- `description`
-- `status` (`DRAFT` | `ACTIVE` | `ARCHIVED`)
-- `visibility` (`PUBLIC` | `HIDDEN` | `PRIVATE`)
-- `featured` (`true`/`false`)
-- `brand_name`
-- `category_name`
-- `quantity_on_hand`
-- `low_stock_threshold`
 - `sale_price`
 - `cost_price`
 - `barcode`
+- `brand_name`
+- `category_name`
+- `quantity_on_hand`
+- `description`
+- `short_description`
+- `status` (`DRAFT` | `ACTIVE` | `ARCHIVED`)
+- `visibility` (`PUBLIC` | `HIDDEN` | `PRIVATE`)
+- `featured` (`true`/`false`)
 
 ### Format rules
 - Use **snake_case** headers exactly.
 - Unknown columns are ignored.
 - Values are trimmed automatically.
+
+### Template download options
+- **Full template**: includes required + common optional columns.
+- **Simple template**: `sku,product_name,price,brand_name,category_name,quantity_on_hand`
 
 ---
 

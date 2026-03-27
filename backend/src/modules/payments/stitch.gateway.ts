@@ -42,6 +42,15 @@ function normalizeStatus(status: unknown): "PENDING" | "PAID" | "FAILED" {
   return "PENDING";
 }
 
+function normalizeWebhookStatus(status: unknown): "PENDING" | "PAID" | "FAILED" | undefined {
+  if (typeof status !== "string") return undefined;
+  const value = status.toUpperCase();
+  if (["SUCCESS", "COMPLETED", "PAID"].includes(value)) return "PAID";
+  if (["FAILED", "ERROR", "DECLINED", "CANCELLED"].includes(value)) return "FAILED";
+  if (["PENDING", "PROCESSING", "AWAITING_PAYMENT"].includes(value)) return "PENDING";
+  return undefined;
+}
+
 export class StitchGateway implements PaymentGatewayProvider {
   readonly name = "stitch";
 
@@ -109,11 +118,21 @@ export class StitchGateway implements PaymentGatewayProvider {
       };
     }
 
+    const normalizedStatus = normalizeWebhookStatus(input.payload.status);
+    if (!normalizedStatus) {
+      return {
+        isValid: false,
+        status: "FAILED",
+        raw: input.payload,
+        reason: "Unsupported stitch webhook status",
+      };
+    }
+
     return {
       isValid: true,
       referenceId: typeof input.payload.reference === "string" ? input.payload.reference : undefined,
       externalEventId: typeof input.payload.event_id === "string" ? input.payload.event_id : undefined,
-      status: normalizeStatus(input.payload.status),
+      status: normalizedStatus,
       raw: input.payload,
     };
   }

@@ -247,11 +247,11 @@ function BulkUploadModal({
           <div className="flex flex-wrap items-center gap-2">
             <div>
               <button onClick={() => downloadTemplate(false)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Download Full Template</button>
-              <p className="mt-1 text-xs text-gray-500">Includes optional advanced fields (e.g. parent category)</p>
+              <p className="mt-1 text-xs text-gray-500">Includes pricing and barcode extras</p>
             </div>
             <div>
               <button onClick={() => downloadTemplate(true)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Download Simple Template</button>
-              <p className="mt-1 text-xs text-gray-500">Recommended for most uploads (core daily fields)</p>
+              <p className="mt-1 text-xs text-gray-500">Recommended for most uploads</p>
             </div>
             <input type="file" accept=".csv,text/csv" onChange={onFileChange} className="text-sm" />
             <button

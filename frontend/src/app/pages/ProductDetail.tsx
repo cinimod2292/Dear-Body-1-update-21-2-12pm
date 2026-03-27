@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
-import { products } from "../data/products";
+import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 
@@ -10,13 +10,42 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
 
-  const product = products.find(p => p.id === id);
-  const related = products.filter(p => p.id !== id && p.category === product?.category).slice(0, 4);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [quantity, setQuantity] = useState(1);
   const [wished, setWished] = useState(false);
   const [added, setAdded] = useState(false);
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
+
+  useEffect(() => {
+    if (!id) return;
+
+    setLoading(true);
+    Promise.all([fetchStoreProductById(id), fetchStoreProducts()])
+      .then(([foundProduct, allProducts]) => {
+        setProduct(foundProduct);
+        if (foundProduct) {
+          setRelated(allProducts.filter((item) => item.id !== foundProduct.id && item.category === foundProduct.category).slice(0, 4));
+        } else {
+          setRelated([]);
+        }
+      })
+      .catch(() => {
+        setProduct(null);
+        setRelated([]);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Loading product…</h2>
+      </div>
+    );
+  }
 
   if (!product) {
     return (

@@ -37,8 +37,10 @@ export interface AdminProduct {
 export interface MediaAsset {
   id: string;
   filename: string;
+  kind: "IMAGE" | "VIDEO" | "FILE";
   publicUrl?: string;
   mimeType: string;
   byteSize: number;
+  altText?: string | null;
   createdAt: string;
 }

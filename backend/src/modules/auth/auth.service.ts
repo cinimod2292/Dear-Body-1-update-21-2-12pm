@@ -157,7 +157,9 @@ export async function logoutAdminSession(refreshToken: string, app: any) {
 
 interface CustomerToken {
   accessToken: string;
+  refreshToken: string;
   accessTokenExpiresAt: string | null;
+  refreshTokenExpiresAt: string | null;
   customer: {
     id: string;
     email: string;
@@ -173,9 +175,16 @@ async function issueCustomerAccessToken(customer: Customer, app: any): Promise<C
     { sub: customer.id, expiresIn: env.JWT_ACCESS_TTL },
   );
 
+  const refreshToken = await app.jwt.sign(
+    { tokenType: "customer_refresh" },
+    { sub: customer.id, expiresIn: env.JWT_REFRESH_TTL, secret: env.JWT_REFRESH_SECRET },
+  );
+
   return {
     accessToken,
+    refreshToken,
     accessTokenExpiresAt: getTokenExpiryIso(app, accessToken),
+    refreshTokenExpiresAt: getTokenExpiryIso(app, refreshToken),
     customer: {
       id: customer.id,
       email: customer.email,
@@ -186,7 +195,7 @@ async function issueCustomerAccessToken(customer: Customer, app: any): Promise<C
   };
 }
 
-export async function registerCustomer(input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string; address?: { recipientName?: string; line1: string; line2?: string; city: string; state?: string; postalCode: string; country: string; phone?: string } }, app: any) {
+export async function registerCustomer(input: { email: string; password: string; firstName?: string; lastName?: string; phone?: string }, app: any) {
   const existing = await prisma.customer.findUnique({ where: { email: input.email } });
   if (existing?.passwordHash) throw new AppError(409, "Customer account already exists", "CUSTOMER_EXISTS");
 
@@ -213,27 +222,6 @@ export async function registerCustomer(input: { email: string; password: string;
         },
       });
 
-  if (input.address) {
-    const hasAddresses = await prisma.address.count({ where: { customerId: customer.id } });
-    await prisma.address.create({
-      data: {
-        customerId: customer.id,
-        recipientName: input.address.recipientName,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        phone: input.address.phone ?? input.phone,
-        line1: input.address.line1,
-        line2: input.address.line2,
-        city: input.address.city,
-        state: input.address.state,
-        postalCode: input.address.postalCode,
-        country: input.address.country,
-        isDefaultShipping: hasAddresses === 0,
-        isDefaultBilling: hasAddresses === 0,
-      },
-    });
-  }
-
   return issueCustomerAccessToken(customer, app);
 }
 
@@ -243,6 +231,27 @@ export async function loginCustomer(email: string, password: string, app: any) {
 
   const valid = await bcrypt.compare(password, customer.passwordHash);
   if (!valid) throw new AppError(401, "Invalid credentials", "INVALID_CREDENTIALS");
+
+  return issueCustomerAccessToken(customer, app);
+}
+
+export async function refreshCustomerSession(refreshToken: string, app: any) {
+  let decoded: { sub?: string; tokenType?: string } | null = null;
+
+  try {
+    decoded = await app.jwt.verify(refreshToken, { secret: env.JWT_REFRESH_SECRET });
+  } catch {
+    throw new AppError(401, "Invalid refresh token", "UNAUTHORIZED");
+  }
+
+  if (!decoded?.sub || decoded.tokenType !== "customer_refresh") {
+    throw new AppError(401, "Invalid refresh token", "UNAUTHORIZED");
+  }
+
+  const customer = await prisma.customer.findUnique({ where: { id: decoded.sub } });
+  if (!customer?.passwordHash) {
+    throw new AppError(401, "Invalid refresh token", "UNAUTHORIZED");
+  }
 
   return issueCustomerAccessToken(customer, app);
 }

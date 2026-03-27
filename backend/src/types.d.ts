@@ -15,7 +15,7 @@ declare module "fastify" {
       email: string;
       role?: StaffRole;
       permissions?: string[];
-      tokenType?: "customer" | "refresh";
+      tokenType?: "customer" | "refresh" | "customer_refresh";
       iat?: number;
       exp?: number;
     };
@@ -33,14 +33,14 @@ declare module "@fastify/jwt" {
       email: string;
       role?: StaffRole;
       permissions?: string[];
-      tokenType?: "customer" | "refresh";
+      tokenType?: "customer" | "refresh" | "customer_refresh";
     };
     user: {
       sub: string;
       email: string;
       role?: StaffRole;
       permissions?: string[];
-      tokenType?: "customer" | "refresh";
+      tokenType?: "customer" | "refresh" | "customer_refresh";
       iat?: number;
       exp?: number;
     };

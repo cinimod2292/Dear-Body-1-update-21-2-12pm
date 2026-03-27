@@ -54,3 +54,34 @@ export const newsletterImportSchema = z.object({
   emails: z.array(z.string().email()).min(1),
   source: z.string().default("import"),
 });
+
+
+export const abandonedCartReminderSchema = z.object({
+  cartId: z.string().cuid(),
+  checkoutUrl: z.string().url(),
+});
+
+export const abandonedCartConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  inactivityThresholdMinutes: z.coerce.number().int().positive().default(30),
+  reminderDelayMinutes: z.coerce.number().int().positive().default(60),
+  clearDelayMinutes: z.coerce.number().int().positive().default(120),
+  reminderEnabled: z.boolean().default(true),
+  templateKey: z.string().min(1).default("abandoned_cart_reminder"),
+  helpText: z.string().default("When a cart is auto-cleared, any reserved stock is released."),
+}).superRefine((value, ctx) => {
+  if (value.reminderDelayMinutes < value.inactivityThresholdMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reminderDelayMinutes"],
+      message: "Reminder delay must be greater than or equal to inactivity threshold.",
+    });
+  }
+  if (value.clearDelayMinutes <= value.reminderDelayMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["clearDelayMinutes"],
+      message: "Clear delay must be greater than reminder delay.",
+    });
+  }
+});

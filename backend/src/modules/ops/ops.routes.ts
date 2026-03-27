@@ -15,6 +15,10 @@ import {
   listNewsletterSubscribers,
   listShippingMethods,
   listTaxRates,
+  getAbandonedCartConfig,
+  upsertAbandonedCartConfig,
+  processAbandonedCarts,
+  sendAbandonedCartReminder,
   updateInquiry,
   upsertCoupon,
   upsertShippingMethod,
@@ -49,6 +53,11 @@ export async function opsRoutes(app: FastifyInstance) {
   app.get("/admin/ops/newsletter", { preHandler: [app.verifyAdmin, app.requirePermission("crm:read")] }, async (_request, reply) => reply.send({ data: await listNewsletterSubscribers() }));
   app.post("/admin/ops/newsletter", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => reply.status(201).send({ data: await createNewsletterSubscriber(request.body) }));
   app.post("/admin/ops/newsletter/import", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => reply.send({ data: await importNewsletterSubscribers(request.body) }));
+  app.post("/admin/ops/abandoned-carts/remind", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => reply.send({ data: await sendAbandonedCartReminder(request.body) }));
+  app.get("/admin/ops/abandoned-carts/config", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await getAbandonedCartConfig() }));
+  app.put("/admin/ops/abandoned-carts/config", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertAbandonedCartConfig(request.body) }));
+  app.post("/admin/ops/abandoned-carts/process", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (_request, reply) => reply.send({ data: await processAbandonedCarts() }));
+
   app.get("/admin/ops/newsletter/export.csv", { preHandler: [app.verifyAdmin, app.requirePermission("crm:read")] }, async (_request, reply) => {
     const csv = await exportNewsletterCsv();
     reply.header("Content-Type", "text/csv");

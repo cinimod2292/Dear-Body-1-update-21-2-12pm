@@ -61,3 +61,36 @@ export const bulkProductActionSchema = z.object({
   visibility: z.enum(["PUBLIC", "HIDDEN", "PRIVATE"]).optional(),
   featured: z.boolean().optional(),
 });
+
+const optionalText = z.string().trim().optional();
+
+export const importProductRowSchema = z.object({
+  sku: z.string().trim(),
+  product_name: z.string().trim(),
+  price: z.string().trim(),
+  product_slug: optionalText,
+  short_description: optionalText,
+  description: optionalText,
+  status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
+  visibility: z.enum(["PUBLIC", "HIDDEN", "PRIVATE"]).optional(),
+  featured: z.union([z.string(), z.boolean()]).optional(),
+  brand_name: optionalText,
+  parent_category_name: optionalText,
+  category_name: optionalText,
+  quantity_on_hand: optionalText,
+  low_stock_threshold: optionalText,
+  sale_price: optionalText,
+  cost_price: optionalText,
+  barcode: optionalText,
+}).passthrough();
+
+export const importCommitPayloadSchema = z.object({
+  rows: z.array(importProductRowSchema).min(1),
+});
+
+export const importProductImageRowSchema = z.object({
+  sku: z.string().trim(),
+  image_url: z.string().trim(),
+  position: z.string().trim().optional(),
+  alt_text: z.string().trim().optional(),
+}).passthrough();

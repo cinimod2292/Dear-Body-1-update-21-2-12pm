@@ -37,6 +37,14 @@ interface StitchStoredConfig {
   apiBaseUrl?: string;
 }
 
+function resolveStoredWebhookSecret(storedValue?: string) {
+  if (!storedValue) return undefined;
+  const decrypted = decryptSecret(storedValue);
+  if (decrypted) return decrypted;
+  if (!storedValue.includes(":")) return storedValue;
+  return undefined;
+}
+
 function getGateway(name: string) {
   const gateway = gateways[name];
   if (!gateway) throw new AppError(400, `Unsupported gateway: ${name}`, "PAYMENT_GATEWAY_UNSUPPORTED");
@@ -107,6 +115,9 @@ export async function getStitchSettings() {
 
 export async function upsertStitchSettings(rawBody: unknown) {
   const body = stitchSettingsSchema.parse(rawBody);
+  console.info("[payments] stitch settings save request", {
+    hasWebhookSecretInPayload: Boolean(body.webhookSecret),
+  });
 
   const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
   const existingValue = (existing?.value ?? {}) as unknown as StitchStoredConfig;
@@ -133,6 +144,11 @@ export async function upsertStitchSettings(rawBody: unknown) {
     update: { value: next as unknown as Prisma.InputJsonValue },
     create: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
+  console.info("[payments] stitch settings saved", {
+    webhookSecretWriteAttempted: Boolean(body.webhookSecret),
+    encryptedWebhookSecretPresent: Boolean(next.encryptedWebhookSecret),
+    settingId: saved.id,
+  });
 
   return {
     id: saved.id,
@@ -156,12 +172,17 @@ async function getStitchGatewayConfig(): Promise<GatewayConfig> {
   if (value.mode === "production" && !value.encryptedWebhookSecret) {
     throw new AppError(400, "Stitch webhook secret is required in production mode", "STITCH_WEBHOOK_SECRET_REQUIRED");
   }
+  const webhookSecret = resolveStoredWebhookSecret(value.encryptedWebhookSecret);
+  console.info("[payments] stitch runtime config loaded", {
+    encryptedWebhookSecretPresent: Boolean(value.encryptedWebhookSecret),
+    decryptedWebhookSecretPresent: Boolean(webhookSecret),
+  });
 
   return {
     mode: value.mode,
     merchantId: value.merchantId,
     apiKey: decryptSecret(value.encryptedApiKey),
-    webhookSecret: value.encryptedWebhookSecret ? decryptSecret(value.encryptedWebhookSecret) : undefined,
+    webhookSecret,
     redirectUrl: value.redirectUrl,
     callbackUrl: value.callbackUrl,
     apiBaseUrl: value.apiBaseUrl,

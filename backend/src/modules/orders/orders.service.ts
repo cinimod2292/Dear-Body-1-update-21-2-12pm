@@ -209,6 +209,10 @@ async function sendOrderCreatedEmail(orderId: string) {
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
+export async function sendOrderCreatedEmailSafe(orderId: string) {
+  await sendOrderCreatedEmail(orderId).catch(() => undefined);
+}
+
 async function sendShippingEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email || !order.trackingNumber) return;
@@ -320,7 +324,6 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
-  await sendOrderCreatedEmail(order.id).catch(() => undefined);
 
   return prisma.order.findUnique({
     where: { id: order.id },

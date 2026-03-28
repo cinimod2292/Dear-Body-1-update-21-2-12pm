@@ -278,6 +278,11 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     });
   }
   if (!body.force && latestAttempt && canReuseCheckoutUrl && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
+    console.info("[payments] reusing checkout URL", {
+      orderId: order.id,
+      transactionId: latestAttempt.id,
+      checkoutUrl: latestCheckoutUrl,
+    });
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,
@@ -297,6 +302,24 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     cancelUrl: body.cancelUrl,
     customerEmail: order.customer?.email,
   });
+  console.info("[payments] fresh checkout URL from gateway", {
+    orderId: order.id,
+    checkoutUrl: result.checkoutUrl,
+    referenceId: result.referenceId,
+  });
+
+  if (!result.checkoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.failed",
+      status: "FAILED",
+      orderId: order.id,
+      idempotencyKey,
+      payload: result.raw,
+      error: "Stitch response missing hosted checkout URL",
+    });
+    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
+  }
 
   if (!result.checkoutUrl) {
     await writePaymentEventLog({

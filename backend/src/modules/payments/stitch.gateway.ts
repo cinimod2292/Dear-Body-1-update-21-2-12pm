@@ -140,6 +140,7 @@ export class StitchGateway implements PaymentGatewayProvider {
     const hostedLink = payment && typeof payment.link === "string" ? payment.link : undefined;
     const hostedId = payment && typeof payment.id === "string" ? payment.id : undefined;
     console.info("[stitch] payment-link response", {
+      responseKeys: Object.keys(payload),
       paymentId: hostedId,
       paymentLink: hostedLink,
     });
@@ -150,6 +151,11 @@ export class StitchGateway implements PaymentGatewayProvider {
       if (!parsed.searchParams.has("redirect_url")) parsed.searchParams.set("redirect_url", redirectUrl!);
       checkoutUrl = parsed.toString();
     }
+    console.info("[stitch] payment-link mapped checkout URL", {
+      paymentId: hostedId,
+      rawPaymentLink: hostedLink,
+      checkoutUrl,
+    });
     const reference = payment && typeof payment.id === "string" ? payment.id : undefined;
     const statusRaw = payment?.status ?? payload.status;
 

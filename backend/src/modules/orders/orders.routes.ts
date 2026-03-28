@@ -15,6 +15,7 @@ import {
   listOrders,
   removeCartItem,
   resolveStorefrontItems,
+  sendOrderCreatedEmailSafe,
   updateCartItem,
   updateFulfillmentStatus,
   updateOrderStatus,
@@ -64,9 +65,12 @@ export async function ordersRoutes(app: FastifyInstance) {
         returnUrl: withOrderId(body.payment.returnUrl, order.id),
         cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
+      await sendOrderCreatedEmailSafe(order!.id);
 
       return reply.status(201).send({ data: { order, payment } });
     }
+
+    await sendOrderCreatedEmailSafe(order!.id);
 
     return reply.status(201).send({ data: { order } });
   });

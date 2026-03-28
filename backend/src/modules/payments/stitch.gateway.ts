@@ -1,4 +1,5 @@
 import { hashBodySignature, safeEqualHex } from "../../lib/secrets.js";
+import crypto from "node:crypto";
 import {
   GatewayConfig,
   InitiatePaymentInput,
@@ -110,6 +111,42 @@ function normalizeWebhookStatus(status: unknown): "PENDING" | "PAID" | "FAILED" 
   return undefined;
 }
 
+function parseSvixV1Signatures(header: string) {
+  const parts = header.split(/\s+/).flatMap((segment) => segment.split(";")).map((segment) => segment.trim()).filter(Boolean);
+  const values: string[] = [];
+  for (const part of parts) {
+    if (part.startsWith("v1,")) {
+      values.push(part.slice(3));
+      continue;
+    }
+    if (part.startsWith("v1=")) {
+      values.push(part.slice(3));
+      continue;
+    }
+    const [key, value] = part.split(",", 2);
+    if (key === "v1" && value) values.push(value);
+  }
+  return values;
+}
+
+function verifySvixSignature(secret: string, messageId: string, timestamp: string, signatureHeader: string, rawBody: string) {
+  const payload = `${messageId}.${timestamp}.${rawBody}`;
+  const secretValue = secret.startsWith("whsec_")
+    ? secret.slice("whsec_".length)
+    : secret;
+  const signingKey = secret.startsWith("whsec_")
+    ? Buffer.from(secretValue, "base64")
+    : Buffer.from(secretValue, "utf8");
+  const expected = crypto.createHmac("sha256", signingKey).update(payload).digest("base64");
+  const provided = parseSvixV1Signatures(signatureHeader);
+  return provided.some((candidate) => {
+    const a = Buffer.from(candidate, "utf8");
+    const b = Buffer.from(expected, "utf8");
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  });
+}
+
 function toMinorUnits(amount: number) {
   return Math.round(amount * 100);
 }
@@ -181,6 +218,9 @@ export class StitchGateway implements PaymentGatewayProvider {
 
   async verifyWebhook(config: GatewayConfig, input: VerifyWebhookInput): Promise<VerifyWebhookResult> {
     const expected = input.headers["x-stitch-signature"];
+    const svixId = input.headers["svix-id"];
+    const svixTimestamp = input.headers["svix-timestamp"];
+    const svixSignature = input.headers["svix-signature"];
     if (!config.webhookSecret) {
       return {
         isValid: false,
@@ -191,22 +231,73 @@ export class StitchGateway implements PaymentGatewayProvider {
     }
 
     if (!expected) {
-      return {
-        isValid: false,
-        status: "FAILED",
-        raw: input.payload,
-        reason: "Missing stitch signature header",
-      };
+      if (svixId || svixTimestamp || svixSignature) {
+        const hasAllSvixHeaders = Boolean(svixId && svixTimestamp && svixSignature);
+        if (!hasAllSvixHeaders) {
+          console.info("[stitch] webhook verification", {
+            method: "svix",
+            svixHeadersPresent: {
+              id: Boolean(svixId),
+              timestamp: Boolean(svixTimestamp),
+              signature: Boolean(svixSignature),
+            },
+            isValid: false,
+          });
+          return {
+            isValid: false,
+            status: "FAILED",
+            raw: input.payload,
+            reason: "Missing required Svix signature headers",
+          };
+        }
+        const valid = verifySvixSignature(config.webhookSecret, svixId!, svixTimestamp!, svixSignature!, input.rawBody);
+        console.info("[stitch] webhook verification", {
+          method: "svix",
+          svixHeadersPresent: {
+            id: Boolean(svixId),
+            timestamp: Boolean(svixTimestamp),
+            signature: Boolean(svixSignature),
+          },
+          isValid: valid,
+        });
+        if (!valid) {
+          return {
+            isValid: false,
+            status: "FAILED",
+            raw: input.payload,
+            reason: "Invalid Svix webhook signature",
+          };
+        }
+      } else {
+        return {
+          isValid: false,
+          status: "FAILED",
+          raw: input.payload,
+          reason: "Missing stitch signature header",
+        };
+      }
     }
 
-    const calculated = hashBodySignature(config.webhookSecret, input.rawBody);
-    if (!safeEqualHex(calculated, expected)) {
-      return {
-        isValid: false,
-        status: "FAILED",
-        raw: input.payload,
-        reason: "Invalid stitch webhook signature",
-      };
+    if (expected) {
+      const calculated = hashBodySignature(config.webhookSecret, input.rawBody);
+      const stitchValid = safeEqualHex(calculated, expected);
+      console.info("[stitch] webhook verification", {
+        method: "x-stitch-signature",
+        svixHeadersPresent: {
+          id: Boolean(svixId),
+          timestamp: Boolean(svixTimestamp),
+          signature: Boolean(svixSignature),
+        },
+        isValid: stitchValid,
+      });
+      if (!stitchValid) {
+        return {
+          isValid: false,
+          status: "FAILED",
+          raw: input.payload,
+          reason: "Invalid stitch webhook signature",
+        };
+      }
     }
 
     const payloadData = (input.payload.data ?? {}) as Record<string, unknown>;

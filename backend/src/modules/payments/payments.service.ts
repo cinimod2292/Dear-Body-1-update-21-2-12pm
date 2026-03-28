@@ -421,6 +421,11 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     : typeof body.merchantReference === "string"
       ? body.merchantReference
       : undefined;
+  const nestedPaymentStatus = typeof payment.status === "string"
+    ? payment.status
+    : typeof body.status === "string"
+      ? body.status
+      : undefined;
   const paymentId = typeof payment.id === "string"
     ? payment.id
     : typeof body.paymentId === "string"
@@ -431,7 +436,15 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     : typeof body.type === "string"
       ? body.type
       : undefined;
-  if (eventType && !/^payments?\./i.test(eventType)) {
+  const normalizedEventType = eventType?.toUpperCase();
+  const isSupportedEventType = !eventType || /^payments?\./i.test(eventType) || normalizedEventType === "LINK";
+  if (!isSupportedEventType) {
+    console.info("[payments] stitch webhook ignored event type", {
+      eventType,
+      nestedPaymentStatus,
+      paymentId,
+      merchantReference,
+    });
     await writePaymentEventLog({
       gateway: gateway.name,
       eventType: "payment.webhook.ignored",
@@ -447,10 +460,31 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
       eventType,
     };
   }
+  if (normalizedEventType === "LINK" && !nestedPaymentStatus) {
+    console.info("[payments] stitch webhook LINK ignored without payment status", {
+      eventType,
+      paymentId,
+      merchantReference,
+    });
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.ignored",
+      status: "IGNORED",
+      externalEventId: typeof body.event_id === "string" ? body.event_id : undefined,
+      payload: body,
+      error: "LINK event missing nested payment status",
+    });
+    return {
+      ignored: true,
+      reason: "link_event_missing_status",
+      eventType,
+    };
+  }
 
   const verification = await gateway.verifyWebhook(config, { headers, payload: body, rawBody });
   console.info("[payments] stitch webhook verification", {
     eventType,
+    nestedPaymentStatus,
     status: verification.status,
     paymentId,
     merchantReference,

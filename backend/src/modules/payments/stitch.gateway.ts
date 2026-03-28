@@ -11,7 +11,7 @@ import {
 
 function resolveBaseUrl(config: GatewayConfig) {
   if (config.apiBaseUrl) return config.apiBaseUrl;
-  return config.mode === "production" ? "https://api.stitch.money" : "https://sandbox.stitch.money";
+  return "https://api.stitch.money";
 }
 
 async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}) {

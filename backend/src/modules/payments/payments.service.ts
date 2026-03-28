@@ -321,6 +321,19 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
   }
 
+  if (!result.checkoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.failed",
+      status: "FAILED",
+      orderId: order.id,
+      idempotencyKey,
+      payload: result.raw,
+      error: "Stitch response missing hosted checkout URL",
+    });
+    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
+  }
+
   let transaction;
   try {
     transaction = await prisma.paymentTransaction.create({

@@ -6,8 +6,10 @@ import {
   createProduct,
   createVariant,
   getProductById,
+  getStorefrontProductById,
   getProductImportTemplateCsv,
   listProducts,
+  listStorefrontProducts,
   previewProductImportCsv,
   previewProductImageImportCsv,
   updateProduct,
@@ -25,6 +27,17 @@ async function readCsvFromRequest(request: any) {
 }
 
 export async function catalogRoutes(app: FastifyInstance) {
+  app.get("/store/products", async (request, reply) => {
+    const result = await listStorefrontProducts(request.query);
+    return reply.send({ data: result });
+  });
+
+  app.get("/store/products/:productId", async (request, reply) => {
+    const { productId } = request.params as { productId: string };
+    const product = await getStorefrontProductById(productId);
+    return reply.send({ data: product });
+  });
+
   app.get("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
     const result = await listProducts(request.query);
     return reply.send({ data: result });

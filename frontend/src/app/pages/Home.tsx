@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ArrowRight, Star } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
-import { products } from "../data/products";
+import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
 import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
 
@@ -19,7 +19,14 @@ interface HomeSection {
 
 export default function Home() {
   const [sections, setSections] = useState<HomeSection[]>([]);
-  const featuredProducts = useMemo(() => products.slice(0, 8), []);
+  const [products, setProducts] = useState<Product[]>([]);
+  const featuredProducts = useMemo(() => products.slice(0, 8), [products]);
+
+  useEffect(() => {
+    fetchStoreProducts()
+      .then((items) => setProducts(items))
+      .catch(() => setProducts([]));
+  }, []);
 
   useEffect(() => {
     fetchCmsBootstrap()

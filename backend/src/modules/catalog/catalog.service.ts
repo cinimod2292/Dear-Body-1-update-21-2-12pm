@@ -923,6 +923,40 @@ export async function listProducts(rawQuery: unknown) {
   return toPaginatedResponse(items, total, query);
 }
 
+export async function listStorefrontProducts(rawQuery: unknown) {
+  const query = productFilterSchema.parse(rawQuery);
+  const skip = (query.page - 1) * query.perPage;
+  const take = query.perPage;
+
+  const where = {
+    ...(query.q ? { OR: [{ name: { contains: query.q, mode: "insensitive" as const } }, { slug: { contains: query.q, mode: "insensitive" as const } }] } : {}),
+    status: "ACTIVE" as const,
+    visibility: "PUBLIC" as const,
+    ...(query.brandId ? { brandId: query.brandId } : {}),
+    ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+    ...(query.featured !== undefined ? { featured: query.featured } : {}),
+    ...(query.tag ? { tags: { some: { tag: { slug: query.tag } } } } : {}),
+    variants: { some: { isActive: true } },
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { [query.sortBy]: query.sortDir },
+      include: {
+        category: true,
+        galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+        variants: { where: { isActive: true }, include: { inventoryLevel: true } },
+      },
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return toPaginatedResponse(items, total, query);
+}
+
 export async function getProductById(productId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -933,6 +967,25 @@ export async function getProductById(productId: string) {
       tags: { include: { tag: true } },
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
       variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
+    },
+  });
+
+  if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
+  return product;
+}
+
+export async function getStorefrontProductById(productId: string) {
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      status: "ACTIVE",
+      visibility: "PUBLIC",
+      variants: { some: { isActive: true } },
+    },
+    include: {
+      category: true,
+      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      variants: { where: { isActive: true }, include: { inventoryLevel: true } },
     },
   });
 

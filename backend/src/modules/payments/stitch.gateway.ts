@@ -18,7 +18,7 @@ const TOKEN_TTL_SKEW_MS = 15_000;
 let tokenCache: { key: string; accessToken: string; expiresAt: number } | null = null;
 
 function resolveScope() {
-  return "payment-links";
+  return "client_paymentrequest";
 }
 
 async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}, accessToken?: string) {

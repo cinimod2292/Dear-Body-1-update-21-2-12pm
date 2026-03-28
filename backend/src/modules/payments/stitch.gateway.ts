@@ -209,7 +209,10 @@ export class StitchGateway implements PaymentGatewayProvider {
       };
     }
 
-    const normalizedStatus = normalizeWebhookStatus(input.payload.status);
+    const payloadData = (input.payload.data ?? {}) as Record<string, unknown>;
+    const payment = (payloadData.payment ?? input.payload.payment ?? {}) as Record<string, unknown>;
+    const statusValue = payment.status ?? input.payload.status;
+    const normalizedStatus = normalizeWebhookStatus(statusValue);
     if (!normalizedStatus) {
       return {
         isValid: false,
@@ -219,10 +222,22 @@ export class StitchGateway implements PaymentGatewayProvider {
       };
     }
 
+    const paymentId = typeof payment.id === "string"
+      ? payment.id
+      : typeof input.payload.paymentId === "string"
+        ? input.payload.paymentId
+        : undefined;
+    const merchantReference = typeof payment.merchantReference === "string"
+      ? payment.merchantReference
+      : typeof input.payload.merchantReference === "string"
+        ? input.payload.merchantReference
+        : undefined;
+    const reference = typeof input.payload.reference === "string" ? input.payload.reference : undefined;
+
     return {
       isValid: true,
-      referenceId: typeof input.payload.reference === "string" ? input.payload.reference : undefined,
-      externalEventId: typeof input.payload.event_id === "string" ? input.payload.event_id : undefined,
+      referenceId: paymentId ?? reference ?? merchantReference,
+      externalEventId: typeof input.payload.event_id === "string" ? input.payload.event_id : paymentId,
       status: normalizedStatus,
       raw: input.payload,
     };

@@ -321,19 +321,6 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
   }
 
-  if (!result.checkoutUrl) {
-    await writePaymentEventLog({
-      gateway: gateway.name,
-      eventType: "payment.initiation.failed",
-      status: "FAILED",
-      orderId: order.id,
-      idempotencyKey,
-      payload: result.raw,
-      error: "Stitch response missing hosted checkout URL",
-    });
-    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
-  }
-
   let transaction;
   try {
     transaction = await prisma.paymentTransaction.create({
@@ -427,6 +414,18 @@ export async function verifyOrderPayment(orderId: string, rawBody: unknown) {
 export async function handleStitchWebhook(headers: Record<string, string | undefined>, body: Record<string, unknown>, rawBody: string) {
   const gateway = getGateway("stitch");
   const config = await getStitchGatewayConfig();
+  const payloadData = (body.data ?? {}) as Record<string, unknown>;
+  const payment = (payloadData.payment ?? body.payment ?? {}) as Record<string, unknown>;
+  const merchantReference = typeof payment.merchantReference === "string"
+    ? payment.merchantReference
+    : typeof body.merchantReference === "string"
+      ? body.merchantReference
+      : undefined;
+  const paymentId = typeof payment.id === "string"
+    ? payment.id
+    : typeof body.paymentId === "string"
+      ? body.paymentId
+      : undefined;
   const eventType = typeof body.event_type === "string"
     ? body.event_type
     : typeof body.type === "string"
@@ -450,6 +449,14 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   }
 
   const verification = await gateway.verifyWebhook(config, { headers, payload: body, rawBody });
+  console.info("[payments] stitch webhook verification", {
+    eventType,
+    status: verification.status,
+    paymentId,
+    merchantReference,
+    referenceId: verification.referenceId,
+    isValid: verification.isValid,
+  });
 
   const ref = verification.referenceId;
   if (!verification.isValid || !ref) {
@@ -466,6 +473,29 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   }
 
   let transaction = await prisma.paymentTransaction.findFirst({ where: { referenceId: ref, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  console.info("[payments] stitch webhook lookup by reference", {
+    referenceId: ref,
+    found: Boolean(transaction),
+  });
+  if (!transaction && merchantReference) {
+    const orderByNumber = await prisma.order.findFirst({ where: { orderNumber: merchantReference } });
+    if (orderByNumber) {
+      transaction = await prisma.paymentTransaction.findFirst({
+        where: { orderId: orderByNumber.id, provider: gateway.name },
+        orderBy: { createdAt: "desc" },
+      });
+      console.info("[payments] stitch webhook lookup by merchantReference", {
+        merchantReference,
+        orderId: orderByNumber.id,
+        found: Boolean(transaction),
+      });
+    } else {
+      console.info("[payments] stitch webhook lookup by merchantReference", {
+        merchantReference,
+        found: false,
+      });
+    }
+  }
   if (!transaction) {
     const orderByReference = await prisma.order.findFirst({ where: { stitchReference: ref } });
     if (orderByReference) {
@@ -528,6 +558,12 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   });
 
   if (!applyResult.applied) {
+    console.info("[payments] stitch webhook status skipped", {
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      reason: applyResult.reason,
+      status: applyResult.currentStatus,
+    });
     await writePaymentEventLog({
       gateway: gateway.name,
       eventType: "payment.webhook.noop",
@@ -549,6 +585,11 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
       status: applyResult.currentStatus,
     };
   }
+  console.info("[payments] stitch webhook status applied", {
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    status: verification.status,
+  });
 
   return {
     duplicate: false,

@@ -258,12 +258,13 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
 
   const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
   const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
-  if (!body.force && latestAttempt && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
+  const latestCheckoutUrl = (latestAttempt?.metadata as { checkoutUrl?: string } | null)?.checkoutUrl;
+  if (!body.force && latestAttempt && latestCheckoutUrl && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,
       referenceId: latestAttempt.referenceId,
-      checkoutUrl: (latestAttempt.metadata as { checkoutUrl?: string } | null)?.checkoutUrl,
+      checkoutUrl: latestCheckoutUrl,
       idempotencyKey,
       reused: true,
     };
@@ -278,6 +279,19 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     cancelUrl: body.cancelUrl,
     customerEmail: order.customer?.email,
   });
+
+  if (!result.checkoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.failed",
+      status: "FAILED",
+      orderId: order.id,
+      idempotencyKey,
+      payload: result.raw,
+      error: "Stitch response missing hosted checkout URL",
+    });
+    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
+  }
 
   let transaction;
   try {

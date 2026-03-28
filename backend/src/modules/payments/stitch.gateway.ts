@@ -51,6 +51,17 @@ function normalizeWebhookStatus(status: unknown): "PENDING" | "PAID" | "FAILED" 
   return undefined;
 }
 
+function resolveCheckoutUrl(payload: Record<string, unknown>): string | undefined {
+  const candidate = payload.checkout_url
+    ?? payload.checkoutUrl
+    ?? payload.payment_url
+    ?? payload.paymentUrl
+    ?? payload.redirect_url
+    ?? payload.redirectUrl
+    ?? payload.url;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
+}
+
 export class StitchGateway implements PaymentGatewayProvider {
   readonly name = "stitch";
 
@@ -72,7 +83,7 @@ export class StitchGateway implements PaymentGatewayProvider {
 
     return {
       referenceId: String(payload.reference ?? payload.id ?? input.orderNumber),
-      checkoutUrl: typeof payload.checkout_url === "string" ? payload.checkout_url : undefined,
+      checkoutUrl: resolveCheckoutUrl(payload),
       status: normalizeStatus(payload.status),
       raw: payload,
     };

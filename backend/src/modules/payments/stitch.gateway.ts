@@ -148,9 +148,13 @@ export class StitchGateway implements PaymentGatewayProvider {
     }, accessToken);
 
     const payment = ((payload.data ?? {}) as Record<string, unknown>).payment as Record<string, unknown> | undefined;
-    let checkoutUrl = resolveCheckoutUrl(payload);
     const hostedLink = payment && typeof payment.link === "string" ? payment.link : undefined;
-    if (!checkoutUrl && hostedLink) checkoutUrl = hostedLink;
+    const hostedId = payment && typeof payment.id === "string" ? payment.id : undefined;
+    console.info("[stitch] payment-link response", {
+      paymentId: hostedId,
+      paymentLink: hostedLink,
+    });
+    let checkoutUrl = hostedLink ?? resolveCheckoutUrl(payload);
     if (checkoutUrl && (input.returnUrl ?? config.redirectUrl)) {
       const redirectUrl = input.returnUrl ?? config.redirectUrl;
       const parsed = new URL(checkoutUrl);

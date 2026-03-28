@@ -21,6 +21,11 @@ const gateways: Record<string, PaymentGatewayProvider> = {
   stitch: new StitchGateway(),
 };
 
+function isReusableStitchCheckoutUrl(url: string | undefined) {
+  if (!url) return false;
+  return !url.includes("/pay/");
+}
+
 interface StitchStoredConfig {
   enabled: boolean;
   mode: "sandbox" | "production";
@@ -30,6 +35,14 @@ interface StitchStoredConfig {
   redirectUrl?: string;
   callbackUrl?: string;
   apiBaseUrl?: string;
+}
+
+function resolveStoredWebhookSecret(storedValue?: string) {
+  if (!storedValue) return undefined;
+  const decrypted = decryptSecret(storedValue);
+  if (decrypted) return decrypted;
+  if (!storedValue.includes(":")) return storedValue;
+  return undefined;
 }
 
 function getGateway(name: string) {
@@ -102,6 +115,9 @@ export async function getStitchSettings() {
 
 export async function upsertStitchSettings(rawBody: unknown) {
   const body = stitchSettingsSchema.parse(rawBody);
+  console.info("[payments] stitch settings save request", {
+    hasWebhookSecretInPayload: Boolean(body.webhookSecret),
+  });
 
   const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
   const existingValue = (existing?.value ?? {}) as unknown as StitchStoredConfig;
@@ -128,6 +144,11 @@ export async function upsertStitchSettings(rawBody: unknown) {
     update: { value: next as unknown as Prisma.InputJsonValue },
     create: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
+  console.info("[payments] stitch settings saved", {
+    webhookSecretWriteAttempted: Boolean(body.webhookSecret),
+    encryptedWebhookSecretPresent: Boolean(next.encryptedWebhookSecret),
+    settingId: saved.id,
+  });
 
   return {
     id: saved.id,
@@ -148,12 +169,20 @@ async function getStitchGatewayConfig(): Promise<GatewayConfig> {
 
   const value = setting.value as unknown as StitchStoredConfig;
   if (!value.enabled) throw new AppError(400, "Stitch is disabled", "STITCH_DISABLED");
+  if (value.mode === "production" && !value.encryptedWebhookSecret) {
+    throw new AppError(400, "Stitch webhook secret is required in production mode", "STITCH_WEBHOOK_SECRET_REQUIRED");
+  }
+  const webhookSecret = resolveStoredWebhookSecret(value.encryptedWebhookSecret);
+  console.info("[payments] stitch runtime config loaded", {
+    encryptedWebhookSecretPresent: Boolean(value.encryptedWebhookSecret),
+    decryptedWebhookSecretPresent: Boolean(webhookSecret),
+  });
 
   return {
     mode: value.mode,
     merchantId: value.merchantId,
     apiKey: decryptSecret(value.encryptedApiKey),
-    webhookSecret: value.encryptedWebhookSecret ? decryptSecret(value.encryptedWebhookSecret) : undefined,
+    webhookSecret,
     redirectUrl: value.redirectUrl,
     callbackUrl: value.callbackUrl,
     apiBaseUrl: value.apiBaseUrl,
@@ -178,6 +207,30 @@ async function sendPaymentSuccessEmail(orderId: string) {
 }
 
 async function applyPaymentStatus(orderId: string, transactionId: string, status: "PENDING" | "AWAITING_PAYMENT" | "PAID" | "FAILED", details: Record<string, unknown>) {
+  const [currentOrder, currentTx] = await Promise.all([
+    prisma.order.findUnique({ where: { id: orderId }, select: { paymentStatus: true, status: true } }),
+    prisma.paymentTransaction.findUnique({ where: { id: transactionId }, select: { status: true } }),
+  ]);
+  if (!currentOrder || !currentTx) {
+    throw new AppError(404, "Payment transaction not found", "PAYMENT_TX_NOT_FOUND");
+  }
+
+  if (currentOrder.paymentStatus === "PAID" && status !== "PAID") {
+    return {
+      applied: false,
+      reason: "downgrade_prevented",
+      currentStatus: currentOrder.paymentStatus,
+    } as const;
+  }
+
+  if (currentTx.status === status && currentOrder.paymentStatus === status) {
+    return {
+      applied: false,
+      reason: "already_applied",
+      currentStatus: currentOrder.paymentStatus,
+    } as const;
+  }
+
   await prisma.paymentTransaction.update({
     where: { id: transactionId },
     data: {
@@ -207,6 +260,12 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
       details: details as Prisma.InputJsonValue,
     },
   });
+
+  return {
+    applied: true,
+    reason: "updated",
+    currentStatus: status,
+  } as const;
 }
 
 export async function initiateOrderPayment(orderId: string, rawBody: unknown, actorId?: string) {
@@ -225,12 +284,31 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
 
   const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
   const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
-  if (!body.force && latestAttempt && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
+  const latestCheckoutUrl = (latestAttempt?.metadata as { checkoutUrl?: string } | null)?.checkoutUrl;
+  const canReuseCheckoutUrl = isReusableStitchCheckoutUrl(latestCheckoutUrl);
+  if (latestCheckoutUrl && !canReuseCheckoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.checkout_url.rejected",
+      status: "IGNORED",
+      orderId: order.id,
+      transactionId: latestAttempt?.id,
+      idempotencyKey,
+      payload: { checkoutUrl: latestCheckoutUrl },
+      error: "Legacy checkout URL shape rejected for reuse",
+    });
+  }
+  if (!body.force && latestAttempt && canReuseCheckoutUrl && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
+    console.info("[payments] reusing checkout URL", {
+      orderId: order.id,
+      transactionId: latestAttempt.id,
+      checkoutUrl: latestCheckoutUrl,
+    });
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,
       referenceId: latestAttempt.referenceId,
-      checkoutUrl: (latestAttempt.metadata as { checkoutUrl?: string } | null)?.checkoutUrl,
+      checkoutUrl: latestCheckoutUrl,
       idempotencyKey,
       reused: true,
     };
@@ -245,6 +323,24 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     cancelUrl: body.cancelUrl,
     customerEmail: order.customer?.email,
   });
+  console.info("[payments] fresh checkout URL from gateway", {
+    orderId: order.id,
+    checkoutUrl: result.checkoutUrl,
+    referenceId: result.referenceId,
+  });
+
+  if (!result.checkoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.failed",
+      status: "FAILED",
+      orderId: order.id,
+      idempotencyKey,
+      payload: result.raw,
+      error: "Stitch response missing hosted checkout URL",
+    });
+    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
+  }
 
   let transaction;
   try {
@@ -339,7 +435,85 @@ export async function verifyOrderPayment(orderId: string, rawBody: unknown) {
 export async function handleStitchWebhook(headers: Record<string, string | undefined>, body: Record<string, unknown>, rawBody: string) {
   const gateway = getGateway("stitch");
   const config = await getStitchGatewayConfig();
+  const payloadData = (body.data ?? {}) as Record<string, unknown>;
+  const payment = (payloadData.payment ?? {}) as Record<string, unknown>;
+  const topLevelPaymentId = typeof body.id === "string" ? body.id : undefined;
+  const topLevelStatus = typeof body.status === "string" ? body.status : undefined;
+  const topLevelLinkId = typeof body.linkId === "string" ? body.linkId : undefined;
+  const nestedPaymentId = typeof payment.id === "string" ? payment.id : undefined;
+  const nestedStatus = typeof payment.status === "string" ? payment.status : undefined;
+  const nestedMerchantReference = typeof payment.merchantReference === "string" ? payment.merchantReference : undefined;
+  const parsingPath = topLevelPaymentId || topLevelStatus || topLevelLinkId ? "top-level" : "nested";
+  console.info("[payments] stitch webhook payload shape", {
+    topLevelKeys: Object.keys(body).slice(0, 25),
+    dataKeys: Object.keys(payloadData).slice(0, 25),
+    paymentKeys: Object.keys(payment).slice(0, 25),
+    parsingPath,
+  });
+  const merchantReference = topLevelLinkId ?? nestedMerchantReference;
+  const nestedPaymentStatus = topLevelStatus ?? nestedStatus;
+  const paymentId = topLevelPaymentId ?? nestedPaymentId;
+  const eventType = typeof body.event_type === "string"
+    ? body.event_type
+    : typeof body.type === "string"
+      ? body.type
+      : undefined;
+  const normalizedEventType = eventType?.toUpperCase();
+  const isSupportedEventType = !eventType || /^payments?\./i.test(eventType) || normalizedEventType === "LINK";
+  if (!isSupportedEventType) {
+    console.info("[payments] stitch webhook ignored event type", {
+      eventType,
+      nestedPaymentStatus,
+      paymentId,
+      merchantReference,
+    });
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.ignored",
+      status: "IGNORED",
+      externalEventId: typeof body.event_id === "string" ? body.event_id : undefined,
+      payload: body,
+      error: `Unsupported event type: ${eventType}`,
+    });
+
+    return {
+      ignored: true,
+      reason: "unsupported_event_type",
+      eventType,
+    };
+  }
+  if (normalizedEventType === "LINK" && !nestedPaymentStatus) {
+    console.info("[payments] stitch webhook LINK ignored without payment status", {
+      eventType,
+      paymentId,
+      merchantReference,
+    });
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.ignored",
+      status: "IGNORED",
+      externalEventId: typeof body.event_id === "string" ? body.event_id : undefined,
+      payload: body,
+      error: "LINK event missing nested payment status",
+    });
+    return {
+      ignored: true,
+      reason: "link_event_missing_status",
+      eventType,
+    };
+  }
+
   const verification = await gateway.verifyWebhook(config, { headers, payload: body, rawBody });
+  console.info("[payments] stitch webhook verification", {
+    eventType,
+    nestedPaymentStatus,
+    status: verification.status,
+    paymentId,
+    merchantReference,
+    parsingPath,
+    referenceId: verification.referenceId,
+    isValid: verification.isValid,
+  });
 
   const ref = verification.referenceId;
   if (!verification.isValid || !ref) {
@@ -356,20 +530,50 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   }
 
   let transaction = await prisma.paymentTransaction.findFirst({ where: { referenceId: ref, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  console.info("[payments] stitch webhook lookup by reference", {
+    referenceId: ref,
+    found: Boolean(transaction),
+  });
+  if (!transaction && merchantReference) {
+    const orderByNumber = await prisma.order.findFirst({ where: { orderNumber: merchantReference } });
+    if (orderByNumber) {
+      transaction = await prisma.paymentTransaction.findFirst({
+        where: { orderId: orderByNumber.id, provider: gateway.name },
+        orderBy: { createdAt: "desc" },
+      });
+      console.info("[payments] stitch webhook lookup by merchantReference", {
+        merchantReference,
+        orderId: orderByNumber.id,
+        found: Boolean(transaction),
+      });
+    } else {
+      console.info("[payments] stitch webhook lookup by merchantReference", {
+        merchantReference,
+        found: false,
+      });
+    }
+  }
   if (!transaction) {
     const orderByReference = await prisma.order.findFirst({ where: { stitchReference: ref } });
     if (orderByReference) {
-      transaction = await prisma.paymentTransaction.create({
-        data: {
-          orderId: orderByReference.id,
-          provider: gateway.name,
-          referenceId: ref,
-          amount: orderByReference.totalAmount,
-          status: "AWAITING_PAYMENT",
-          metadata: { source: "webhook_backfill" } as Prisma.InputJsonValue,
-          idempotencyKey: `${gateway.name}:webhook-backfill:${orderByReference.id}:${ref}`,
-        },
-      });
+      const backfillIdempotencyKey = `${gateway.name}:webhook-backfill:${orderByReference.id}:${ref}`;
+      try {
+        transaction = await prisma.paymentTransaction.create({
+          data: {
+            orderId: orderByReference.id,
+            provider: gateway.name,
+            referenceId: ref,
+            amount: orderByReference.totalAmount,
+            status: "AWAITING_PAYMENT",
+            metadata: { source: "webhook_backfill" } as Prisma.InputJsonValue,
+            idempotencyKey: backfillIdempotencyKey,
+          },
+        });
+      } catch (error) {
+        const existingByKey = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: backfillIdempotencyKey } });
+        if (!existingByKey) throw error;
+        transaction = existingByKey;
+      }
     }
   }
   if (!transaction) {
@@ -404,10 +608,44 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     };
   }
 
-  await applyPaymentStatus(transaction.orderId, transaction.id, verification.status, {
+  const applyResult = await applyPaymentStatus(transaction.orderId, transaction.id, verification.status, {
     source: "webhook",
     eventId: verification.externalEventId,
     raw: verification.raw,
+  });
+
+  if (!applyResult.applied) {
+    console.info("[payments] stitch webhook status skipped", {
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      reason: applyResult.reason,
+      status: applyResult.currentStatus,
+    });
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.noop",
+      status: "IGNORED",
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      externalEventId: verification.externalEventId,
+      idempotencyKey: `${gateway.name}:noop:${verification.externalEventId ?? `${ref}:${verification.status}`}:${applyResult.reason}`,
+      payload: verification.raw,
+      error: applyResult.reason,
+    });
+
+    return {
+      duplicate: false,
+      noOp: true,
+      reason: applyResult.reason,
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      status: applyResult.currentStatus,
+    };
+  }
+  console.info("[payments] stitch webhook status applied", {
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    status: verification.status,
   });
 
   return {

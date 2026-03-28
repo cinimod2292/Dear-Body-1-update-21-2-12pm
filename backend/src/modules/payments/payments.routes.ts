@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { PassThrough } from "node:stream";
 import {
   getStitchSettings,
   handleStitchWebhook,
@@ -45,14 +46,46 @@ export async function paymentsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post("/payments/stitch/webhook", async (request, reply) => {
+  app.post("/payments/stitch/webhook", {
+    preParsing: (request, _reply, payload, done) => {
+      const chunks: Buffer[] = [];
+      payload.on("data", (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      payload.on("end", () => {
+        (request as any).rawBody = Buffer.concat(chunks).toString("utf8");
+      });
+
+      const tee = new PassThrough();
+      payload.pipe(tee);
+      done(null, tee);
+    },
+  }, async (request, reply) => {
+    request.log.info({ route: "/payments/stitch/webhook" }, "Stitch webhook received");
     const headers = Object.fromEntries(
       Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value[0] : value?.toString()]),
     );
 
     const payload = (request.body ?? {}) as Record<string, unknown>;
-    const rawBody = JSON.stringify(payload);
-    const result = await handleStitchWebhook(headers, payload, rawBody);
-    return reply.send({ data: result });
+    const rawBody = typeof (request as any).rawBody === "string"
+      ? (request as any).rawBody
+      : "";
+
+    try {
+      const result = await handleStitchWebhook(headers, payload, rawBody);
+      if ((result as any).duplicate) {
+        request.log.info({ result }, "Stitch webhook duplicate delivery ignored");
+      } else if ((result as any).ignored) {
+        request.log.info({ result }, "Stitch webhook ignored");
+      } else if ((result as any).noOp) {
+        request.log.info({ result }, "Stitch webhook no-op");
+      } else {
+        request.log.info({ result }, "Stitch webhook processed successfully");
+      }
+      return reply.send({ data: result });
+    } catch (error) {
+      request.log.warn({ err: error }, "Stitch webhook rejected");
+      throw error;
+    }
   });
 }

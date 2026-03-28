@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { SlidersHorizontal, X, ChevronDown } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
-import { products, categories } from "../data/products";
+import { fetchStoreProducts, getCategories, Product } from "../data/products";
 
 const sortOptions = [
   { value: "featured", label: "Featured" },
@@ -21,6 +21,20 @@ export default function Shop() {
   const [sortBy, setSortBy] = useState("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchStoreProducts()
+      .then((items) => {
+        setProducts(items);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load products");
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleCategoryChange = (cat: string) => {
     setSelectedCategory(cat);
@@ -57,6 +71,7 @@ export default function Shop() {
 
     return result;
   }, [selectedCategory, sortBy, priceRange, initialSearch]);
+  const categories = useMemo(() => getCategories(products), [products]);
 
   const categoryColors: Record<string, string> = {
     "All": "from-pink-500 to-orange-500",
@@ -168,7 +183,16 @@ export default function Shop() {
         )}
 
         {/* Products Grid */}
-        {filteredProducts.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-24">
+            <h3 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700 }}>Loading products…</h3>
+          </div>
+        ) : error ? (
+          <div className="text-center py-24">
+            <h3 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700 }}>Unable to load products</h3>
+            <p className="text-gray-500">{error}</p>
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map(product => (
               <ProductCard key={product.id} product={product} />

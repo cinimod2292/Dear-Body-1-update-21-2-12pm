@@ -436,22 +436,15 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   const gateway = getGateway("stitch");
   const config = await getStitchGatewayConfig();
   const payloadData = (body.data ?? {}) as Record<string, unknown>;
-  const payment = (payloadData.payment ?? body.payment ?? {}) as Record<string, unknown>;
-  const merchantReference = typeof payment.merchantReference === "string"
-    ? payment.merchantReference
-    : typeof body.merchantReference === "string"
-      ? body.merchantReference
-      : undefined;
-  const nestedPaymentStatus = typeof payment.status === "string"
-    ? payment.status
-    : typeof body.status === "string"
-      ? body.status
-      : undefined;
-  const paymentId = typeof payment.id === "string"
-    ? payment.id
-    : typeof body.paymentId === "string"
-      ? body.paymentId
-      : undefined;
+  const payment = (payloadData.payment ?? {}) as Record<string, unknown>;
+  console.info("[payments] stitch webhook payload shape", {
+    topLevelKeys: Object.keys(body).slice(0, 25),
+    dataKeys: Object.keys(payloadData).slice(0, 25),
+    paymentKeys: Object.keys(payment).slice(0, 25),
+  });
+  const merchantReference = typeof payment.merchantReference === "string" ? payment.merchantReference : undefined;
+  const nestedPaymentStatus = typeof payment.status === "string" ? payment.status : undefined;
+  const paymentId = typeof payment.id === "string" ? payment.id : undefined;
   const eventType = typeof body.event_type === "string"
     ? body.event_type
     : typeof body.type === "string"

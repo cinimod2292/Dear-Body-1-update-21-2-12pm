@@ -302,7 +302,9 @@ export class StitchGateway implements PaymentGatewayProvider {
 
     const payloadData = (input.payload.data ?? {}) as Record<string, unknown>;
     const payment = (payloadData.payment ?? {}) as Record<string, unknown>;
-    const statusValue = payment.status;
+    const topLevelStatus = typeof input.payload.status === "string" ? input.payload.status : undefined;
+    const nestedStatus = typeof payment.status === "string" ? payment.status : undefined;
+    const statusValue = topLevelStatus ?? nestedStatus;
     const normalizedStatus = normalizeWebhookStatus(statusValue);
     if (!normalizedStatus) {
       return {
@@ -313,8 +315,16 @@ export class StitchGateway implements PaymentGatewayProvider {
       };
     }
 
-    const paymentId = typeof payment.id === "string" ? payment.id : undefined;
-    const merchantReference = typeof payment.merchantReference === "string" ? payment.merchantReference : undefined;
+    const paymentId = typeof input.payload.id === "string"
+      ? input.payload.id
+      : typeof payment.id === "string"
+        ? payment.id
+        : undefined;
+    const merchantReference = typeof input.payload.linkId === "string"
+      ? input.payload.linkId
+      : typeof payment.merchantReference === "string"
+        ? payment.merchantReference
+        : undefined;
 
     return {
       isValid: true,

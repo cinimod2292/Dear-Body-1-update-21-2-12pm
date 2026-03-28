@@ -437,14 +437,22 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   const config = await getStitchGatewayConfig();
   const payloadData = (body.data ?? {}) as Record<string, unknown>;
   const payment = (payloadData.payment ?? {}) as Record<string, unknown>;
+  const topLevelPaymentId = typeof body.id === "string" ? body.id : undefined;
+  const topLevelStatus = typeof body.status === "string" ? body.status : undefined;
+  const topLevelLinkId = typeof body.linkId === "string" ? body.linkId : undefined;
+  const nestedPaymentId = typeof payment.id === "string" ? payment.id : undefined;
+  const nestedStatus = typeof payment.status === "string" ? payment.status : undefined;
+  const nestedMerchantReference = typeof payment.merchantReference === "string" ? payment.merchantReference : undefined;
+  const parsingPath = topLevelPaymentId || topLevelStatus || topLevelLinkId ? "top-level" : "nested";
   console.info("[payments] stitch webhook payload shape", {
     topLevelKeys: Object.keys(body).slice(0, 25),
     dataKeys: Object.keys(payloadData).slice(0, 25),
     paymentKeys: Object.keys(payment).slice(0, 25),
+    parsingPath,
   });
-  const merchantReference = typeof payment.merchantReference === "string" ? payment.merchantReference : undefined;
-  const nestedPaymentStatus = typeof payment.status === "string" ? payment.status : undefined;
-  const paymentId = typeof payment.id === "string" ? payment.id : undefined;
+  const merchantReference = topLevelLinkId ?? nestedMerchantReference;
+  const nestedPaymentStatus = topLevelStatus ?? nestedStatus;
+  const paymentId = topLevelPaymentId ?? nestedPaymentId;
   const eventType = typeof body.event_type === "string"
     ? body.event_type
     : typeof body.type === "string"
@@ -502,6 +510,7 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     status: verification.status,
     paymentId,
     merchantReference,
+    parsingPath,
     referenceId: verification.referenceId,
     isValid: verification.isValid,
   });

@@ -11,12 +11,17 @@ import {
 
 function resolveBaseUrl(config: GatewayConfig) {
   if (config.apiBaseUrl) return config.apiBaseUrl;
-  return "https://api.stitch.money";
+  return "https://express.stitch.money";
 }
 
 async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}) {
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(`${baseUrl}${path}`, {
+  const requestUrl = `${baseUrl}${path}`;
+  const method = init.method ?? "GET";
+  const headerNames = ["Content-Type", "Authorization", "X-Merchant-Id", ...Object.keys((init.headers as Record<string, string> | undefined) ?? {})];
+  console.info("[stitch] outbound request", { url: requestUrl, method, headerNames: Array.from(new Set(headerNames)) });
+
+  const response = await fetch(requestUrl, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -26,8 +31,20 @@ async function stitchRequest(config: GatewayConfig, path: string, init: RequestI
     },
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const rawText = await response.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = rawText ? JSON.parse(rawText) as Record<string, unknown> : {};
+  } catch {
+    payload = {};
+  }
   if (!response.ok) {
+    console.warn("[stitch] non-2xx response", {
+      url: requestUrl,
+      method,
+      status: response.status,
+      body: rawText.slice(0, 1000),
+    });
     const msg = typeof payload?.message === "string" ? payload.message : `Stitch request failed (${response.status})`;
     throw new Error(msg);
   }

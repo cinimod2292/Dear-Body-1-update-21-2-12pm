@@ -11,12 +11,17 @@ import {
 
 function resolveBaseUrl(config: GatewayConfig) {
   if (config.apiBaseUrl) return config.apiBaseUrl;
-  return config.mode === "production" ? "https://api.stitch.money" : "https://sandbox.stitch.money";
+  return "https://express.stitch.money";
 }
 
 async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}) {
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(`${baseUrl}${path}`, {
+  const requestUrl = `${baseUrl}${path}`;
+  const method = init.method ?? "GET";
+  const headerNames = ["Content-Type", "Authorization", "X-Merchant-Id", ...Object.keys((init.headers as Record<string, string> | undefined) ?? {})];
+  console.info("[stitch] outbound request", { url: requestUrl, method, headerNames: Array.from(new Set(headerNames)) });
+
+  const response = await fetch(requestUrl, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -26,8 +31,20 @@ async function stitchRequest(config: GatewayConfig, path: string, init: RequestI
     },
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const rawText = await response.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = rawText ? JSON.parse(rawText) as Record<string, unknown> : {};
+  } catch {
+    payload = {};
+  }
   if (!response.ok) {
+    console.warn("[stitch] non-2xx response", {
+      url: requestUrl,
+      method,
+      status: response.status,
+      body: rawText.slice(0, 1000),
+    });
     const msg = typeof payload?.message === "string" ? payload.message : `Stitch request failed (${response.status})`;
     throw new Error(msg);
   }
@@ -40,6 +57,26 @@ function normalizeStatus(status: unknown): "PENDING" | "PAID" | "FAILED" {
   if (["SUCCESS", "COMPLETED", "PAID"].includes(value)) return "PAID";
   if (["FAILED", "ERROR", "DECLINED", "CANCELLED"].includes(value)) return "FAILED";
   return "PENDING";
+}
+
+function normalizeWebhookStatus(status: unknown): "PENDING" | "PAID" | "FAILED" | undefined {
+  if (typeof status !== "string") return undefined;
+  const value = status.toUpperCase();
+  if (["SUCCESS", "COMPLETED", "PAID"].includes(value)) return "PAID";
+  if (["FAILED", "ERROR", "DECLINED", "CANCELLED"].includes(value)) return "FAILED";
+  if (["PENDING", "PROCESSING", "AWAITING_PAYMENT"].includes(value)) return "PENDING";
+  return undefined;
+}
+
+function resolveCheckoutUrl(payload: Record<string, unknown>): string | undefined {
+  const candidate = payload.checkout_url
+    ?? payload.checkoutUrl
+    ?? payload.payment_url
+    ?? payload.paymentUrl
+    ?? payload.redirect_url
+    ?? payload.redirectUrl
+    ?? payload.url;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
 }
 
 export class StitchGateway implements PaymentGatewayProvider {
@@ -63,7 +100,7 @@ export class StitchGateway implements PaymentGatewayProvider {
 
     return {
       referenceId: String(payload.reference ?? payload.id ?? input.orderNumber),
-      checkoutUrl: typeof payload.checkout_url === "string" ? payload.checkout_url : undefined,
+      checkoutUrl: resolveCheckoutUrl(payload),
       status: normalizeStatus(payload.status),
       raw: payload,
     };
@@ -109,11 +146,21 @@ export class StitchGateway implements PaymentGatewayProvider {
       };
     }
 
+    const normalizedStatus = normalizeWebhookStatus(input.payload.status);
+    if (!normalizedStatus) {
+      return {
+        isValid: false,
+        status: "FAILED",
+        raw: input.payload,
+        reason: "Unsupported stitch webhook status",
+      };
+    }
+
     return {
       isValid: true,
       referenceId: typeof input.payload.reference === "string" ? input.payload.reference : undefined,
       externalEventId: typeof input.payload.event_id === "string" ? input.payload.event_id : undefined,
-      status: normalizeStatus(input.payload.status),
+      status: normalizedStatus,
       raw: input.payload,
     };
   }

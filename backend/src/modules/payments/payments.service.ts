@@ -600,6 +600,27 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
   });
 
   if (!log) {
+    const reconciled = await applyPaymentStatus(
+      transaction.orderId,
+      transaction.id,
+      transaction.status as "PENDING" | "AWAITING_PAYMENT" | "PAID" | "FAILED",
+      {
+        source: "webhook_duplicate_reconcile",
+        eventId: verification.externalEventId,
+      },
+    );
+    const orderSnapshot = await prisma.order.findUnique({
+      where: { id: transaction.orderId },
+      select: { status: true, paymentStatus: true },
+    });
+    console.info("[payments] stitch webhook duplicate reconcile", {
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      transactionStatus: transaction.status,
+      reconcileApplied: reconciled.applied,
+      orderStatus: orderSnapshot?.status,
+      orderPaymentStatus: orderSnapshot?.paymentStatus,
+    });
     return {
       duplicate: true,
       orderId: transaction.orderId,
@@ -612,6 +633,52 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     source: "webhook",
     eventId: verification.externalEventId,
     raw: verification.raw,
+  });
+  const orderSnapshot = await prisma.order.findUnique({
+    where: { id: transaction.orderId },
+    select: { status: true, paymentStatus: true },
+  });
+  console.info("[payments] stitch webhook post-apply snapshot", {
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    verificationStatus: verification.status,
+    applyResult: applyResult.reason,
+    orderStatus: orderSnapshot?.status,
+    orderPaymentStatus: orderSnapshot?.paymentStatus,
+  });
+
+  if (!applyResult.applied) {
+    console.info("[payments] stitch webhook status skipped", {
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      reason: applyResult.reason,
+      status: applyResult.currentStatus,
+    });
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.noop",
+      status: "IGNORED",
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      externalEventId: verification.externalEventId,
+      idempotencyKey: `${gateway.name}:noop:${verification.externalEventId ?? `${ref}:${verification.status}`}:${applyResult.reason}`,
+      payload: verification.raw,
+      error: applyResult.reason,
+    });
+
+    return {
+      duplicate: false,
+      noOp: true,
+      reason: applyResult.reason,
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      status: applyResult.currentStatus,
+    };
+  }
+  console.info("[payments] stitch webhook status applied", {
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    status: verification.status,
   });
 
   if (!applyResult.applied) {

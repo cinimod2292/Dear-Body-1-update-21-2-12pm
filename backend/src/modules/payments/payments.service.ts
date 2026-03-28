@@ -21,6 +21,11 @@ const gateways: Record<string, PaymentGatewayProvider> = {
   stitch: new StitchGateway(),
 };
 
+function isReusableStitchCheckoutUrl(url: string | undefined) {
+  if (!url) return false;
+  return !url.includes("/pay/");
+}
+
 interface StitchStoredConfig {
   enabled: boolean;
   mode: "sandbox" | "production";
@@ -259,7 +264,20 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
   const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
   const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
   const latestCheckoutUrl = (latestAttempt?.metadata as { checkoutUrl?: string } | null)?.checkoutUrl;
-  if (!body.force && latestAttempt && latestCheckoutUrl && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
+  const canReuseCheckoutUrl = isReusableStitchCheckoutUrl(latestCheckoutUrl);
+  if (latestCheckoutUrl && !canReuseCheckoutUrl) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiation.checkout_url.rejected",
+      status: "IGNORED",
+      orderId: order.id,
+      transactionId: latestAttempt?.id,
+      idempotencyKey,
+      payload: { checkoutUrl: latestCheckoutUrl },
+      error: "Legacy checkout URL shape rejected for reuse",
+    });
+  }
+  if (!body.force && latestAttempt && canReuseCheckoutUrl && ["PENDING", "AWAITING_PAYMENT"].includes(latestAttempt.status)) {
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,

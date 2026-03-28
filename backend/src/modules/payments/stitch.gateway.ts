@@ -14,19 +14,30 @@ function resolveBaseUrl(config: GatewayConfig) {
   return "https://express.stitch.money";
 }
 
-async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}) {
+const TOKEN_TTL_SKEW_MS = 15_000;
+let tokenCache: { key: string; accessToken: string; expiresAt: number } | null = null;
+
+function resolveScope() {
+  return "payment-links";
+}
+
+async function stitchRequest(config: GatewayConfig, path: string, init: RequestInit = {}, accessToken?: string) {
   const baseUrl = resolveBaseUrl(config);
   const requestUrl = `${baseUrl}${path}`;
   const method = init.method ?? "GET";
-  const headerNames = ["Content-Type", "Authorization", "X-Merchant-Id", ...Object.keys((init.headers as Record<string, string> | undefined) ?? {})];
+  const defaultHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (accessToken) {
+    defaultHeaders.Authorization = `Bearer ${accessToken}`;
+  }
+  const headerNames = [...Object.keys(defaultHeaders), ...Object.keys((init.headers as Record<string, string> | undefined) ?? {})];
   console.info("[stitch] outbound request", { url: requestUrl, method, headerNames: Array.from(new Set(headerNames)) });
 
   const response = await fetch(requestUrl, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-      "X-Merchant-Id": config.merchantId,
+      ...defaultHeaders,
       ...(init.headers ?? {}),
     },
   });
@@ -50,6 +61,37 @@ async function stitchRequest(config: GatewayConfig, path: string, init: RequestI
   }
 
   return payload as Record<string, unknown>;
+}
+
+async function getExpressAccessToken(config: GatewayConfig) {
+  const baseUrl = resolveBaseUrl(config);
+  const scope = resolveScope();
+  const cacheKey = `${baseUrl}:${config.merchantId}:${scope}`;
+  if (tokenCache && tokenCache.key === cacheKey && tokenCache.expiresAt > (Date.now() + TOKEN_TTL_SKEW_MS)) {
+    return tokenCache.accessToken;
+  }
+
+  const payload = await stitchRequest(config, "/api/v1/token", {
+    method: "POST",
+    body: JSON.stringify({
+      clientId: config.merchantId,
+      clientSecret: config.apiKey,
+      scope,
+    }),
+  });
+
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const accessToken = typeof data.accessToken === "string" ? data.accessToken : "";
+  if (!accessToken) {
+    throw new Error("Stitch token response missing data.accessToken");
+  }
+  const expiresInSeconds = typeof data.expiresIn === "number" ? data.expiresIn : 300;
+  tokenCache = {
+    key: cacheKey,
+    accessToken,
+    expiresAt: Date.now() + (expiresInSeconds * 1000),
+  };
+  return accessToken;
 }
 
 function normalizeStatus(status: unknown): "PENDING" | "PAID" | "FAILED" {
@@ -83,36 +125,48 @@ export class StitchGateway implements PaymentGatewayProvider {
   readonly name = "stitch";
 
   async initiatePayment(config: GatewayConfig, input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
-    const payload = await stitchRequest(config, "/v1/payments", {
+    const accessToken = await getExpressAccessToken(config);
+    const payload = await stitchRequest(config, "/api/v1/payment-links", {
       method: "POST",
       body: JSON.stringify({
         amount: input.amount,
-        currency: input.currency,
-        reference: input.orderNumber,
-        metadata: {
-          orderId: input.orderId,
-          customerEmail: input.customerEmail,
-        },
-        redirect_url: input.returnUrl ?? config.redirectUrl,
-        callback_url: config.callbackUrl,
+        merchantReference: input.orderNumber,
+        payerName: "Customer",
+        payerEmailAddress: input.customerEmail,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       }),
-    });
+    }, accessToken);
+
+    const payment = ((payload.data ?? {}) as Record<string, unknown>).payment as Record<string, unknown> | undefined;
+    let checkoutUrl = resolveCheckoutUrl(payload);
+    const hostedLink = payment && typeof payment.link === "string" ? payment.link : undefined;
+    if (!checkoutUrl && hostedLink) checkoutUrl = hostedLink;
+    if (checkoutUrl && (input.returnUrl ?? config.redirectUrl)) {
+      const redirectUrl = input.returnUrl ?? config.redirectUrl;
+      const parsed = new URL(checkoutUrl);
+      if (!parsed.searchParams.has("redirect_url")) parsed.searchParams.set("redirect_url", redirectUrl!);
+      checkoutUrl = parsed.toString();
+    }
+    const reference = payment && typeof payment.id === "string" ? payment.id : undefined;
+    const statusRaw = payment?.status ?? payload.status;
 
     return {
-      referenceId: String(payload.reference ?? payload.id ?? input.orderNumber),
-      checkoutUrl: resolveCheckoutUrl(payload),
-      status: normalizeStatus(payload.status),
+      referenceId: String(reference ?? payload.reference ?? payload.id ?? input.orderNumber),
+      checkoutUrl,
+      status: normalizeStatus(statusRaw),
       raw: payload,
     };
   }
 
   async verifyPayment(config: GatewayConfig, referenceId: string): Promise<VerifyPaymentResult> {
-    const payload = await stitchRequest(config, `/v1/payments/${encodeURIComponent(referenceId)}`, { method: "GET" });
+    const accessToken = await getExpressAccessToken(config);
+    const payload = await stitchRequest(config, `/api/v1/payment-links/${encodeURIComponent(referenceId)}`, { method: "GET" }, accessToken);
+    const payment = ((payload.data ?? {}) as Record<string, unknown>).payment as Record<string, unknown> | undefined;
     return {
       referenceId,
-      status: normalizeStatus(payload.status),
+      status: normalizeStatus(payment?.status ?? payload.status),
       raw: payload,
-      externalEventId: typeof payload.event_id === "string" ? payload.event_id : undefined,
+      externalEventId: typeof payment?.id === "string" ? payment.id : undefined,
     };
   }
 

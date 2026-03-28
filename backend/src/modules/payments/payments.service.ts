@@ -243,7 +243,7 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 
   const orderData =
     status === "PAID"
-      ? { paymentStatus: "PAID" as const, status: "PAID" as const }
+      ? { paymentStatus: "PAID" as const, status: "PROCESSING" as const }
       : status === "FAILED"
         ? { paymentStatus: "FAILED" as const, status: "PAYMENT_FAILED" as const }
         : { paymentStatus: "AWAITING_PAYMENT" as const, status: "AWAITING_PAYMENT" as const };

@@ -121,15 +121,25 @@ function resolveCheckoutUrl(payload: Record<string, unknown>): string | undefine
   return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
 }
 
+function toMinorUnits(amount: number) {
+  return Math.round(amount * 100);
+}
+
 export class StitchGateway implements PaymentGatewayProvider {
   readonly name = "stitch";
 
   async initiatePayment(config: GatewayConfig, input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
     const accessToken = await getExpressAccessToken(config);
+    const amountInMinorUnits = toMinorUnits(input.amount);
+    console.info("[stitch] payment-link amount", {
+      merchantReference: input.orderNumber,
+      amountMajor: input.amount,
+      amountMinor: amountInMinorUnits,
+    });
     const payload = await stitchRequest(config, "/api/v1/payment-links", {
       method: "POST",
       body: JSON.stringify({
-        amount: input.amount,
+        amount: amountInMinorUnits,
         merchantReference: input.orderNumber,
         payerName: "Customer",
         payerEmailAddress: input.customerEmail,

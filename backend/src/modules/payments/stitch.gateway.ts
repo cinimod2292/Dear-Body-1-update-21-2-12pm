@@ -110,17 +110,6 @@ function normalizeWebhookStatus(status: unknown): "PENDING" | "PAID" | "FAILED" 
   return undefined;
 }
 
-function resolveCheckoutUrl(payload: Record<string, unknown>): string | undefined {
-  const candidate = payload.checkout_url
-    ?? payload.checkoutUrl
-    ?? payload.payment_url
-    ?? payload.paymentUrl
-    ?? payload.redirect_url
-    ?? payload.redirectUrl
-    ?? payload.url;
-  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
-}
-
 function toMinorUnits(amount: number) {
   return Math.round(amount * 100);
 }
@@ -154,7 +143,7 @@ export class StitchGateway implements PaymentGatewayProvider {
       paymentId: hostedId,
       paymentLink: hostedLink,
     });
-    let checkoutUrl = hostedLink ?? resolveCheckoutUrl(payload);
+    let checkoutUrl = hostedLink;
     if (checkoutUrl && (input.returnUrl ?? config.redirectUrl)) {
       const redirectUrl = input.returnUrl ?? config.redirectUrl;
       const parsed = new URL(checkoutUrl);

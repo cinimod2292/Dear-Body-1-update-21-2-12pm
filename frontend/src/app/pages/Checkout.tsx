@@ -142,6 +142,7 @@ export default function Checkout() {
         const payload = await res.json().catch(() => null);
         if (!res.ok || !payload?.data) return;
         const status = payload.data.paymentStatus;
+        console.info("[checkout] processing poll payload", payload.data);
         console.info("[checkout] processing poll", {
           orderId,
           orderStatus: payload.data.status,

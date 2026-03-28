@@ -248,7 +248,16 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
         ? { paymentStatus: "FAILED" as const, status: "PAYMENT_FAILED" as const }
         : { paymentStatus: "AWAITING_PAYMENT" as const, status: "AWAITING_PAYMENT" as const };
 
-  await prisma.order.update({ where: { id: orderId }, data: orderData });
+  const updatedOrder = await prisma.order.update({
+    where: { id: orderId },
+    data: orderData,
+    select: { id: true, status: true, paymentStatus: true },
+  });
+  console.info("[payments] applyPaymentStatus persisted order", {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+    paymentStatus: updatedOrder.paymentStatus,
+  });
   if (status === "PAID") {
     await sendPaymentSuccessEmail(orderId).catch(() => undefined);
   }
@@ -645,40 +654,6 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     applyResult: applyResult.reason,
     orderStatus: orderSnapshot?.status,
     orderPaymentStatus: orderSnapshot?.paymentStatus,
-  });
-
-  if (!applyResult.applied) {
-    console.info("[payments] stitch webhook status skipped", {
-      orderId: transaction.orderId,
-      transactionId: transaction.id,
-      reason: applyResult.reason,
-      status: applyResult.currentStatus,
-    });
-    await writePaymentEventLog({
-      gateway: gateway.name,
-      eventType: "payment.webhook.noop",
-      status: "IGNORED",
-      orderId: transaction.orderId,
-      transactionId: transaction.id,
-      externalEventId: verification.externalEventId,
-      idempotencyKey: `${gateway.name}:noop:${verification.externalEventId ?? `${ref}:${verification.status}`}:${applyResult.reason}`,
-      payload: verification.raw,
-      error: applyResult.reason,
-    });
-
-    return {
-      duplicate: false,
-      noOp: true,
-      reason: applyResult.reason,
-      orderId: transaction.orderId,
-      transactionId: transaction.id,
-      status: applyResult.currentStatus,
-    };
-  }
-  console.info("[payments] stitch webhook status applied", {
-    orderId: transaction.orderId,
-    transactionId: transaction.id,
-    status: verification.status,
   });
 
   if (!applyResult.applied) {

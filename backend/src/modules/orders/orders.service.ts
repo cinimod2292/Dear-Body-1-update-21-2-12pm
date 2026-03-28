@@ -493,6 +493,11 @@ export async function getStoreOrderById(orderId: string) {
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  console.info("[orders] getStoreOrderById", {
+    orderId: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+  });
 
   return {
     id: order.id,

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
-import { products } from "../data/products";
+import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 import { formatRand } from "../lib/currency";
@@ -11,13 +11,42 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
 
-  const product = products.find(p => p.id === id);
-  const related = products.filter(p => p.id !== id && p.category === product?.category).slice(0, 4);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [quantity, setQuantity] = useState(1);
   const [wished, setWished] = useState(false);
   const [added, setAdded] = useState(false);
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
+
+  useEffect(() => {
+    if (!id) return;
+
+    setLoading(true);
+    Promise.all([fetchStoreProductById(id), fetchStoreProducts()])
+      .then(([foundProduct, allProducts]) => {
+        setProduct(foundProduct);
+        if (foundProduct) {
+          setRelated(allProducts.filter((item) => item.id !== foundProduct.id && item.category === foundProduct.category).slice(0, 4));
+        } else {
+          setRelated([]);
+        }
+      })
+      .catch(() => {
+        setProduct(null);
+        setRelated([]);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Loading product…</h2>
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -32,12 +61,14 @@ export default function ProductDetail() {
   }
 
   const handleAddToCart = () => {
+    if (!product.variantId || !product.inStock) return;
     addToCart(product, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
+    if (!product.variantId || !product.inStock) return;
     addToCart(product, quantity);
     navigate("/cart");
   };
@@ -188,16 +219,20 @@ export default function ProductDetail() {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleAddToCart}
+                disabled={!product.variantId || !product.inStock}
                 className={`flex-1 py-4 rounded-full font-bold flex items-center justify-center gap-2 transition-all duration-300 ${
                   added
                     ? "bg-green-500 text-white"
-                    : "bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:opacity-90 hover:scale-[1.02] shadow-lg shadow-pink-200"
+                    : product.variantId && product.inStock
+                      ? "bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:opacity-90 hover:scale-[1.02] shadow-lg shadow-pink-200"
+                      : "bg-gray-300 text-gray-600 cursor-not-allowed"
                 }`}
               >
-                {added ? <><Check size={18} /> Added to Cart!</> : <><ShoppingBag size={18} /> Add to Cart</>}
+                {added ? <><Check size={18} /> Added to Cart!</> : <><ShoppingBag size={18} /> {product.variantId && product.inStock ? "Add to Cart" : "Unavailable"}</>}
               </button>
               <button
                 onClick={handleBuyNow}
+                disabled={!product.variantId || !product.inStock}
                 className="flex-1 py-4 rounded-full font-bold border-2 text-gray-800 hover:border-pink-400 hover:text-pink-500 transition-all duration-200"
                 style={{ borderColor: product.color }}
               >

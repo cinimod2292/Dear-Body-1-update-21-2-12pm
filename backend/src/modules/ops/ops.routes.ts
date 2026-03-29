@@ -11,6 +11,7 @@ import {
   getOrderReport,
   getRecentActivity,
   getSalesReport,
+  getShippingRules,
   importNewsletterSubscribers,
   listCoupons,
   listInquiries,
@@ -25,6 +26,7 @@ import {
   updateInquiry,
   updateAdminShippingMethod,
   upsertCoupon,
+  upsertShippingRules,
   upsertShippingMethod,
   upsertTaxRate,
 } from "./ops.service.js";
@@ -54,6 +56,8 @@ export async function opsRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     return reply.send({ data: await deactivateAdminShippingMethod(id) });
   });
+  app.get("/admin/shipping-settings", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await getShippingRules() }));
+  app.put("/admin/shipping-settings", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertShippingRules(request.body) }));
 
   app.get("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await listTaxRates() }));
   app.post("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertTaxRate(request.body) }));

@@ -1,9 +1,23 @@
 import { Link, useNavigate } from "react-router";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
+import { API_BASE } from "../admin/api/client";
+
+type Quote = {
+  subtotalAmount: number;
+  discountAmount: number;
+  shippingAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  shippingMethodId: string | null;
+  shippingMethodInvalid: boolean;
+  freeShippingEnabled: boolean;
+  freeShippingRemaining: number | null;
+  shippingMethods: Array<{ id: string; name: string; price: number }>;
+};
 
 export default function Cart() {
   const { cartItems, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
@@ -13,9 +27,31 @@ export default function Cart() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
 
-  const discount = promoApplied ? cartTotal * 0.2 : 0;
-  const shipping = cartTotal >= 50 ? 0 : 5.99;
-  const total = cartTotal - discount + shipping;
+  const [selectedShippingMethodId, setSelectedShippingMethodId] = useState("");
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const discount = Number(quote?.discountAmount ?? (promoApplied ? cartTotal * 0.2 : 0));
+  const shipping = Number(quote?.shippingAmount ?? 0);
+  const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
+
+  useEffect(() => {
+    const items = cartItems.filter(({ product }) => !!product.backendVariantId).map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    if (!items.length) return;
+    fetch(`${API_BASE}/store/cart/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, shippingMethodId: selectedShippingMethodId || undefined, shippingAddress: { country: "ZA" } }),
+    })
+      .then((r) => r.json())
+      .then((payload) => {
+        const q = payload?.data as Quote | undefined;
+        if (!q) return;
+        setQuote(q);
+        if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
+        else if (q.shippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
+        else if (!selectedShippingMethodId && q.shippingMethods?.length) setSelectedShippingMethodId(q.shippingMethods[0].id);
+      })
+      .catch(() => undefined);
+  }, [cartItems, selectedShippingMethodId]);
 
   const handlePromo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,9 +193,20 @@ export default function Cart() {
 
               {/* Breakdown */}
               <div className="flex flex-col gap-3 pb-5 border-b border-gray-100">
+                {(quote?.shippingMethods ?? []).length ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">Shipping Method</p>
+                    {(quote?.shippingMethods ?? []).map((m) => (
+                      <label key={m.id} className="flex items-center justify-between text-sm">
+                        <span><input className="mr-2" type="radio" checked={selectedShippingMethodId === m.id} onChange={() => setSelectedShippingMethodId(m.id)} />{m.name}</span>
+                        <span>{Number(m.price) === 0 ? "FREE" : formatRand(m.price)}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Subtotal ({cartCount} items)</span>
-                  <span>{formatRand(cartTotal)}</span>
+                  <span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
                 </div>
                 {promoApplied && (
                   <div className="flex justify-between text-green-600 text-sm font-medium">
@@ -171,9 +218,7 @@ export default function Cart() {
                   <span>Shipping</span>
                   <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : formatRand(shipping)}</span>
                 </div>
-                {shipping > 0 && (
-                  <p className="text-xs text-pink-500">Add {formatRand(50 - cartTotal)} more for free shipping!</p>
-                )}
+                {quote?.freeShippingEnabled && (quote.freeShippingRemaining ?? 0) > 0 ? <p className="text-xs text-pink-500">Add {formatRand(Number(quote.freeShippingRemaining))} more for free shipping!</p> : null}
               </div>
 
               <div className="flex justify-between items-center mt-4 mb-6">

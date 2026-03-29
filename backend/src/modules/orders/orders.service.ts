@@ -3,6 +3,7 @@ import {
   applyCouponSchema,
   cartCreateSchema,
   cartItemCreateSchema,
+  cartQuoteSchema,
   cartItemUpdateSchema,
   checkoutSchema,
   orderCancelSchema,
@@ -17,37 +18,104 @@ import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 
-async function recalcCart(cartId: string) {
-  const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
-  if (!cart) throw new AppError(404, "Cart not found", "CART_NOT_FOUND");
+const shippingRulesSchema = z.object({
+  freeShippingEnabled: z.boolean().default(false),
+  freeShippingThreshold: z.coerce.number().nonnegative().default(0),
+});
 
-  const subtotal = cart.items.reduce((sum, item) => sum + Number(item.salePrice ?? item.unitPrice) * item.quantity, 0);
+async function getShippingRules() {
+  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: "shipping", key: "rules" } } });
+  return shippingRulesSchema.parse(existing?.value ?? {});
+}
+
+function isShippingMethodApplicable(method: { isActive: boolean; countryCode?: string | null; stateCode?: string | null }, destination?: { country?: string | null; state?: string | null } | null) {
+  if (!method.isActive) return false;
+  if (!method.countryCode && !method.stateCode) return true;
+  if (!destination?.country) return false;
+  const countryMatch = !method.countryCode || method.countryCode.toUpperCase() === destination.country.toUpperCase();
+  const stateMatch = !method.stateCode || (destination.state ? method.stateCode.toUpperCase() === destination.state.toUpperCase() : false);
+  return countryMatch && stateMatch;
+}
+
+async function calculatePricing(input: {
+  items: Array<{ unitPrice: number; salePrice?: number | null; quantity: number }>;
+  coupon?: { isActive: boolean; minimumAmount?: number | null; discountType: string; discountValue: number } | null;
+  shippingMethod?: { id: string; isActive: boolean; price: number; countryCode?: string | null; stateCode?: string | null } | null;
+  destination?: { country?: string | null; state?: string | null } | null;
+}) {
+  const subtotal = input.items.reduce((sum, item) => sum + Number(item.salePrice ?? item.unitPrice) * item.quantity, 0);
   let discount = 0;
-
-  if (cart.coupon && cart.coupon.isActive) {
-    const minAmt = Number(cart.coupon.minimumAmount ?? 0);
+  if (input.coupon && input.coupon.isActive) {
+    const minAmt = Number(input.coupon.minimumAmount ?? 0);
     if (subtotal >= minAmt) {
-      if (cart.coupon.discountType === "PERCENT") {
-        discount = subtotal * (Number(cart.coupon.discountValue) / 100);
-      } else {
-        discount = Number(cart.coupon.discountValue);
-      }
+      discount = input.coupon.discountType === "PERCENT"
+        ? subtotal * (Number(input.coupon.discountValue) / 100)
+        : Number(input.coupon.discountValue);
     }
   }
 
-  const shipping = Number(cart.shippingMethod?.price ?? 0);
-  const taxRate = cart.shippingAddress ? await prisma.taxRate.findFirst({ where: { country: cart.shippingAddress.country, OR: [{ state: cart.shippingAddress.state ?? undefined }, { state: null }], isActive: true } }) : null;
-  const tax = Math.max(0, subtotal - discount) * Number(taxRate?.rate ?? 0);
-  const total = Math.max(0, subtotal - discount + shipping + tax);
+  const rules = await getShippingRules();
+  const eligibleSubtotal = Math.max(0, subtotal - discount);
+  const shippingMethodValid = input.shippingMethod ? isShippingMethodApplicable(input.shippingMethod, input.destination) : false;
+  let shipping = shippingMethodValid ? Number(input.shippingMethod?.price ?? 0) : 0;
+  const freeShippingApplied = rules.freeShippingEnabled && eligibleSubtotal >= Number(rules.freeShippingThreshold) && shipping > 0;
+  if (freeShippingApplied) {
+    shipping = 0;
+    console.info("[shipping] free-shipping rule applied", { eligibleSubtotal, threshold: rules.freeShippingThreshold });
+  }
+  const taxRate = input.destination?.country
+    ? await prisma.taxRate.findFirst({
+      where: {
+        country: input.destination.country,
+        OR: [{ state: input.destination.state ?? undefined }, { state: null }],
+        isActive: true,
+      },
+    })
+    : null;
+  const tax = eligibleSubtotal * Number(taxRate?.rate ?? 0);
+  const total = Math.max(0, eligibleSubtotal + shipping + tax);
+  const freeShippingRemaining = rules.freeShippingEnabled ? Math.max(0, Number(rules.freeShippingThreshold) - eligibleSubtotal) : null;
+
+  return {
+    subtotalAmount: subtotal,
+    discountAmount: discount,
+    shippingAmount: shipping,
+    taxAmount: tax,
+    totalAmount: total,
+    shippingMethodValid,
+    freeShippingEnabled: rules.freeShippingEnabled,
+    freeShippingThreshold: Number(rules.freeShippingThreshold),
+    freeShippingRemaining,
+    freeShippingApplied,
+  };
+}
+
+async function recalcCart(cartId: string) {
+  const cart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true, coupon: true, shippingMethod: true, shippingAddress: true } });
+  if (!cart) throw new AppError(404, "Cart not found", "CART_NOT_FOUND");
+  const pricing = await calculatePricing({
+    items: cart.items.map((item) => ({ unitPrice: Number(item.unitPrice), salePrice: item.salePrice ? Number(item.salePrice) : null, quantity: item.quantity })),
+    coupon: cart.coupon
+      ? { isActive: cart.coupon.isActive, minimumAmount: Number(cart.coupon.minimumAmount ?? 0), discountType: cart.coupon.discountType, discountValue: Number(cart.coupon.discountValue) }
+      : null,
+    shippingMethod: cart.shippingMethod
+      ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price), countryCode: cart.shippingMethod.countryCode, stateCode: cart.shippingMethod.stateCode }
+      : null,
+    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+  });
+  if (cart.shippingMethodId && !pricing.shippingMethodValid) {
+    console.info("[shipping] invalid shipping method cleared from cart", { cartId, shippingMethodId: cart.shippingMethodId });
+  }
 
   return prisma.cart.update({
     where: { id: cartId },
     data: {
-      subtotalAmount: subtotal,
-      discountAmount: discount,
-      shippingAmount: shipping,
-      taxAmount: tax,
-      totalAmount: total,
+      shippingMethodId: cart.shippingMethodId && !pricing.shippingMethodValid ? null : cart.shippingMethodId,
+      subtotalAmount: pricing.subtotalAmount,
+      discountAmount: pricing.discountAmount,
+      shippingAmount: pricing.shippingAmount,
+      taxAmount: pricing.taxAmount,
+      totalAmount: pricing.totalAmount,
     },
     include: {
       items: true,
@@ -126,8 +194,41 @@ export async function listStoreShippingMethods() {
       id: true,
       name: true,
       price: true,
+      countryCode: true,
+      stateCode: true,
     },
   });
+}
+
+export async function listStoreShippingMethodsForDestination(country?: string, state?: string) {
+  const methods = await listStoreShippingMethods();
+  const filtered = methods.filter((method) => isShippingMethodApplicable({ isActive: true, countryCode: method.countryCode, stateCode: method.stateCode }, { country, state }));
+  console.info("[shipping] methods filtered by location", { country, state, count: filtered.length });
+  return filtered;
+}
+
+export async function quoteCart(rawBody: unknown) {
+  const body = cartQuoteSchema.parse(rawBody);
+  const variants = await prisma.productVariant.findMany({ where: { id: { in: body.items.map((i) => i.variantId) } } });
+  const variantMap = new Map(variants.map((v) => [v.id, v]));
+  const resolvedItems = body.items.map((item) => {
+    const variant = variantMap.get(item.variantId);
+    if (!variant) throw new AppError(404, "Variant not found in quote", "VARIANT_NOT_FOUND");
+    return { unitPrice: Number(variant.price), salePrice: variant.salePrice ? Number(variant.salePrice) : null, quantity: item.quantity };
+  });
+  const shippingMethod = body.shippingMethodId ? await prisma.shippingMethod.findUnique({ where: { id: body.shippingMethodId } }) : null;
+  const pricing = await calculatePricing({
+    items: resolvedItems,
+    shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price), countryCode: shippingMethod.countryCode, stateCode: shippingMethod.stateCode } : null,
+    destination: body.shippingAddress ? { country: body.shippingAddress.country, state: body.shippingAddress.state } : null,
+  });
+  const methods = await listStoreShippingMethodsForDestination(body.shippingAddress?.country, body.shippingAddress?.state);
+  return {
+    ...pricing,
+    shippingMethodId: pricing.shippingMethodValid ? body.shippingMethodId ?? null : null,
+    shippingMethodInvalid: !!body.shippingMethodId && !pricing.shippingMethodValid,
+    shippingMethods: methods,
+  };
 }
 
 export async function getCart(cartId: string) {

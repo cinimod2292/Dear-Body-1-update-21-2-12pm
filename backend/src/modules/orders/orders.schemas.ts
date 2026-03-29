@@ -15,6 +15,16 @@ export const cartItemUpdateSchema = z.object({
   quantity: z.number().int().positive(),
 });
 
+export const cartQuoteSchema = z.object({
+  items: z.array(z.object({ variantId: z.string().cuid(), quantity: z.number().int().positive() })).min(1),
+  shippingMethodId: z.string().cuid().optional(),
+  shippingAddress: z.object({
+    country: z.string().min(2),
+    state: z.string().optional(),
+  }).optional(),
+  couponCode: z.string().optional(),
+});
+
 export const applyCouponSchema = z.object({
   code: z.string().min(2),
 });

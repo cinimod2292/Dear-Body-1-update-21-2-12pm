@@ -28,6 +28,20 @@ type StoreShippingMethod = {
   price: number;
 };
 
+type QuoteTotals = {
+  subtotalAmount: number;
+  discountAmount: number;
+  shippingAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  shippingMethodId: string | null;
+  shippingMethodInvalid: boolean;
+  freeShippingEnabled: boolean;
+  freeShippingThreshold: number;
+  freeShippingRemaining: number | null;
+  shippingMethods: StoreShippingMethod[];
+};
+
 export default function Checkout() {
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
@@ -43,10 +57,9 @@ export default function Checkout() {
   const { customer, token } = useCustomerAuth();
   const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
-
-  const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId) ?? null;
-  const shipping = selectedShippingMethod ? Number(selectedShippingMethod.price) : 0;
-  const total = cartTotal + shipping;
+  const [quote, setQuote] = useState<QuoteTotals | null>(null);
+  const shipping = Number(quote?.shippingAmount ?? 0);
+  const total = Number(quote?.totalAmount ?? cartTotal + shipping);
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -92,17 +105,32 @@ export default function Checkout() {
   }, [searchParams, token]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/store/shipping-methods`)
+    if (cartItems.length === 0) return;
+    const items = cartItems
+      .filter(({ product }) => !!product.backendVariantId)
+      .map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    if (!items.length) return;
+    fetch(`${API_BASE}/store/cart/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items,
+        shippingMethodId: selectedShippingMethodId || undefined,
+        shippingAddress: { country: form.country, state: form.state || undefined },
+      }),
+    })
       .then((r) => r.json())
       .then((payload) => {
-        const methods = (payload?.data || []) as StoreShippingMethod[];
-        setShippingMethods(methods);
-        if (methods.length && !selectedShippingMethodId) {
-          setSelectedShippingMethodId(methods[0].id);
-        }
+        const q = payload?.data as QuoteTotals | undefined;
+        if (!q) return;
+        setQuote(q);
+        setShippingMethods(q.shippingMethods || []);
+        if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
+        else if (q.shippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
+        else if (!selectedShippingMethodId && q.shippingMethods?.length) setSelectedShippingMethodId(q.shippingMethods[0].id);
       })
       .catch(() => undefined);
-  }, []);
+  }, [cartItems, selectedShippingMethodId, form.country, form.state]);
 
 
   useEffect(() => {
@@ -293,7 +321,7 @@ export default function Checkout() {
           orderId: order.id,
           frontendTotal: total,
           backendTotal,
-          cartSubtotal: cartTotal,
+          cartSubtotal: Number(quote?.subtotalAmount ?? cartTotal),
           shipping,
         });
       } else {
@@ -638,12 +666,17 @@ export default function Checkout() {
               </div>
               <div className="border-t border-gray-100 pt-4 flex flex-col gap-2 text-sm">
                 <div className="flex justify-between text-gray-500">
-                  <span>Subtotal</span><span>{formatRand(cartTotal)}</span>
+                  <span>Subtotal</span><span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
                 </div>
                 <div className="flex justify-between text-gray-500">
                   <span>Shipping</span>
                   <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : formatRand(shipping)}</span>
                 </div>
+                {quote?.freeShippingEnabled && (quote.freeShippingRemaining ?? 0) > 0 ? (
+                  <div className="flex justify-between text-gray-500">
+                    <span>Free shipping in</span><span>{formatRand(Number(quote.freeShippingRemaining))}</span>
+                  </div>
+                ) : null}
               </div>
               <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
                 <span className="font-black text-gray-900">Total</span>

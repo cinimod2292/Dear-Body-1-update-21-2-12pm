@@ -4,6 +4,7 @@ import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { formatRand } from "../../lib/currency";
 
 interface Brand { id: string; name: string }
 interface Category { id: string; name: string }
@@ -362,7 +363,7 @@ export default function AdminProductEditor() {
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                     <div>
                       <p className="font-medium text-sm">{v.title || "Variant"} · {v.sku}</p>
-                      <p className="text-xs text-gray-500">Price ${Number(v.price).toFixed(2)}{v.salePrice ? ` · Sale $${Number(v.salePrice).toFixed(2)}` : ""}{v.costPrice ? ` · Cost $${Number(v.costPrice).toFixed(2)}` : ""}</p>
+                      <p className="text-xs text-gray-500">Price {formatRand(Number(v.price))}{v.salePrice ? ` · Sale ${formatRand(Number(v.salePrice))}` : ""}{v.costPrice ? ` · Cost ${formatRand(Number(v.costPrice))}` : ""}</p>
                       <p className="text-xs text-gray-500">Stock {v.inventoryLevel?.quantityOnHand ?? 0} (Low stock at {v.inventoryLevel?.lowStockThreshold ?? 0})</p>
                     </div>
                     <div className="flex items-center gap-2">

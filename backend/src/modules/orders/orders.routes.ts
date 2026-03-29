@@ -11,10 +11,14 @@ import {
   getCustomerOrder,
   getOrder,
   getStoreOrderById,
+  listStoreShippingMethods,
+  listStoreShippingMethodsForDestination,
+  quoteCart,
   listCustomerOrders,
   listOrders,
   removeCartItem,
   resolveStorefrontItems,
+  sendOrderCreatedEmailSafe,
   updateCartItem,
   updateFulfillmentStatus,
   updateOrderStatus,
@@ -33,6 +37,14 @@ export async function ordersRoutes(app: FastifyInstance) {
   };
 
   app.post("/store/cart", async (request, reply) => reply.status(201).send({ data: await createCart(request.body) }));
+  app.get("/store/shipping-methods", async (request, reply) => {
+    const query = request.query as { country?: string; state?: string };
+    if (query.country || query.state) {
+      return reply.send({ data: await listStoreShippingMethodsForDestination(query.country, query.state) });
+    }
+    return reply.send({ data: await listStoreShippingMethods() });
+  });
+  app.post("/store/cart/quote", async (request, reply) => reply.send({ data: await quoteCart(request.body) }));
   app.get("/store/cart/:cartId", async (request, reply) => {
     const { cartId } = request.params as { cartId: string };
     return reply.send({ data: await getCart(cartId) });
@@ -64,9 +76,12 @@ export async function ordersRoutes(app: FastifyInstance) {
         returnUrl: withOrderId(body.payment.returnUrl, order.id),
         cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
+      await sendOrderCreatedEmailSafe(order!.id);
 
       return reply.status(201).send({ data: { order, payment } });
     }
+
+    await sendOrderCreatedEmailSafe(order!.id);
 
     return reply.status(201).send({ data: { order } });
   });

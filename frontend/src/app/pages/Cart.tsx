@@ -52,11 +52,13 @@ export default function Cart() {
   }, [cartItems]);
 
   useEffect(() => {
-    console.info("[cart] summary shipping state", {
+    console.info("[cart] render diagnostics", {
+      cartCount,
       summaryShippingDisplay,
-      freeShippingApplied: quote?.freeShippingApplied ?? false,
+      hasQuote: !!quote,
+      shippingBranch: "no-shipping-method-state",
     });
-  }, [summaryShippingDisplay, quote?.freeShippingApplied]);
+  }, [cartCount, summaryShippingDisplay, quote]);
 
   const handlePromo = (e: React.FormEvent) => {
     e.preventDefault();

@@ -5,6 +5,7 @@ import { useCart } from "../context/CartContext";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { formatRand } from "../lib/currency";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
@@ -510,8 +511,8 @@ export default function Checkout() {
                   <h3 className="font-bold text-gray-900 mb-3">Shipping Method</h3>
                   <div className="space-y-3">
                     {[
-                      { label: "Standard Shipping", time: "5–7 business days", price: shipping === 0 ? "FREE" : "$5.99" },
-                      { label: "Express Shipping", time: "2–3 business days", price: "$9.99" },
+                      { label: "Standard Shipping", time: "5–7 business days", price: shipping === 0 ? "FREE" : formatRand(5.99) },
+                      { label: "Express Shipping", time: "2–3 business days", price: formatRand(9.99) },
                     ].map(opt => (
                       <label key={opt.label} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
                         <div className="flex items-center gap-3">
@@ -570,7 +571,7 @@ export default function Checkout() {
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
                   >
                     <Lock size={16} />
-                    {submitting ? "Redirecting..." : `Pay with Stitch · R${total.toFixed(2)}`}
+                    {submitting ? "Redirecting..." : `Pay with Stitch · ${formatRand(total)}`}
                   </button>
                 </div>
                 {checkoutError ? <p className="text-red-500 text-sm mt-3">{checkoutError}</p> : null}
@@ -596,22 +597,22 @@ export default function Checkout() {
                       <p className="font-bold text-gray-900 text-sm truncate">{product.name}</p>
                       <p className="text-gray-400 text-xs">{product.size}</p>
                     </div>
-                    <span className="font-bold text-gray-900 text-sm shrink-0">R{(product.price * quantity).toFixed(2)}</span>
+                    <span className="font-bold text-gray-900 text-sm shrink-0">{formatRand(product.price * quantity)}</span>
                   </div>
                 ))}
               </div>
               <div className="border-t border-gray-100 pt-4 flex flex-col gap-2 text-sm">
                 <div className="flex justify-between text-gray-500">
-                  <span>Subtotal</span><span>R{cartTotal.toFixed(2)}</span>
+                  <span>Subtotal</span><span>{formatRand(cartTotal)}</span>
                 </div>
                 <div className="flex justify-between text-gray-500">
                   <span>Shipping</span>
-                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : `R${shipping.toFixed(2)}`}</span>
+                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : formatRand(shipping)}</span>
                 </div>
               </div>
               <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
                 <span className="font-black text-gray-900">Total</span>
-                <span className="font-black text-xl text-pink-500">R{total.toFixed(2)}</span>
+                <span className="font-black text-xl text-pink-500">{formatRand(total)}</span>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { ShoppingBag, Heart, Star } from "lucide-react";
 import { Product } from "../data/products";
 import { useCart } from "../context/CartContext";
+import { formatRand } from "../lib/currency";
 
 interface ProductCardProps {
   product: Product;
@@ -97,10 +98,10 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Price */}
           <div className="flex items-center gap-2">
             <span className="font-bold text-gray-900" style={{ color: product.textColor }}>
-              R{product.price.toFixed(2)}
+              {formatRand(product.price)}
             </span>
             {product.originalPrice && (
-              <span className="text-sm text-gray-400 line-through">R{product.originalPrice.toFixed(2)}</span>
+              <span className="text-sm text-gray-400 line-through">{formatRand(product.originalPrice)}</span>
             )}
           </div>
         </div>

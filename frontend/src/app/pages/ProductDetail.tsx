@@ -4,6 +4,7 @@ import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, P
 import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
+import { formatRand } from "../lib/currency";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -72,9 +73,7 @@ export default function ProductDetail() {
     navigate("/cart");
   };
 
-  const savings = product.originalPrice
-    ? ((product.originalPrice - product.price) * quantity).toFixed(2)
-    : null;
+  const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
 
   const badgeColors: Record<string, string> = {
     SALE: "bg-red-500",
@@ -178,10 +177,10 @@ export default function ProductDetail() {
 
             {/* Price */}
             <div className="flex items-baseline gap-3">
-              <span className="font-black text-3xl" style={{ color: product.textColor }}>R{product.price.toFixed(2)}</span>
+              <span className="font-black text-3xl" style={{ color: product.textColor }}>{formatRand(product.price)}</span>
               {product.originalPrice && (
                 <>
-                  <span className="text-gray-400 line-through text-lg">R{product.originalPrice.toFixed(2)}</span>
+                  <span className="text-gray-400 line-through text-lg">{formatRand(product.originalPrice)}</span>
                   <span className="text-red-500 font-bold text-sm bg-red-50 px-2 py-1 rounded-full">
                     SAVE {Math.round((1 - product.price / product.originalPrice) * 100)}%
                   </span>
@@ -211,7 +210,7 @@ export default function ProductDetail() {
                   </button>
                 </div>
                 {savings && (
-                  <span className="text-green-600 text-sm font-medium">You save R{savings}!</span>
+                  <span className="text-green-600 text-sm font-medium">You save {formatRand(savings)}!</span>
                 )}
               </div>
             </div>

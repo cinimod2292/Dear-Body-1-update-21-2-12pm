@@ -3,6 +3,7 @@ import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag } from "lucide-react"
 import { useCart } from "../context/CartContext";
 import { useState } from "react";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { formatRand } from "../lib/currency";
 
 export default function Cart() {
   const { cartItems, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
@@ -102,7 +103,7 @@ export default function Cart() {
                     {/* Price + Remove */}
                     <div className="flex items-center gap-3">
                       <span className="font-black text-lg" style={{ color: product.textColor }}>
-                        R{(product.price * quantity).toFixed(2)}
+                        {formatRand(product.price * quantity)}
                       </span>
                       <button
                         onClick={() => removeFromCart(product.id)}
@@ -158,26 +159,26 @@ export default function Cart() {
               <div className="flex flex-col gap-3 pb-5 border-b border-gray-100">
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Subtotal ({cartCount} items)</span>
-                  <span>R{cartTotal.toFixed(2)}</span>
+                  <span>{formatRand(cartTotal)}</span>
                 </div>
                 {promoApplied && (
                   <div className="flex justify-between text-green-600 text-sm font-medium">
                     <span>Discount (20%)</span>
-                    <span>-R{discount.toFixed(2)}</span>
+                    <span>-{formatRand(discount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Shipping</span>
-                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : `R${shipping.toFixed(2)}`}</span>
+                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : formatRand(shipping)}</span>
                 </div>
                 {shipping > 0 && (
-                  <p className="text-xs text-pink-500">Add R{(50 - cartTotal).toFixed(2)} more for free shipping!</p>
+                  <p className="text-xs text-pink-500">Add {formatRand(50 - cartTotal)} more for free shipping!</p>
                 )}
               </div>
 
               <div className="flex justify-between items-center mt-4 mb-6">
                 <span className="font-black text-gray-900 text-lg">Total</span>
-                <span className="font-black text-2xl text-pink-500">R{total.toFixed(2)}</span>
+                <span className="font-black text-2xl text-pink-500">{formatRand(total)}</span>
               </div>
 
               <button

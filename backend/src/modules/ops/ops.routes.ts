@@ -2,6 +2,8 @@ import { FastifyInstance } from "fastify";
 import {
   bulkCouponAction,
   createNewsletterSubscriber,
+  createAdminShippingMethod,
+  deactivateAdminShippingMethod,
   exportNewsletterCsv,
   getCustomerReport,
   getDashboardKpis,
@@ -12,6 +14,7 @@ import {
   importNewsletterSubscribers,
   listCoupons,
   listInquiries,
+  listAdminShippingMethods,
   listNewsletterSubscribers,
   listShippingMethods,
   listTaxRates,
@@ -20,6 +23,7 @@ import {
   processAbandonedCarts,
   sendAbandonedCartReminder,
   updateInquiry,
+  updateAdminShippingMethod,
   upsertCoupon,
   upsertShippingMethod,
   upsertTaxRate,
@@ -40,6 +44,16 @@ export async function opsRoutes(app: FastifyInstance) {
 
   app.get("/admin/ops/shipping-methods", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await listShippingMethods() }));
   app.put("/admin/ops/shipping-methods", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertShippingMethod(request.body) }));
+  app.get("/admin/shipping-methods", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await listAdminShippingMethods() }));
+  app.post("/admin/shipping-methods", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.status(201).send({ data: await createAdminShippingMethod(request.body) }));
+  app.put("/admin/shipping-methods/:id", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    return reply.send({ data: await updateAdminShippingMethod(id, request.body) });
+  });
+  app.delete("/admin/shipping-methods/:id", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    return reply.send({ data: await deactivateAdminShippingMethod(id) });
+  });
 
   app.get("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await listTaxRates() }));
   app.post("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertTaxRate(request.body) }));

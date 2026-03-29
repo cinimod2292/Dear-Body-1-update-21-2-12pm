@@ -25,11 +25,7 @@ type SavedAddress = {
 type StoreShippingMethod = {
   id: string;
   name: string;
-  code: string;
-  description?: string | null;
   price: number;
-  minDeliveryDays?: number | null;
-  maxDeliveryDays?: number | null;
 };
 
 export default function Checkout() {
@@ -224,11 +220,6 @@ export default function Checkout() {
       }
       if (shippingMethods.length > 0 && !selectedShippingMethodId) {
         throw new Error("Please select a shipping method");
-      }
-
-      const unresolvedItem = cartItems.find(({ product }) => !product.variantId);
-      if (unresolvedItem) {
-        throw new Error(`"${unresolvedItem.product.name}" is currently unavailable for checkout. Please remove it from your cart.`);
       }
 
       const resolveRes = await fetch(`${API_BASE}/store/checkout/resolve-items`, {
@@ -562,7 +553,7 @@ export default function Checkout() {
                           <input type="radio" name="shipping" checked={selectedShippingMethodId === opt.id} onChange={() => setSelectedShippingMethodId(opt.id)} className="accent-pink-500" />
                           <div>
                             <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
-                            <p className="text-gray-400 text-xs">{opt.description || opt.code}</p>
+                            <p className="text-gray-400 text-xs">Fixed-rate shipping</p>
                           </div>
                         </div>
                         <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>

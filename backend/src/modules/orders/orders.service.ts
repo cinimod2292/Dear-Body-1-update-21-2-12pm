@@ -125,11 +125,7 @@ export async function listStoreShippingMethods() {
     select: {
       id: true,
       name: true,
-      code: true,
-      description: true,
       price: true,
-      minDeliveryDays: true,
-      maxDeliveryDays: true,
     },
   });
 }

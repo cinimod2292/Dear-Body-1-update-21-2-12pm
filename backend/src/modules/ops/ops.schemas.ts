@@ -32,6 +32,18 @@ export const shippingMethodSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const adminShippingMethodCreateSchema = z.object({
+  name: z.string().min(1),
+  price: z.coerce.number().nonnegative(),
+  isActive: z.boolean().default(true),
+});
+
+export const adminShippingMethodUpdateSchema = z.object({
+  name: z.string().min(1),
+  price: z.coerce.number().nonnegative(),
+  isActive: z.boolean(),
+});
+
 export const taxRateSchema = z.object({
   country: z.string().min(2),
   state: z.string().optional(),

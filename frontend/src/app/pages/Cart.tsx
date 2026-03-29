@@ -28,33 +28,12 @@ export default function Cart() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
 
-  const [selectedShippingMethodId, setSelectedShippingMethodId] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [shippingMethods, setShippingMethods] = useState<Array<{ id: string; name: string; price: number; description?: string | null }>>([]);
-  const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
   const discount = Number(quote?.discountAmount ?? (promoApplied ? cartTotal * 0.2 : 0));
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
-  const summaryShippingDisplay = (() => {
-    if (!selectedShippingMethodId) return "TBC";
-    if (quote?.freeShippingApplied) return "FREE";
-    if (quote && !quote.shippingMethodInvalid && quote.shippingMethodId === selectedShippingMethodId) return formatRand(Number(quote.shippingAmount ?? 0));
-    if (selectedShippingMethod) return formatRand(Number(selectedShippingMethod.price ?? 0));
-    return "TBC";
-  })();
-  const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
-  const canProceedToCheckout = (quote?.freeShippingApplied ?? false) || !!selectedShippingMethodId;
+  const summaryShippingDisplay = "TBC";
 
-  useEffect(() => {
-    fetch(`${API_BASE}/store/shipping-methods`)
-      .then((r) => r.json())
-      .then((payload) => {
-        const methods = (payload?.data || []) as Array<{ id: string; name: string; price: number; description?: string | null }>;
-        console.info("[cart] fetched storefront shipping methods", { count: methods.length, methods });
-        setShippingMethods(methods);
-      })
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     const items = cartItems.filter(({ product }) => !!product.backendVariantId).map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
@@ -62,7 +41,7 @@ export default function Cart() {
     fetch(`${API_BASE}/store/cart/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, shippingMethodId: selectedShippingMethodId || undefined, shippingAddress: { country: "ZA" } }),
+      body: JSON.stringify({ items, shippingAddress: { country: "ZA" } }),
     })
       .then((r) => r.json())
       .then((payload) => {
@@ -70,21 +49,16 @@ export default function Cart() {
         if (!q) return;
         console.info("[cart] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
-        setShippingMethods(q.shippingMethods || []);
-        if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
-        else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
-  }, [cartItems, selectedShippingMethodId]);
+  }, [cartItems]);
 
   useEffect(() => {
     console.info("[cart] summary shipping state", {
-      selectedShippingMethodId: selectedShippingMethodId || null,
-      selectedShippingMethodName: selectedShippingMethod?.name ?? null,
       summaryShippingDisplay,
       freeShippingApplied: quote?.freeShippingApplied ?? false,
     });
-  }, [selectedShippingMethodId, selectedShippingMethod?.name, summaryShippingDisplay, quote?.freeShippingApplied]);
+  }, [summaryShippingDisplay, quote?.freeShippingApplied]);
 
   const handlePromo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,7 +223,7 @@ export default function Cart() {
                 )}
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Shipping</span>
-                  <span>{summaryShippingDisplay === "FREE" ? <span className="text-green-500 font-medium">FREE</span> : summaryShippingDisplay}</span>
+                  <span>{summaryShippingDisplay}</span>
                 </div>
                 {quote?.freeShippingEnabled && (quote.freeShippingRemaining ?? 0) > 0 ? <p className="text-xs text-pink-500">Add {formatRand(Number(quote.freeShippingRemaining))} more for free shipping!</p> : null}
               </div>
@@ -266,8 +240,6 @@ export default function Cart() {
               >
                 Checkout <ArrowRight size={18} />
               </button>
-              {shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-xs text-red-500 mt-2">Please select a shipping method to continue.</p> : null}
-
               <Link
                 to="/shop"
                 className="block text-center mt-4 text-sm text-gray-400 hover:text-pink-500 transition-colors"

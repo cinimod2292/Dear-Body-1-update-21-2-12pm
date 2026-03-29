@@ -26,6 +26,7 @@ type StoreShippingMethod = {
   id: string;
   name: string;
   price: number;
+  description?: string | null;
 };
 
 type QuoteTotals = {
@@ -581,7 +582,7 @@ export default function Checkout() {
                           <input type="radio" name="shipping" checked={selectedShippingMethodId === opt.id} onChange={() => setSelectedShippingMethodId(opt.id)} className="accent-pink-500" />
                           <div>
                             <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
-                            <p className="text-gray-400 text-xs">Fixed-rate shipping</p>
+                            <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
                           </div>
                         </div>
                         <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>

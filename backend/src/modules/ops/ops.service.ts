@@ -300,7 +300,7 @@ function shippingCodeFromName(name: string) {
 export async function listAdminShippingMethods() {
   return prisma.shippingMethod.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, price: true, isActive: true, countryCode: true, stateCode: true, createdAt: true, updatedAt: true },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
   });
 }
 
@@ -311,11 +311,10 @@ export async function createAdminShippingMethod(rawBody: unknown) {
       name: body.name,
       price: body.price,
       isActive: body.isActive,
-      countryCode: body.countryCode ?? null,
-      stateCode: body.stateCode ?? null,
+      description: body.description ?? null,
       code: shippingCodeFromName(body.name),
     },
-    select: { id: true, name: true, price: true, isActive: true, countryCode: true, stateCode: true, createdAt: true, updatedAt: true },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
   });
 }
 
@@ -325,8 +324,8 @@ export async function updateAdminShippingMethod(id: string, rawBody: unknown) {
   if (!existing) throw new AppError(404, "Shipping method not found", "SHIPPING_METHOD_NOT_FOUND");
   return prisma.shippingMethod.update({
     where: { id },
-    data: { name: body.name, price: body.price, isActive: body.isActive, countryCode: body.countryCode ?? null, stateCode: body.stateCode ?? null },
-    select: { id: true, name: true, price: true, isActive: true, countryCode: true, stateCode: true, createdAt: true, updatedAt: true },
+    data: { name: body.name, price: body.price, isActive: body.isActive, description: body.description ?? null },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
   });
 }
 
@@ -336,7 +335,7 @@ export async function deactivateAdminShippingMethod(id: string) {
   return prisma.shippingMethod.update({
     where: { id },
     data: { isActive: false },
-    select: { id: true, name: true, price: true, isActive: true, countryCode: true, stateCode: true, createdAt: true, updatedAt: true },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
   });
 }
 

@@ -9,9 +9,8 @@ type ShippingMethod = {
   id: string;
   name: string;
   price: number;
+  description?: string | null;
   isActive: boolean;
-  countryCode?: string | null;
-  stateCode?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -24,9 +23,8 @@ export default function AdminShippingMethods() {
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
-  const [countryCode, setCountryCode] = useState("");
-  const [stateCode, setStateCode] = useState("");
 
   const [freeShippingEnabled, setFreeShippingEnabled] = useState(false);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState("0");
@@ -34,9 +32,8 @@ export default function AdminShippingMethods() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editActive, setEditActive] = useState(true);
-  const [editCountryCode, setEditCountryCode] = useState("");
-  const [editStateCode, setEditStateCode] = useState("");
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -79,13 +76,12 @@ export default function AdminShippingMethods() {
     try {
       await apiRequest("/admin/shipping-methods", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), price: Number(price), isActive: active, countryCode: countryCode || null, stateCode: stateCode || null }),
+        body: JSON.stringify({ name: name.trim(), price: Number(price), description: description || null, isActive: active }),
       }, session.accessToken);
       setName("");
       setPrice("");
+      setDescription("");
       setActive(true);
-      setCountryCode("");
-      setStateCode("");
       toast.success("Shipping method created");
       await load();
     } catch (err) {
@@ -97,9 +93,8 @@ export default function AdminShippingMethods() {
     setEditingId(method.id);
     setEditName(method.name);
     setEditPrice(String(Number(method.price).toFixed(2)));
+    setEditDescription(method.description || "");
     setEditActive(method.isActive);
-    setEditCountryCode(method.countryCode || "");
-    setEditStateCode(method.stateCode || "");
   };
 
   const saveEdit = async (e: FormEvent) => {
@@ -108,7 +103,7 @@ export default function AdminShippingMethods() {
     try {
       await apiRequest(`/admin/shipping-methods/${editingId}`, {
         method: "PUT",
-        body: JSON.stringify({ name: editName.trim(), price: Number(editPrice), isActive: editActive, countryCode: editCountryCode || null, stateCode: editStateCode || null }),
+        body: JSON.stringify({ name: editName.trim(), price: Number(editPrice), description: editDescription || null, isActive: editActive }),
       }, session.accessToken);
       setEditingId(null);
       toast.success("Shipping method updated");
@@ -134,11 +129,6 @@ export default function AdminShippingMethods() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-black text-gray-900">Shipping Methods</h2>
-        <p className="text-sm text-gray-500">Manage fixed-rate shipping methods used in checkout.</p>
-      </div>
-
       <section className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="font-bold mb-3">Free Shipping Rules</h3>
         <form onSubmit={saveShippingSettings} className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -150,11 +140,10 @@ export default function AdminShippingMethods() {
 
       <section className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="font-bold mb-3">Create Shipping Method</h3>
-        <form onSubmit={createMethod} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+        <form onSubmit={createMethod} className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <input required className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
           <input required min={0} step="0.01" type="number" className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
-          <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Country (ZA)" value={countryCode} onChange={(e) => setCountryCode(e.target.value.toUpperCase())} />
-          <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="State/Region" value={stateCode} onChange={(e) => setStateCode(e.target.value.toUpperCase())} />
+          <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />Active</label>
           <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Create</button>
         </form>
@@ -162,38 +151,31 @@ export default function AdminShippingMethods() {
 
       <section className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="font-bold mb-3">Current Methods</h3>
-        {methods.length === 0 ? <EmptyState label="No shipping methods yet." /> : (
-          <div className="space-y-2">
-            {methods.map((method) => (
-              <div key={method.id} className="border border-gray-100 rounded-lg p-3">
-                {editingId === method.id ? (
-                  <form onSubmit={saveEdit} className="grid grid-cols-1 md:grid-cols-7 gap-2 items-center">
-                    <input required className="rounded-lg border border-gray-200 px-3 py-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                    <input required min={0} step="0.01" type="number" className="rounded-lg border border-gray-200 px-3 py-2" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
-                    <input className="rounded-lg border border-gray-200 px-3 py-2" value={editCountryCode} onChange={(e) => setEditCountryCode(e.target.value.toUpperCase())} placeholder="Country" />
-                    <input className="rounded-lg border border-gray-200 px-3 py-2" value={editStateCode} onChange={(e) => setEditStateCode(e.target.value.toUpperCase())} placeholder="State" />
-                    <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />Active</label>
-                    <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Save</button>
-                    <button type="button" onClick={() => setEditingId(null)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Cancel</button>
-                  </form>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{method.name}</p>
-                      <p className="text-xs text-gray-500">{formatRand(Number(method.price))} · {method.isActive ? "Active" : "Disabled"} · {method.countryCode || "ALL"}{method.stateCode ? `/${method.stateCode}` : ""}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(method)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Edit</button>
-                      {method.isActive ? (
-                        <button onClick={() => deactivate(method.id)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs">Disable</button>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
+        {methods.length === 0 ? <EmptyState label="No shipping methods yet." /> : methods.map((method) => (
+          <div key={method.id} className="border border-gray-100 rounded-lg p-3 mb-2">
+            {editingId === method.id ? (
+              <form onSubmit={saveEdit} className="grid grid-cols-1 md:grid-cols-6 gap-2 items-center">
+                <input required className="rounded-lg border border-gray-200 px-3 py-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                <input required min={0} step="0.01" type="number" className="rounded-lg border border-gray-200 px-3 py-2" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                <input className="rounded-lg border border-gray-200 px-3 py-2" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+                <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />Active</label>
+                <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Save</button>
+                <button type="button" onClick={() => setEditingId(null)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Cancel</button>
+              </form>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{method.name}</p>
+                  <p className="text-xs text-gray-500">{formatRand(Number(method.price))} · {method.description || "No description"} · {method.isActive ? "Active" : "Disabled"}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => startEdit(method)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Edit</button>
+                  {method.isActive ? <button onClick={() => deactivate(method.id)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs">Disable</button> : null}
+                </div>
               </div>
-            ))}
+            )}
           </div>
-        )}
+        ))}
       </section>
     </div>
   );

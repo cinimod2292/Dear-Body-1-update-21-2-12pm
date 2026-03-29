@@ -28,19 +28,14 @@ async function getShippingRules() {
   return shippingRulesSchema.parse(existing?.value ?? {});
 }
 
-function isShippingMethodApplicable(method: { isActive: boolean; countryCode?: string | null; stateCode?: string | null }, destination?: { country?: string | null; state?: string | null } | null) {
-  if (!method.isActive) return false;
-  if (!method.countryCode && !method.stateCode) return true;
-  if (!destination?.country) return false;
-  const countryMatch = !method.countryCode || method.countryCode.toUpperCase() === destination.country.toUpperCase();
-  const stateMatch = !method.stateCode || (destination.state ? method.stateCode.toUpperCase() === destination.state.toUpperCase() : false);
-  return countryMatch && stateMatch;
+function isShippingMethodApplicable(method: { isActive: boolean }) {
+  return method.isActive;
 }
 
 async function calculatePricing(input: {
   items: Array<{ unitPrice: number; salePrice?: number | null; quantity: number }>;
   coupon?: { isActive: boolean; minimumAmount?: number | null; discountType: string; discountValue: number } | null;
-  shippingMethod?: { id: string; isActive: boolean; price: number; countryCode?: string | null; stateCode?: string | null } | null;
+  shippingMethod?: { id: string; isActive: boolean; price: number } | null;
   destination?: { country?: string | null; state?: string | null } | null;
 }) {
   const subtotal = input.items.reduce((sum, item) => sum + Number(item.salePrice ?? item.unitPrice) * item.quantity, 0);
@@ -56,7 +51,7 @@ async function calculatePricing(input: {
 
   const rules = await getShippingRules();
   const eligibleSubtotal = Math.max(0, subtotal - discount);
-  const shippingMethodValid = input.shippingMethod ? isShippingMethodApplicable(input.shippingMethod, input.destination) : false;
+  const shippingMethodValid = input.shippingMethod ? isShippingMethodApplicable(input.shippingMethod) : false;
   let shipping = shippingMethodValid ? Number(input.shippingMethod?.price ?? 0) : 0;
   const freeShippingApplied = rules.freeShippingEnabled && eligibleSubtotal >= Number(rules.freeShippingThreshold) && shipping > 0;
   if (freeShippingApplied) {
@@ -99,7 +94,7 @@ async function recalcCart(cartId: string) {
       ? { isActive: cart.coupon.isActive, minimumAmount: Number(cart.coupon.minimumAmount ?? 0), discountType: cart.coupon.discountType, discountValue: Number(cart.coupon.discountValue) }
       : null,
     shippingMethod: cart.shippingMethod
-      ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price), countryCode: cart.shippingMethod.countryCode, stateCode: cart.shippingMethod.stateCode }
+      ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
       : null,
     destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
   });
@@ -194,17 +189,15 @@ export async function listStoreShippingMethods() {
       id: true,
       name: true,
       price: true,
-      countryCode: true,
-      stateCode: true,
+      description: true,
     },
   });
 }
 
 export async function listStoreShippingMethodsForDestination(country?: string, state?: string) {
   const methods = await listStoreShippingMethods();
-  const filtered = methods.filter((method) => isShippingMethodApplicable({ isActive: true, countryCode: method.countryCode, stateCode: method.stateCode }, { country, state }));
-  console.info("[shipping] methods filtered by location", { country, state, count: filtered.length });
-  return filtered;
+  console.info("[shipping] methods returned without location filtering", { country, state, count: methods.length });
+  return methods;
 }
 
 export async function quoteCart(rawBody: unknown) {
@@ -219,7 +212,7 @@ export async function quoteCart(rawBody: unknown) {
   const shippingMethod = body.shippingMethodId ? await prisma.shippingMethod.findUnique({ where: { id: body.shippingMethodId } }) : null;
   const pricing = await calculatePricing({
     items: resolvedItems,
-    shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price), countryCode: shippingMethod.countryCode, stateCode: shippingMethod.stateCode } : null,
+    shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price) } : null,
     destination: body.shippingAddress ? { country: body.shippingAddress.country, state: body.shippingAddress.state } : null,
   });
   const methods = await listStoreShippingMethodsForDestination(body.shippingAddress?.country, body.shippingAddress?.state);

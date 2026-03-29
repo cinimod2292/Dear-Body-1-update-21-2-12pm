@@ -16,7 +16,7 @@ type Quote = {
   shippingMethodInvalid: boolean;
   freeShippingEnabled: boolean;
   freeShippingRemaining: number | null;
-  shippingMethods: Array<{ id: string; name: string; price: number }>;
+  shippingMethods: Array<{ id: string; name: string; price: number; description?: string | null }>;
 };
 
 export default function Cart() {
@@ -198,7 +198,7 @@ export default function Cart() {
                     <p className="text-xs font-semibold text-gray-600">Shipping Method</p>
                     {(quote?.shippingMethods ?? []).map((m) => (
                       <label key={m.id} className="flex items-center justify-between text-sm">
-                        <span><input className="mr-2" type="radio" checked={selectedShippingMethodId === m.id} onChange={() => setSelectedShippingMethodId(m.id)} />{m.name}</span>
+                        <span><input className="mr-2" type="radio" checked={selectedShippingMethodId === m.id} onChange={() => setSelectedShippingMethodId(m.id)} />{m.name}{m.description ? ` · ${m.description}` : ""}</span>
                         <span>{Number(m.price) === 0 ? "FREE" : formatRand(m.price)}</span>
                       </label>
                     ))}

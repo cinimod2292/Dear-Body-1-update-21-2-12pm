@@ -4,6 +4,7 @@ import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { formatRand } from "../../lib/currency";
 
 interface OrderDetail {
   id: string;
@@ -161,19 +162,19 @@ export default function AdminOrderDetail() {
         <div><p className="text-xs text-gray-400">Order Status</p><p className="font-semibold">{order.status}</p></div>
         <div><p className="text-xs text-gray-400">Payment Status</p><p className="font-semibold">{order.paymentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Fulfillment</p><p className="font-semibold">{order.fulfillmentStatus}</p></div>
-        <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{order.currency} {Number(order.totalAmount).toFixed(2)}</p></div>
+        <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{formatRand(order.totalAmount)}</p></div>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
           <h3 className="font-bold">Items</h3>
-          {order.items.map((i) => <div key={i.id} className="text-sm border border-gray-100 rounded-lg p-2 flex justify-between"><div><p className="font-medium">{i.productName}</p><p className="text-xs text-gray-500">{i.sku} · {i.variantTitle || ""} · Qty {i.quantity}</p></div><p className="font-semibold">{order.currency} {Number(i.lineTotal).toFixed(2)}</p></div>)}
+          {order.items.map((i) => <div key={i.id} className="text-sm border border-gray-100 rounded-lg p-2 flex justify-between"><div><p className="font-medium">{i.productName}</p><p className="text-xs text-gray-500">{i.sku} · {i.variantTitle || ""} · Qty {i.quantity}</p></div><p className="font-semibold">{formatRand(i.lineTotal)}</p></div>)}
           <div className="text-sm border-t border-gray-100 pt-3 space-y-1">
-            <p>Subtotal: {order.currency} {Number(order.subtotalAmount).toFixed(2)}</p>
-            <p>Discount: -{order.currency} {Number(order.discountAmount).toFixed(2)}</p>
-            <p>Tax: {order.currency} {Number(order.taxAmount).toFixed(2)}</p>
-            <p>Shipping: {order.currency} {Number(order.shippingAmount).toFixed(2)}</p>
-            <p className="font-bold">Total: {order.currency} {Number(order.totalAmount).toFixed(2)}</p>
+            <p>Subtotal: {formatRand(order.subtotalAmount)}</p>
+            <p>Discount: -{formatRand(order.discountAmount)}</p>
+            <p>Tax: {formatRand(order.taxAmount)}</p>
+            <p>Shipping: {formatRand(order.shippingAmount)}</p>
+            <p className="font-bold">Total: {formatRand(order.totalAmount)}</p>
           </div>
         </section>
 
@@ -205,7 +206,7 @@ export default function AdminOrderDetail() {
           {order.payments.map((p) => (
             <div key={p.id} className="text-sm border border-gray-100 rounded-lg p-2">
               <p className="font-medium">{p.provider.toUpperCase()} · {p.status}</p>
-              <p className="text-xs text-gray-500">Ref: {p.referenceId || "-"} · {new Date(p.createdAt).toLocaleString()} · {order.currency} {Number(p.amount).toFixed(2)}</p>
+              <p className="text-xs text-gray-500">Ref: {p.referenceId || "-"} · {new Date(p.createdAt).toLocaleString()} · {formatRand(p.amount)}</p>
               {p.errorMessage ? <p className="text-xs text-red-600 mt-1">{p.errorMessage}</p> : null}
             </div>
           ))}

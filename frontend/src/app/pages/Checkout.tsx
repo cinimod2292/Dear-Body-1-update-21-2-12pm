@@ -142,6 +142,13 @@ export default function Checkout() {
         const payload = await res.json().catch(() => null);
         if (!res.ok || !payload?.data) return;
         const status = payload.data.paymentStatus;
+        console.info("[checkout] processing poll payload", payload.data);
+        console.info("[checkout] processing poll", {
+          orderId,
+          orderStatus: payload.data.status,
+          orderPaymentStatus: payload.data.paymentStatus,
+          shouldClearProcessing: status === "PAID" || status === "FAILED",
+        });
         setOrderInfo((prev) => prev ? { ...prev, paymentStatus: status, status: payload.data.status } : prev);
         if (status === "PAID") {
           setProcessingPayment(false);
@@ -265,6 +272,10 @@ export default function Checkout() {
         });
         const retryPayload = await retryRes.json().catch(() => null);
         if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
+          console.info("[checkout] retry redirect", {
+            checkoutUrlFromBackend: retryPayload.data.checkoutUrl,
+            redirectTarget: retryPayload.data.checkoutUrl,
+          });
           window.location.href = retryPayload.data.checkoutUrl;
           return;
         }
@@ -281,6 +292,10 @@ export default function Checkout() {
       setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
+        console.info("[checkout] initial redirect", {
+          checkoutUrlFromBackend: payment.checkoutUrl,
+          redirectTarget: payment.checkoutUrl,
+        });
         window.location.href = payment.checkoutUrl;
       }
     } catch (err) {

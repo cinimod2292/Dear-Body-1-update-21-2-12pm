@@ -106,6 +106,19 @@ export default function Checkout() {
   }, [searchParams, token]);
 
   useEffect(() => {
+    fetch(`${API_BASE}/store/shipping-methods`)
+      .then((r) => r.json())
+      .then((payload) => {
+        const methods = (payload?.data || []) as StoreShippingMethod[];
+        console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
+        if (!methods.length) return;
+        setShippingMethods((prev) => (prev.length ? prev : methods));
+        if (!selectedShippingMethodId) setSelectedShippingMethodId(methods[0].id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (cartItems.length === 0) return;
     const items = cartItems
       .filter(({ product }) => !!product.backendVariantId)
@@ -124,6 +137,7 @@ export default function Checkout() {
       .then((payload) => {
         const q = payload?.data as QuoteTotals | undefined;
         if (!q) return;
+        console.info("[checkout] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
         setShippingMethods(q.shippingMethods || []);
         if (q.shippingMethodInvalid) setSelectedShippingMethodId("");

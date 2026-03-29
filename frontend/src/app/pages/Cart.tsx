@@ -29,9 +29,22 @@ export default function Cart() {
 
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [shippingMethods, setShippingMethods] = useState<Array<{ id: string; name: string; price: number; description?: string | null }>>([]);
   const discount = Number(quote?.discountAmount ?? (promoApplied ? cartTotal * 0.2 : 0));
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/shipping-methods`)
+      .then((r) => r.json())
+      .then((payload) => {
+        const methods = (payload?.data || []) as Array<{ id: string; name: string; price: number; description?: string | null }>;
+        console.info("[cart] fetched storefront shipping methods", { count: methods.length, methods });
+        setShippingMethods(methods);
+        if (!selectedShippingMethodId && methods.length) setSelectedShippingMethodId(methods[0].id);
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const items = cartItems.filter(({ product }) => !!product.backendVariantId).map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
@@ -45,7 +58,9 @@ export default function Cart() {
       .then((payload) => {
         const q = payload?.data as Quote | undefined;
         if (!q) return;
+        console.info("[cart] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
+        setShippingMethods(q.shippingMethods || []);
         if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
         else if (q.shippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
         else if (!selectedShippingMethodId && q.shippingMethods?.length) setSelectedShippingMethodId(q.shippingMethods[0].id);
@@ -193,10 +208,10 @@ export default function Cart() {
 
               {/* Breakdown */}
               <div className="flex flex-col gap-3 pb-5 border-b border-gray-100">
-                {(quote?.shippingMethods ?? []).length ? (
+                {shippingMethods.length ? (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-gray-600">Shipping Method</p>
-                    {(quote?.shippingMethods ?? []).map((m) => (
+                    {shippingMethods.map((m) => (
                       <label key={m.id} className="flex items-center justify-between text-sm">
                         <span><input className="mr-2" type="radio" checked={selectedShippingMethodId === m.id} onChange={() => setSelectedShippingMethodId(m.id)} />{m.name}{m.description ? ` · ${m.description}` : ""}</span>
                         <span>{Number(m.price) === 0 ? "FREE" : formatRand(m.price)}</span>

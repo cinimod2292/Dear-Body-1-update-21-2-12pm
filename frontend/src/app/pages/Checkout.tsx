@@ -40,6 +40,7 @@ type QuoteTotals = {
   freeShippingEnabled: boolean;
   freeShippingThreshold: number;
   freeShippingRemaining: number | null;
+  freeShippingApplied?: boolean;
   shippingMethods: StoreShippingMethod[];
 };
 
@@ -61,6 +62,16 @@ export default function Checkout() {
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? cartTotal + shipping);
+  const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
+  const summaryShippingDisplay = (() => {
+    if (!selectedShippingMethodId) return "TBC";
+    if (quote?.freeShippingApplied) return "FREE";
+    if (quote && !quote.shippingMethodInvalid && quote.shippingMethodId === selectedShippingMethodId) {
+      return formatRand(Number(quote.shippingAmount ?? 0));
+    }
+    if (selectedShippingMethod) return formatRand(Number(selectedShippingMethod.price ?? 0));
+    return "TBC";
+  })();
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -113,7 +124,6 @@ export default function Checkout() {
         console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
         if (!methods.length) return;
         setShippingMethods((prev) => (prev.length ? prev : methods));
-        if (!selectedShippingMethodId) setSelectedShippingMethodId(methods[0].id);
       })
       .catch(() => undefined);
   }, []);
@@ -141,11 +151,19 @@ export default function Checkout() {
         setQuote(q);
         setShippingMethods(q.shippingMethods || []);
         if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
-        else if (q.shippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
-        else if (!selectedShippingMethodId && q.shippingMethods?.length) setSelectedShippingMethodId(q.shippingMethods[0].id);
+        else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
   }, [cartItems, selectedShippingMethodId, form.country, form.state]);
+
+  useEffect(() => {
+    console.info("[checkout] summary shipping state", {
+      selectedShippingMethodId: selectedShippingMethodId || null,
+      selectedShippingMethodName: selectedShippingMethod?.name ?? null,
+      summaryShippingDisplay,
+      freeShippingApplied: quote?.freeShippingApplied ?? false,
+    });
+  }, [selectedShippingMethodId, selectedShippingMethod?.name, summaryShippingDisplay, quote?.freeShippingApplied]);
 
 
   useEffect(() => {
@@ -685,7 +703,7 @@ export default function Checkout() {
                 </div>
                 <div className="flex justify-between text-gray-500">
                   <span>Shipping</span>
-                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : formatRand(shipping)}</span>
+                  <span>{summaryShippingDisplay === "FREE" ? <span className="text-green-500 font-medium">FREE</span> : summaryShippingDisplay}</span>
                 </div>
                 {quote?.freeShippingEnabled && (quote.freeShippingRemaining ?? 0) > 0 ? (
                   <div className="flex justify-between text-gray-500">

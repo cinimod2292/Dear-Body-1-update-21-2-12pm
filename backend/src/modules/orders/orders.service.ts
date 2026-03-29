@@ -118,6 +118,22 @@ export async function createCart(rawBody: unknown) {
   return recalcCart(cart.id);
 }
 
+export async function listStoreShippingMethods() {
+  return prisma.shippingMethod.findMany({
+    where: { isActive: true },
+    orderBy: { price: "asc" },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      description: true,
+      price: true,
+      minDeliveryDays: true,
+      maxDeliveryDays: true,
+    },
+  });
+}
+
 export async function getCart(cartId: string) {
   return recalcCart(cartId);
 }
@@ -238,6 +254,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
 
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
+  console.info("[checkout] incoming shipping selection", {
+    cartId,
+    incomingShippingAddressId: shippingAddress.id,
+    incomingShippingMethodId: body.shippingMethodId ?? null,
+  });
   await prisma.cart.update({
     where: { id: cartId },
     data: {
@@ -248,6 +269,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   const cart = await recalcCart(cartId);
   console.info("[checkout] finalized cart totals before order create", {
     cartId: cart.id,
+    persistedShippingAddressId: cart.shippingAddressId,
+    persistedShippingMethodId: cart.shippingMethodId,
     subtotalAmount: Number(cart.subtotalAmount),
     shippingAmount: Number(cart.shippingAmount),
     taxAmount: Number(cart.taxAmount),

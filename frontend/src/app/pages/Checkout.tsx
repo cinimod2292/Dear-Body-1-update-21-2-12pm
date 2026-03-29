@@ -22,6 +22,16 @@ type SavedAddress = {
   isDefaultShipping: boolean;
 };
 
+type StoreShippingMethod = {
+  id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  price: number;
+  minDeliveryDays?: number | null;
+  maxDeliveryDays?: number | null;
+};
+
 export default function Checkout() {
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
@@ -35,8 +45,11 @@ export default function Checkout() {
   const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
   const [orderNumber] = useState(() => Math.floor(Math.random() * 900000) + 100000);
   const { customer, token } = useCustomerAuth();
+  const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
+  const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
 
-  const shipping = cartTotal >= 50 ? 0 : 5.99;
+  const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId) ?? null;
+  const shipping = selectedShippingMethod ? Number(selectedShippingMethod.price) : 0;
   const total = cartTotal + shipping;
 
   const [form, setForm] = useState({
@@ -81,6 +94,19 @@ export default function Checkout() {
     if (!orderId) return;
     loadExistingOrder(orderId).catch(() => undefined);
   }, [searchParams, token]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/shipping-methods`)
+      .then((r) => r.json())
+      .then((payload) => {
+        const methods = (payload?.data || []) as StoreShippingMethod[];
+        setShippingMethods(methods);
+        if (methods.length && !selectedShippingMethodId) {
+          setSelectedShippingMethodId(methods[0].id);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
 
   useEffect(() => {
@@ -196,6 +222,9 @@ export default function Checkout() {
         navigate(`/account/login?next=${encodeURIComponent("/checkout")}`);
         return;
       }
+      if (shippingMethods.length > 0 && !selectedShippingMethodId) {
+        throw new Error("Please select a shipping method");
+      }
 
       const unresolvedItem = cartItems.find(({ product }) => !product.variantId);
       if (unresolvedItem) {
@@ -219,7 +248,7 @@ export default function Checkout() {
       const cartRes = await fetch(`${API_BASE}/store/cart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currency: "USD" }),
+        body: JSON.stringify({ currency: "ZAR" }),
       });
       const cartPayload = await cartRes.json().catch(() => null);
       if (!cartRes.ok) throw new Error(cartPayload?.error?.message || "Failed to create checkout cart");
@@ -243,6 +272,7 @@ export default function Checkout() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           email: customer.email,
+          shippingMethodId: selectedShippingMethodId || undefined,
           shippingAddress: {
             firstName: form.firstName,
             lastName: form.lastName,
@@ -526,21 +556,19 @@ export default function Checkout() {
                 <div className="mt-6">
                   <h3 className="font-bold text-gray-900 mb-3">Shipping Method</h3>
                   <div className="space-y-3">
-                    {[
-                      { label: "Standard Shipping", time: "5–7 business days", price: shipping === 0 ? "FREE" : formatRand(5.99) },
-                      { label: "Express Shipping", time: "2–3 business days", price: formatRand(9.99) },
-                    ].map(opt => (
-                      <label key={opt.label} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
+                    {(shippingMethods.length ? shippingMethods : []).map((opt) => (
+                      <label key={opt.id} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
                         <div className="flex items-center gap-3">
-                          <input type="radio" name="shipping" defaultChecked={opt.label === "Standard Shipping"} className="accent-pink-500" />
+                          <input type="radio" name="shipping" checked={selectedShippingMethodId === opt.id} onChange={() => setSelectedShippingMethodId(opt.id)} className="accent-pink-500" />
                           <div>
-                            <p className="font-bold text-gray-900 text-sm">{opt.label}</p>
-                            <p className="text-gray-400 text-xs">{opt.time}</p>
+                            <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
+                            <p className="text-gray-400 text-xs">{opt.description || opt.code}</p>
                           </div>
                         </div>
-                        <span className="font-bold text-gray-700">{opt.price}</span>
+                        <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>
                       </label>
                     ))}
+                    {shippingMethods.length === 0 ? <p className="text-sm text-gray-500">No shipping methods configured.</p> : null}
                   </div>
                 </div>
 

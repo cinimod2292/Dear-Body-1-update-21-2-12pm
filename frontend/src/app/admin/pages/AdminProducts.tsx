@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { AdminTable } from "../components/AdminTable";
 import { AdminProduct, PaginatedResult } from "../types/admin";
 import { toast } from "sonner";
+import { formatRand } from "../../lib/currency";
 
 interface ProductListResponse {
   data: PaginatedResult<AdminProduct>;
@@ -470,7 +471,7 @@ export default function AdminProducts() {
               render: (item) => {
                 const first = item.variants?.[0];
                 if (!first) return <span className="text-xs text-gray-400">No variants</span>;
-                return <div className="text-xs"><p>${Number(first.price).toFixed(2)}</p>{first.salePrice ? <p className="text-green-600">Sale ${Number(first.salePrice).toFixed(2)}</p> : null}</div>;
+                return <div className="text-xs"><p>{formatRand(Number(first.price))}</p>{first.salePrice ? <p className="text-green-600">Sale {formatRand(Number(first.salePrice))}</p> : null}</div>;
               },
             },
             {

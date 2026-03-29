@@ -118,6 +118,22 @@ export async function createCart(rawBody: unknown) {
   return recalcCart(cart.id);
 }
 
+export async function listStoreShippingMethods() {
+  return prisma.shippingMethod.findMany({
+    where: { isActive: true },
+    orderBy: { price: "asc" },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      description: true,
+      price: true,
+      minDeliveryDays: true,
+      maxDeliveryDays: true,
+    },
+  });
+}
+
 export async function getCart(cartId: string) {
   return recalcCart(cartId);
 }
@@ -209,6 +225,10 @@ async function sendOrderCreatedEmail(orderId: string) {
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
+export async function sendOrderCreatedEmailSafe(orderId: string) {
+  await sendOrderCreatedEmail(orderId).catch(() => undefined);
+}
+
 async function sendShippingEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email || !order.trackingNumber) return;
@@ -226,13 +246,38 @@ async function recordOrderEvent(orderId: string, actorId: string | undefined, ev
 
 export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
   const body = checkoutSchema.parse(rawBody);
-  const cart = await recalcCart(cartId);
+  const existingCart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true } });
+  if (!existingCart) throw new AppError(404, "Cart not found", "CART_NOT_FOUND");
 
-  if (cart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
-  if (cart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
+  if (existingCart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
+  if (existingCart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
 
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
+  console.info("[checkout] incoming shipping selection", {
+    cartId,
+    incomingShippingAddressId: shippingAddress.id,
+    incomingShippingMethodId: body.shippingMethodId ?? null,
+  });
+  await prisma.cart.update({
+    where: { id: cartId },
+    data: {
+      shippingAddressId: shippingAddress.id,
+      shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
+    },
+  });
+  const cart = await recalcCart(cartId);
+  console.info("[checkout] finalized cart totals before order create", {
+    cartId: cart.id,
+    persistedShippingAddressId: cart.shippingAddressId,
+    persistedShippingMethodId: cart.shippingMethodId,
+    subtotalAmount: Number(cart.subtotalAmount),
+    shippingAmount: Number(cart.shippingAmount),
+    taxAmount: Number(cart.taxAmount),
+    discountAmount: Number(cart.discountAmount),
+    totalAmount: Number(cart.totalAmount),
+    shippingMethodId: cart.shippingMethodId,
+  });
 
   const customerId = authenticatedCustomerId;
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
@@ -320,7 +365,6 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
-  await sendOrderCreatedEmail(order.id).catch(() => undefined);
 
   return prisma.order.findUnique({
     where: { id: order.id },
@@ -490,6 +534,11 @@ export async function getStoreOrderById(orderId: string) {
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  console.info("[orders] getStoreOrderById", {
+    orderId: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+  });
 
   return {
     id: order.id,

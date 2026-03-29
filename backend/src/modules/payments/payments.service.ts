@@ -325,13 +325,18 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
 
   const payableAmount = Number(order.totalAmount);
   const subtotalAmount = Number(order.subtotalAmount);
-  if (Number.isFinite(subtotalAmount) && subtotalAmount !== payableAmount) {
-    console.info("[payments] using payable total amount for gateway initiation", {
-      orderId: order.id,
-      subtotalAmount,
-      totalAmount: payableAmount,
-    });
-  }
+  const shippingAmount = Number(order.shippingAmount);
+  const taxAmount = Number(order.taxAmount);
+  const discountAmount = Number(order.discountAmount);
+  console.info("[payments] order amounts at gateway initiation", {
+    orderId: order.id,
+    subtotalAmount,
+    shippingAmount,
+    taxAmount,
+    discountAmount,
+    totalAmount: payableAmount,
+    amountPassedToGatewayMajor: payableAmount,
+  });
 
   const result = await gateway.initiatePayment(config, {
     orderId: order.id,

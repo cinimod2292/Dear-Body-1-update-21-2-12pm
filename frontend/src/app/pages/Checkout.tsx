@@ -266,6 +266,22 @@ export default function Checkout() {
       const order = checkoutPayload?.data?.order;
       const payment = checkoutPayload?.data?.payment;
       if (!order?.id) throw new Error("Order creation failed");
+      const backendTotal = Number(order.totalAmount ?? 0);
+      if (Math.abs(backendTotal - total) > 0.001) {
+        console.warn("[checkout] frontend/backend total mismatch", {
+          orderId: order.id,
+          frontendTotal: total,
+          backendTotal,
+          cartSubtotal: cartTotal,
+          shipping,
+        });
+      } else {
+        console.info("[checkout] frontend/backend total match", {
+          orderId: order.id,
+          frontendTotal: total,
+          backendTotal,
+        });
+      }
 
       const finalReturnUrl = `${window.location.origin}/checkout?orderId=${order.id}`;
       if (payment && !payment.checkoutUrl) {

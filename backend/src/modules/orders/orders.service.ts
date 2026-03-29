@@ -230,13 +230,31 @@ async function recordOrderEvent(orderId: string, actorId: string | undefined, ev
 
 export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
   const body = checkoutSchema.parse(rawBody);
-  const cart = await recalcCart(cartId);
+  const existingCart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true } });
+  if (!existingCart) throw new AppError(404, "Cart not found", "CART_NOT_FOUND");
 
-  if (cart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
-  if (cart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
+  if (existingCart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
+  if (existingCart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
 
   const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
   const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
+  await prisma.cart.update({
+    where: { id: cartId },
+    data: {
+      shippingAddressId: shippingAddress.id,
+      shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
+    },
+  });
+  const cart = await recalcCart(cartId);
+  console.info("[checkout] finalized cart totals before order create", {
+    cartId: cart.id,
+    subtotalAmount: Number(cart.subtotalAmount),
+    shippingAmount: Number(cart.shippingAmount),
+    taxAmount: Number(cart.taxAmount),
+    discountAmount: Number(cart.discountAmount),
+    totalAmount: Number(cart.totalAmount),
+    shippingMethodId: cart.shippingMethodId,
+  });
 
   const customerId = authenticatedCustomerId;
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });

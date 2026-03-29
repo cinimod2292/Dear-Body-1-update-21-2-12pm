@@ -72,6 +72,8 @@ export default function Checkout() {
     if (selectedShippingMethod) return formatRand(Number(selectedShippingMethod.price ?? 0));
     return "TBC";
   })();
+  const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
+  const canProceedToPayment = (quote?.freeShippingApplied ?? false) || !!selectedShippingMethodId;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -279,8 +281,8 @@ export default function Checkout() {
         navigate(`/account/login?next=${encodeURIComponent("/checkout")}`);
         return;
       }
-      if (shippingMethods.length > 0 && !selectedShippingMethodId) {
-        throw new Error("Please select a shipping method");
+      if (!canProceedToPayment) {
+        throw new Error("Please select a shipping method to continue.");
       }
 
       const resolveRes = await fetch(`${API_BASE}/store/checkout/resolve-items`, {
@@ -663,13 +665,14 @@ export default function Checkout() {
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting}
-                    className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
+                    disabled={submitting || !canProceedToPayment}
+                    className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Lock size={16} />
                     {submitting ? "Redirecting..." : `Pay with Stitch · ${formatRand(total)}`}
                   </button>
                 </div>
+                {shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-red-500 text-sm mt-3">Please select a shipping method to continue.</p> : null}
                 {checkoutError ? <p className="text-red-500 text-sm mt-3">{checkoutError}</p> : null}
               </form>
             )}

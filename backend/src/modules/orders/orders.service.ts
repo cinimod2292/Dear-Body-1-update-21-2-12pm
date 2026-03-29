@@ -357,6 +357,19 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
     },
   });
   const cart = await recalcCart(cartId);
+  const checkoutPricing = await calculatePricing({
+    items: cart.items.map((item) => ({ unitPrice: Number(item.unitPrice), salePrice: item.salePrice ? Number(item.salePrice) : null, quantity: item.quantity })),
+    coupon: cart.coupon
+      ? { isActive: cart.coupon.isActive, minimumAmount: Number(cart.coupon.minimumAmount ?? 0), discountType: cart.coupon.discountType, discountValue: Number(cart.coupon.discountValue) }
+      : null,
+    shippingMethod: cart.shippingMethod
+      ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
+      : null,
+    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+  });
+  if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId) {
+    throw new AppError(400, "Please select a shipping method to continue.", "SHIPPING_METHOD_REQUIRED");
+  }
   console.info("[checkout] finalized cart totals before order create", {
     cartId: cart.id,
     persistedShippingAddressId: cart.shippingAddressId,

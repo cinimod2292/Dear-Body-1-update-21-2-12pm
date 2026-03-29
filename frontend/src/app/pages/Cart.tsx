@@ -17,7 +17,6 @@ type Quote = {
   freeShippingEnabled: boolean;
   freeShippingRemaining: number | null;
   freeShippingApplied?: boolean;
-  shippingMethods: Array<{ id: string; name: string; price: number; description?: string | null }>;
 };
 
 export default function Cart() {
@@ -47,7 +46,6 @@ export default function Cart() {
       .then((payload) => {
         const q = payload?.data as Quote | undefined;
         if (!q) return;
-        console.info("[cart] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
       })
       .catch(() => undefined);

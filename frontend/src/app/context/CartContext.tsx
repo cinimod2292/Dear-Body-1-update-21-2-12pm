@@ -17,19 +17,38 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const CUID_REGEX = /^c[a-z0-9]{24}$/;
+
+function isCuid(value: unknown): value is string {
+  return typeof value === "string" && CUID_REGEX.test(value);
+}
+
+function sanitizeStoredCart(raw: unknown): CartItem[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.filter((entry): entry is CartItem => {
+    const quantity = (entry as { quantity?: unknown })?.quantity;
+    const product = (entry as { product?: Product })?.product;
+    if (!product || !isCuid(product.id)) return false;
+    if (!isCuid(product.variantId)) return false;
+    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) return false;
+    return true;
+  });
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     const stored = localStorage.getItem("storefront_cart");
     if (!stored) return [];
     try {
-      return JSON.parse(stored);
+      return sanitizeStoredCart(JSON.parse(stored));
     } catch {
       return [];
     }
   });
 
   const addToCart = (product: Product, quantity = 1) => {
+    if (!isCuid(product.variantId)) return;
     setCartItems(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {

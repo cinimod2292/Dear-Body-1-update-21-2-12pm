@@ -3,7 +3,7 @@ import { z } from "zod";
 export const cartCreateSchema = z.object({
   customerId: z.string().cuid().optional(),
   sessionId: z.string().optional(),
-  currency: z.string().length(3).default("USD"),
+  currency: z.string().length(3).default("ZAR"),
 });
 
 export const cartItemCreateSchema = z.object({

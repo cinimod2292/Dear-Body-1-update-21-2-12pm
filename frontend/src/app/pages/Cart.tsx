@@ -42,6 +42,8 @@ export default function Cart() {
     if (selectedShippingMethod) return formatRand(Number(selectedShippingMethod.price ?? 0));
     return "TBC";
   })();
+  const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
+  const canProceedToCheckout = (quote?.freeShippingApplied ?? false) || !!selectedShippingMethodId;
 
   useEffect(() => {
     fetch(`${API_BASE}/store/shipping-methods`)
@@ -259,10 +261,12 @@ export default function Cart() {
 
               <button
                 onClick={() => navigate(customer ? "/checkout" : "/account/login?next=%2Fcheckout")}
+                disabled={!canProceedToCheckout}
                 className="w-full py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black text-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
               >
                 Checkout <ArrowRight size={18} />
               </button>
+              {shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-xs text-red-500 mt-2">Please select a shipping method to continue.</p> : null}
 
               <Link
                 to="/shop"

@@ -3,6 +3,7 @@ import { apiRequest, API_BASE } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { formatRand } from "../../lib/currency";
 
 export default function AdminOperations() {
   const { session } = useAdminAuth();
@@ -129,7 +130,7 @@ export default function AdminOperations() {
       </div>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-gray-200 rounded-xl p-4"><p className="text-xs text-gray-500">Revenue</p><p className="text-xl font-black">{Number(dashboard?.revenue ?? 0).toFixed(2)}</p></div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4"><p className="text-xs text-gray-500">Revenue</p><p className="text-xl font-black">{formatRand(Number(dashboard?.revenue ?? 0))}</p></div>
         <div className="bg-white border border-gray-200 rounded-xl p-4"><p className="text-xs text-gray-500">Orders</p><p className="text-xl font-black">{dashboard?.ordersCount ?? 0}</p></div>
         <div className="bg-white border border-gray-200 rounded-xl p-4"><p className="text-xs text-gray-500">Customers</p><p className="text-xl font-black">{dashboard?.customersCount ?? 0}</p></div>
         <div className="bg-white border border-gray-200 rounded-xl p-4"><p className="text-xs text-gray-500">Low Stock</p><p className="text-xl font-black">{dashboard?.lowStockCount ?? 0}</p></div>
@@ -137,7 +138,7 @@ export default function AdminOperations() {
 
       <section className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="font-bold mb-2">Sales Summary</h3>
-        <p className="text-sm text-gray-600">Gross: {Number(sales?.gross ?? 0).toFixed(2)} · Discounts: {Number(sales?.discounts ?? 0).toFixed(2)} · AOV: {Number(sales?.averageOrderValue ?? 0).toFixed(2)}</p>
+        <p className="text-sm text-gray-600">Gross: {formatRand(Number(sales?.gross ?? 0))} · Discounts: {formatRand(Number(sales?.discounts ?? 0))} · AOV: {formatRand(Number(sales?.averageOrderValue ?? 0))}</p>
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">

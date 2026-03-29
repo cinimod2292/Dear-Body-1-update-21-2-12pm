@@ -4,6 +4,7 @@ import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { formatRand } from "../../lib/currency";
 
 interface CustomerDetail {
   id: string;
@@ -125,7 +126,7 @@ export default function AdminCustomerDetail() {
 
       <section className="bg-white border border-gray-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div><p className="text-xs text-gray-400">Status</p><p className="font-semibold">{customer.status}</p></div>
-        <div><p className="text-xs text-gray-400">LTV / AOV</p><p className="font-semibold">${Number(customer.lifetimeValue).toFixed(2)} / ${Number(customer.averageOrderValue).toFixed(2)}</p></div>
+        <div><p className="text-xs text-gray-400">LTV / AOV</p><p className="font-semibold">{formatRand(customer.lifetimeValue)} / {formatRand(customer.averageOrderValue)}</p></div>
         <div><p className="text-xs text-gray-400">Last Order</p><p className="font-semibold">{customer.lastOrderAt ? new Date(customer.lastOrderAt).toLocaleString() : "—"}</p></div>
         <div><p className="text-xs text-gray-400">Email</p><p className="font-semibold">{customer.email}</p></div>
         <div><p className="text-xs text-gray-400">Phone</p><p className="font-semibold">{customer.phone || "—"}</p></div>
@@ -179,14 +180,14 @@ export default function AdminCustomerDetail() {
         <section className="bg-white border border-gray-200 rounded-xl p-5">
           <h3 className="font-bold mb-3">Order History</h3>
           <div className="space-y-2 max-h-56 overflow-auto">
-            {customer.orders.length === 0 ? <p className="text-sm text-gray-500">No orders yet.</p> : customer.orders.map((o) => <div key={o.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-center justify-between"><div><p className="font-medium">#{o.orderNumber}</p><p className="text-xs text-gray-500">{o.status} · {new Date(o.placedAt).toLocaleDateString()}</p></div><p className="font-semibold">${Number(o.totalAmount).toFixed(2)}</p></div>)}
+            {customer.orders.length === 0 ? <p className="text-sm text-gray-500">No orders yet.</p> : customer.orders.map((o) => <div key={o.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-center justify-between"><div><p className="font-medium">#{o.orderNumber}</p><p className="text-xs text-gray-500">{o.status} · {new Date(o.placedAt).toLocaleDateString()}</p></div><p className="font-semibold">{formatRand(o.totalAmount)}</p></div>)}
           </div>
         </section>
 
         <section className="bg-white border border-gray-200 rounded-xl p-5">
           <h3 className="font-bold mb-3">Abandoned Carts</h3>
           <div className="space-y-2 max-h-56 overflow-auto">
-            {customer.abandonedCarts.length === 0 ? <p className="text-sm text-gray-500">No abandoned carts.</p> : customer.abandonedCarts.map((c) => <div key={c.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-center justify-between"><div><p>{c.itemCount} items</p><p className="text-xs text-gray-500">{new Date(c.abandonedAt).toLocaleString()}</p></div><p className="font-semibold">${Number(c.totalValue).toFixed(2)}</p></div>)}
+            {customer.abandonedCarts.length === 0 ? <p className="text-sm text-gray-500">No abandoned carts.</p> : customer.abandonedCarts.map((c) => <div key={c.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-center justify-between"><div><p>{c.itemCount} items</p><p className="text-xs text-gray-500">{new Date(c.abandonedAt).toLocaleString()}</p></div><p className="font-semibold">{formatRand(c.totalValue)}</p></div>)}
           </div>
         </section>
       </div>

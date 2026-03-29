@@ -200,6 +200,17 @@ export default function Cart() {
 
               {/* Breakdown */}
               <div className="flex flex-col gap-3 pb-5 border-b border-gray-100">
+                {shippingMethods.length ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">Shipping Method</p>
+                    {shippingMethods.map((m) => (
+                      <label key={m.id} className="flex items-center justify-between text-sm">
+                        <span><input className="mr-2" type="radio" checked={selectedShippingMethodId === m.id} onChange={() => setSelectedShippingMethodId(m.id)} />{m.name}{m.description ? ` · ${m.description}` : ""}</span>
+                        <span>{Number(m.price) === 0 ? "FREE" : formatRand(m.price)}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Subtotal ({cartCount} items)</span>
                   <span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
@@ -224,6 +235,7 @@ export default function Cart() {
 
               <button
                 onClick={() => navigate(customer ? "/checkout" : "/account/login?next=%2Fcheckout")}
+                disabled={!canProceedToCheckout}
                 className="w-full py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black text-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
               >
                 Checkout <ArrowRight size={18} />

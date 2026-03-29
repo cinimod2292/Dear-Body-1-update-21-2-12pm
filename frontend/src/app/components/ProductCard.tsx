@@ -13,9 +13,11 @@ export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
   const [wished, setWished] = useState(false);
   const [added, setAdded] = useState(false);
+  const purchasable = Boolean(product.variantId) && product.inStock;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (!purchasable) return;
     addToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -59,14 +61,17 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Add to cart overlay */}
           <button
             onClick={handleAddToCart}
+            disabled={!purchasable}
             className={`absolute bottom-3 left-3 right-3 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all duration-300 ${
               added
                 ? "bg-green-500 text-white scale-95"
-                : "bg-white/95 text-gray-800 hover:bg-gradient-to-r hover:from-pink-500 hover:to-orange-400 hover:text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                : purchasable
+                  ? "bg-white/95 text-gray-800 hover:bg-gradient-to-r hover:from-pink-500 hover:to-orange-400 hover:text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
             }`}
           >
             <ShoppingBag size={15} />
-            {added ? "Added!" : "Add to Cart"}
+            {added ? "Added!" : purchasable ? "Add to Cart" : "Unavailable"}
           </button>
         </div>
 

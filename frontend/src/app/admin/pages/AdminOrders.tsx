@@ -5,6 +5,7 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
+import { formatRand } from "../../lib/currency";
 
 interface OrderRow {
   id: string;
@@ -85,7 +86,7 @@ export default function AdminOrders() {
             { key: "status", header: "Status", render: (o) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{o.status}</span> },
             { key: "payment", header: "Payment", render: (o) => <span className="text-xs">{o.paymentStatus}</span> },
             { key: "fulfillment", header: "Fulfillment", render: (o) => <span className="text-xs">{o.fulfillmentStatus}</span> },
-            { key: "total", header: "Total", render: (o) => <span className="text-xs font-semibold">{o.currency} {Number(o.totalAmount).toFixed(2)}</span> },
+            { key: "total", header: "Total", render: (o) => <span className="text-xs font-semibold">{formatRand(o.totalAmount)}</span> },
             { key: "action", header: "", render: (o) => <Link to={`/admin/orders/${o.id}`} className="text-xs text-blue-600 hover:underline">View</Link> },
           ]}
         />

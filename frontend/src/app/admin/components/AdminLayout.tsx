@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/customers", label: "Customers", permission: "crm:read" },
   { to: "/admin/orders", label: "Orders", permission: "orders:read" },
   { to: "/admin/operations", label: "Operations", permission: "dashboard:read" },
+  { to: "/admin/shipping-methods", label: "Shipping Methods", permission: "settings:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
   { to: "/admin/cms", label: "Website CMS", permission: "settings:read" },

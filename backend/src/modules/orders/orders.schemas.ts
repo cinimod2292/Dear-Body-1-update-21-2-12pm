@@ -3,7 +3,7 @@ import { z } from "zod";
 export const cartCreateSchema = z.object({
   customerId: z.string().cuid().optional(),
   sessionId: z.string().optional(),
-  currency: z.string().length(3).default("USD"),
+  currency: z.string().length(3).default("ZAR"),
 });
 
 export const cartItemCreateSchema = z.object({
@@ -13,6 +13,16 @@ export const cartItemCreateSchema = z.object({
 
 export const cartItemUpdateSchema = z.object({
   quantity: z.number().int().positive(),
+});
+
+export const cartQuoteSchema = z.object({
+  items: z.array(z.object({ variantId: z.string().cuid(), quantity: z.number().int().positive() })).min(1),
+  shippingMethodId: z.string().cuid().optional(),
+  shippingAddress: z.object({
+    country: z.string().min(2),
+    state: z.string().optional(),
+  }).optional(),
+  couponCode: z.string().optional(),
 });
 
 export const applyCouponSchema = z.object({

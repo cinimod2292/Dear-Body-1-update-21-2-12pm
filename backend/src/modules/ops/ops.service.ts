@@ -13,6 +13,9 @@ import {
   taxRateSchema,
   abandonedCartReminderSchema,
   abandonedCartConfigSchema,
+  adminShippingMethodCreateSchema,
+  adminShippingMethodUpdateSchema,
+  shippingRulesSchema,
 } from "./ops.schemas.js";
 
 const ABANDONED_SCOPE = "abandoned_cart";
@@ -281,6 +284,74 @@ export async function bulkCouponAction(rawBody: unknown) {
 
 export async function listShippingMethods() {
   return prisma.shippingMethod.findMany({ orderBy: { name: "asc" } });
+}
+
+function shippingCodeFromName(name: string) {
+  const normalized = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 24);
+  const prefix = normalized || "SHIPPING";
+  return `${prefix}_${Date.now().toString().slice(-6)}`;
+}
+
+export async function listAdminShippingMethods() {
+  return prisma.shippingMethod.findMany({
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
+  });
+}
+
+export async function createAdminShippingMethod(rawBody: unknown) {
+  const body = adminShippingMethodCreateSchema.parse(rawBody);
+  return prisma.shippingMethod.create({
+    data: {
+      name: body.name,
+      price: body.price,
+      isActive: body.isActive,
+      description: body.description ?? null,
+      code: shippingCodeFromName(body.name),
+    },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
+  });
+}
+
+export async function updateAdminShippingMethod(id: string, rawBody: unknown) {
+  const body = adminShippingMethodUpdateSchema.parse(rawBody);
+  const existing = await prisma.shippingMethod.findUnique({ where: { id } });
+  if (!existing) throw new AppError(404, "Shipping method not found", "SHIPPING_METHOD_NOT_FOUND");
+  return prisma.shippingMethod.update({
+    where: { id },
+    data: { name: body.name, price: body.price, isActive: body.isActive, description: body.description ?? null },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
+  });
+}
+
+export async function deactivateAdminShippingMethod(id: string) {
+  const existing = await prisma.shippingMethod.findUnique({ where: { id } });
+  if (!existing) throw new AppError(404, "Shipping method not found", "SHIPPING_METHOD_NOT_FOUND");
+  return prisma.shippingMethod.update({
+    where: { id },
+    data: { isActive: false },
+    select: { id: true, name: true, price: true, description: true, isActive: true, createdAt: true, updatedAt: true },
+  });
+}
+
+export async function getShippingRules() {
+  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: "shipping", key: "rules" } } });
+  return shippingRulesSchema.parse(existing?.value ?? {});
+}
+
+export async function upsertShippingRules(rawBody: unknown) {
+  const body = shippingRulesSchema.parse(rawBody);
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: "shipping", key: "rules" } },
+    update: { value: body as any },
+    create: { scope: "shipping", key: "rules", value: body as any },
+  });
+  return body;
 }
 
 export async function upsertShippingMethod(rawBody: unknown) {

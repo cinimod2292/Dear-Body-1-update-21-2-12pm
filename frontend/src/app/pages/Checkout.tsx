@@ -226,15 +226,18 @@ export default function Checkout() {
         throw new Error("Please select a shipping method");
       }
 
+      const unresolvedItem = cartItems.find(({ product }) => !product.variantId);
+      if (unresolvedItem) {
+        throw new Error(`"${unresolvedItem.product.name}" is currently unavailable for checkout. Please remove it from your cart.`);
+      }
+
       const resolveRes = await fetch(`${API_BASE}/store/checkout/resolve-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: cartItems.map(({ product, quantity }) => ({
-            variantId: product.backendVariantId,
-            productId: product.backendProductId,
-            slug: product.slug ?? product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
-            productName: product.name,
+            variantId: product.variantId as string,
+            productId: product.id,
             quantity,
           })),
         }),

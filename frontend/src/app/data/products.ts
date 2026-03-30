@@ -4,6 +4,7 @@ export interface Product {
   id: string;
   slug: string;
   variantId: string | null;
+  backendVariantId?: string | null;
   name: string;
   tagline: string;
   price: number;

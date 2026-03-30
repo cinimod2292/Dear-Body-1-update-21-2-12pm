@@ -16,7 +16,7 @@ interface MediaDetailResponse {
     updatedAt: string;
     usage: {
       galleryCount: number;
-      products: Array<{ id: string; name: string }>;
+      products: Array<{ id: string; name: string; sku: string | null }>;
     };
   };
 }
@@ -354,6 +354,9 @@ function MediaDetailsModal({
   const [altText, setAltText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [assignSku, setAssignSku] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [unlinkingSku, setUnlinkingSku] = useState<string | null>(null);
 
   const loadAsset = async () => {
     if (!accessToken || !mediaId) return;
@@ -364,6 +367,7 @@ function MediaDetailsModal({
       setAsset(res.data);
       setFilename(res.data.filename);
       setAltText(res.data.altText ?? "");
+      setAssignSku(res.data.usage.products[0]?.sku ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load media details");
     } finally {
@@ -437,6 +441,47 @@ function MediaDetailsModal({
     }
   };
 
+  const assignToSku = async () => {
+    if (!accessToken || !mediaId || !assignSku.trim()) return;
+    try {
+      setAssigning(true);
+      setError(null);
+      await apiRequest(`/admin/media/${mediaId}/assign-product`, {
+        method: "POST",
+        body: JSON.stringify({
+          sku: assignSku.trim(),
+          replaceExisting: true,
+        }),
+      }, accessToken);
+      toast.success(`Assigned to SKU ${assignSku.trim()}`);
+      await loadAsset();
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign SKU");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const unlinkSku = async (sku: string) => {
+    if (!accessToken || !mediaId || !sku) return;
+    try {
+      setUnlinkingSku(sku);
+      setError(null);
+      await apiRequest(`/admin/media/${mediaId}/unlink-product`, {
+        method: "POST",
+        body: JSON.stringify({ sku }),
+      }, accessToken);
+      toast.success(`Unlinked SKU ${sku}`);
+      await loadAsset();
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unlink SKU");
+    } finally {
+      setUnlinkingSku(null);
+    }
+  };
+
   if (!mediaId) return null;
 
   return (
@@ -507,8 +552,44 @@ function MediaDetailsModal({
                   Attached to {asset.usage.galleryCount} product gallery {asset.usage.galleryCount === 1 ? "entry" : "entries"}.
                 </p>
                 {asset.usage.products.length > 0 ? (
-                  <p className="text-xs text-gray-600">Products: {asset.usage.products.map((p) => p.name).join(", ")}</p>
-                ) : null}
+                  <div className="space-y-2">
+                    {asset.usage.products.map((p) => (
+                      <div key={`${p.id}-${p.sku ?? "no-sku"}`} className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1">
+                        <p className="text-xs text-gray-600">
+                          {p.name}
+                          {p.sku ? <span className="text-gray-400"> · SKU {p.sku}</span> : null}
+                        </p>
+                        {p.sku ? (
+                          <button
+                            onClick={() => unlinkSku(p.sku as string)}
+                            disabled={unlinkingSku === p.sku}
+                            className="px-2 py-1 text-[11px] rounded border border-gray-200 disabled:opacity-50"
+                          >
+                            {unlinkingSku === p.sku ? "Unlinking..." : "Unlink"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-xs text-gray-500">Not linked to any product yet.</p>}
+                <div className="pt-2 border-t border-gray-100 space-y-2">
+                  <label className="block text-xs text-gray-700">
+                    Assign to product SKU
+                    <input
+                      value={assignSku}
+                      onChange={(e) => setAssignSku(e.target.value)}
+                      placeholder="e.g. DB-SERUM-001"
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                    />
+                  </label>
+                  <button
+                    onClick={assignToSku}
+                    disabled={assigning || !assignSku.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs disabled:opacity-50"
+                  >
+                    {assigning ? "Assigning..." : "Assign SKU"}
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-lg border border-gray-200 p-3 text-sm space-y-3">

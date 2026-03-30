@@ -51,6 +51,13 @@ export async function buildApp() {
 
   app.register(authPlugin);
 
+  app.addContentTypeParser(/^application\/octet-stream(?:\s*;.*)?$/i, { parseAs: "buffer" }, (_request, body, done) => {
+    done(null, body);
+  });
+  app.addContentTypeParser(/^image\/.*/i, { parseAs: "buffer" }, (_request, body, done) => {
+    done(null, body);
+  });
+
   const localUploadRoot = path.resolve(process.cwd(), ".local-uploads");
   const resolveLocalUploadPath = (storageKey: string) => {
     const sanitized = storageKey.replace(/^\/+/, "");
@@ -68,11 +75,17 @@ export async function buildApp() {
     const filePath = resolveLocalUploadPath(storageKey);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-    const chunks: Buffer[] = [];
-    for await (const chunk of request.raw) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    await fs.writeFile(filePath, Buffer.concat(chunks));
+    const contentType = request.headers["content-type"] ?? null;
+    const bodyBuffer = (() => {
+      if (Buffer.isBuffer(request.body)) return request.body;
+      if (typeof request.body === "string") return Buffer.from(request.body);
+      return Buffer.alloc(0);
+    })();
+    const size = bodyBuffer.length;
+    request.log.info({ storageKey, contentType, size }, "Writing local-upload file");
+
+    await fs.writeFile(filePath, bodyBuffer);
+    request.log.info({ storageKey, filePath, size }, "Local-upload file write success");
 
     return reply.status(200).send({ ok: true });
   });

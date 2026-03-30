@@ -44,6 +44,16 @@ type QuoteTotals = {
   shippingMethods: StoreShippingMethod[];
 };
 
+function normalizeCountry(value: string | null | undefined): string {
+  if (!value) return "";
+  const raw = value.trim();
+  if (!raw) return "";
+  const normalized = raw.toLowerCase().replace(/[\s_-]+/g, " ");
+  if (normalized === "za" || normalized === "south africa") return "South Africa";
+  if (normalized === "us" || normalized === "usa" || normalized === "united states" || normalized === "united states of america") return "United States";
+  return raw;
+}
+
 export default function Checkout() {
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
@@ -206,7 +216,7 @@ export default function Checkout() {
           city: prev.city || preferred.city,
           state: prev.state || preferred.state || "",
           zip: prev.zip || preferred.postalCode,
-          country: prev.country || preferred.country,
+          country: preferred.country ? normalizeCountry(preferred.country) : prev.country,
           phone: prev.phone || preferred.phone || "",
         }));
       })
@@ -264,7 +274,7 @@ export default function Checkout() {
       city: selected.city,
       state: selected.state || "",
       zip: selected.postalCode,
-      country: selected.country,
+      country: normalizeCountry(selected.country),
       phone: selected.phone || prev.phone,
     }));
   };
@@ -537,22 +547,6 @@ export default function Checkout() {
             {step === "contact" && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h2 className="font-black text-gray-900 text-xl mb-6">Contact Information</h2>
-                {savedAddresses.length > 0 ? (
-                  <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
-                    <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
-                    <select
-                      value={selectedAddressId}
-                      onChange={(e) => applySavedAddress(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm"
-                    >
-                      {savedAddresses.map((address) => (
-                        <option value={address.id} key={address.id}>
-                          {(address.recipientName || "Address")} — {address.line1}, {address.city}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },
@@ -585,6 +579,22 @@ export default function Checkout() {
             {step === "shipping" && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h2 className="font-black text-gray-900 text-xl mb-6">Shipping Address</h2>
+                {savedAddresses.length > 0 ? (
+                  <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                    <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
+                    <select
+                      value={selectedAddressId}
+                      onChange={(e) => applySavedAddress(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      {savedAddresses.map((address) => (
+                        <option value={address.id} key={address.id}>
+                          {(address.recipientName || "Address")} — {address.line1}, {address.city}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { key: "address", label: "Street Address", placeholder: "123 Main St", full: true },

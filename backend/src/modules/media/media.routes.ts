@@ -1,9 +1,11 @@
+import fs from "node:fs/promises";
 import { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
+import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { prepareUpload } from "./upload.service.js";
+import { prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
@@ -13,6 +15,13 @@ export async function mediaRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = createUploadSchema.parse(request.body);
       const prepared = await prepareUpload(body.filename, body.mimeType);
+      request.log.info({
+        uploadProvider: env.UPLOAD_PROVIDER,
+        publicBaseUrl: env.PUBLIC_BASE_URL ?? null,
+        resolvedLocalPublicBaseUrl: env.UPLOAD_PROVIDER === "s3" ? null : resolveLocalPublicBaseUrl(),
+        storageKey: prepared.storageKey,
+        uploadUrl: prepared.uploadUrl,
+      }, "Prepared media upload");
       return reply.send({ data: prepared });
     },
   );
@@ -22,6 +31,31 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = finalizeUploadSchema.parse(request.body);
+      const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey);
+
+      if (env.UPLOAD_PROVIDER === "local") {
+        const localPath = resolveLocalUploadPath(body.storageKey);
+        request.log.info({
+          storageKey: body.storageKey,
+          localPath,
+          resolvedPublicUrl,
+          publicBaseUrl: env.PUBLIC_BASE_URL ?? null,
+        }, "Finalizing local media upload");
+
+        try {
+          await fs.access(localPath);
+        } catch {
+          request.log.error({
+            storageKey: body.storageKey,
+            localPath,
+            resolvedPublicUrl,
+          }, "Finalize failed: local upload file missing");
+          throw new AppError(422, "Uploaded file not found for storage key; upload may have failed or landed on a different runtime instance.", "MEDIA_UPLOAD_FILE_MISSING", {
+            storageKey: body.storageKey,
+          });
+        }
+      }
+
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: body.storageKey.split("/").pop() ?? body.storageKey,
@@ -29,14 +63,72 @@ export async function mediaRoutes(app: FastifyInstance) {
           byteSize: Number(body.metadata?.byteSize ?? 0),
           kind: body.kind ?? "FILE",
           storageKey: body.storageKey,
-          publicUrl: body.publicUrl,
+          publicUrl: resolvedPublicUrl,
           altText: body.altText,
           uploadedById: request.user.sub,
           metadata: body.metadata as Prisma.InputJsonValue | undefined,
         },
       });
 
+      request.log.info({
+        mediaAssetId: asset.id,
+        storageKey: asset.storageKey,
+        publicUrl: asset.publicUrl,
+      }, "Media upload finalized");
       return reply.send({ data: asset });
+    },
+  );
+
+  app.get(
+    "/admin/media/local-upload/diagnostics",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+    async (request, reply) => {
+      const query = request.query as { limit?: string };
+      const limit = Math.min(Math.max(Number(query.limit ?? 200) || 200, 1), 500);
+      const localBaseUrl = (() => {
+        try {
+          return resolveLocalPublicBaseUrl();
+        } catch {
+          return null;
+        }
+      })();
+
+      const candidates = await prisma.mediaAsset.findMany({
+        where: {
+          OR: [
+            { publicUrl: { contains: "/local-upload/", mode: "insensitive" } },
+            { storageKey: { startsWith: "uploads/" } },
+          ],
+        },
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, storageKey: true, publicUrl: true, createdAt: true },
+      });
+
+      const results = await Promise.all(candidates.map(async (asset) => {
+        const localPath = resolveLocalUploadPath(asset.storageKey);
+        const expectedPublicUrl = `${localBaseUrl ?? "<PUBLIC_BASE_URL_UNSET>"}/local-upload/${asset.storageKey}`;
+        try {
+          await fs.access(localPath);
+          return { ...asset, localPath, expectedPublicUrl, fileExists: true };
+        } catch {
+          return { ...asset, localPath, expectedPublicUrl, fileExists: false };
+        }
+      }));
+
+      const missing = results.filter((row) => !row.fileExists);
+      request.log.info({
+        checked: results.length,
+        missing: missing.length,
+      }, "Completed local-upload diagnostics");
+
+      return reply.send({
+        data: {
+          checked: results.length,
+          missing: missing.length,
+          items: missing,
+        },
+      });
     },
   );
 

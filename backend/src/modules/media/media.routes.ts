@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, updateMediaAssetSchema } from "./media.schemas.js";
+import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
 import { prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
@@ -171,7 +171,11 @@ export async function mediaRoutes(app: FastifyInstance) {
           galleries: {
             select: {
               product: {
-                select: { id: true, name: true },
+                select: {
+                  id: true,
+                  name: true,
+                  variants: { select: { sku: true }, orderBy: { createdAt: "asc" }, take: 1 },
+                },
               },
             },
             take: 5,
@@ -190,10 +194,108 @@ export async function mediaRoutes(app: FastifyInstance) {
           ...asset,
           usage: {
             galleryCount: asset._count.galleries,
-            products: asset.galleries.map((entry) => entry.product),
+            products: asset.galleries.map((entry) => ({
+              id: entry.product.id,
+              name: entry.product.name,
+              sku: entry.product.variants[0]?.sku ?? null,
+            })),
           },
         },
       });
+    },
+  );
+
+  app.post(
+    "/admin/media/:mediaId/assign-product",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const body = assignMediaToProductSchema.parse(request.body);
+
+      const [asset, variant] = await Promise.all([
+        prisma.mediaAsset.findUnique({ where: { id: mediaId }, select: { id: true } }),
+        prisma.productVariant.findUnique({
+          where: { sku: body.sku },
+          include: { product: { select: { id: true, name: true } } },
+        }),
+      ]);
+      if (!asset) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
+      if (!variant) throw new AppError(404, `SKU "${body.sku}" not found`, "SKU_NOT_FOUND");
+
+      if (body.replaceExisting) {
+        await prisma.productGalleryImage.deleteMany({
+          where: {
+            mediaAssetId: mediaId,
+            productId: { not: variant.product.id },
+          },
+        });
+      }
+
+      const maxPosition = await prisma.productGalleryImage.aggregate({
+        where: { productId: variant.product.id },
+        _max: { position: true },
+      });
+      const position = (maxPosition._max.position ?? -1) + 1;
+
+      await prisma.productGalleryImage.upsert({
+        where: {
+          productId_mediaAssetId: {
+            productId: variant.product.id,
+            mediaAssetId: mediaId,
+          },
+        },
+        update: {},
+        create: {
+          productId: variant.product.id,
+          mediaAssetId: mediaId,
+          position,
+        },
+      });
+
+      request.log.info({
+        mediaId,
+        sku: body.sku,
+        productId: variant.product.id,
+        replaceExisting: body.replaceExisting,
+      }, "Assigned media to product");
+
+      return reply.send({
+        data: {
+          mediaId,
+          sku: body.sku,
+          product: variant.product,
+        },
+      });
+    },
+  );
+
+  app.post(
+    "/admin/media/:mediaId/unlink-product",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const body = unlinkMediaFromProductSchema.parse(request.body);
+
+      const variant = await prisma.productVariant.findUnique({
+        where: { sku: body.sku },
+        select: { productId: true },
+      });
+      if (!variant) throw new AppError(404, `SKU "${body.sku}" not found`, "SKU_NOT_FOUND");
+
+      const removed = await prisma.productGalleryImage.deleteMany({
+        where: {
+          mediaAssetId: mediaId,
+          productId: variant.productId,
+        },
+      });
+
+      request.log.info({
+        mediaId,
+        sku: body.sku,
+        removed: removed.count,
+      }, "Unlinked media from product");
+
+      return reply.send({ data: { removed: removed.count } });
     },
   );
 

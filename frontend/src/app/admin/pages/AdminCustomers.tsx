@@ -5,6 +5,7 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
+import { formatRand } from "../../lib/currency";
 
 interface CustomerListItem {
   id: string;
@@ -120,7 +121,7 @@ export default function AdminCustomers() {
             { key: "name", header: "Customer", render: (c) => <div><p className="font-semibold">{[c.firstName, c.lastName].filter(Boolean).join(" ") || "Unnamed"}</p><p className="text-xs text-gray-500">{c.email}</p></div> },
             { key: "status", header: "Status", render: (c) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{c.status}</span> },
             { key: "consent", header: "Marketing", render: (c) => <span className="text-xs">Email: {c.marketingEmailConsent ? "Yes" : "No"} · SMS: {c.marketingSmsConsent ? "Yes" : "No"}</span> },
-            { key: "ltv", header: "LTV / AOV", render: (c) => <span className="text-xs">${Number(c.lifetimeValue).toFixed(2)} / ${Number(c.averageOrderValue).toFixed(2)}</span> },
+            { key: "ltv", header: "LTV / AOV", render: (c) => <span className="text-xs">{formatRand(c.lifetimeValue)} / {formatRand(c.averageOrderValue)}</span> },
             { key: "lastOrder", header: "Last Order", render: (c) => <span className="text-xs">{c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString() : "—"}</span> },
             { key: "risk", header: "Risk Signals", render: (c) => <span className="text-xs">{(c.abandonedCarts?.length ?? 0) > 0 ? "Abandoned cart" : "—"}</span> },
             { key: "actions", header: "", render: (c) => <Link to={`/admin/customers/${c.id}`} className="text-xs text-blue-600 hover:underline">Open CRM</Link> },

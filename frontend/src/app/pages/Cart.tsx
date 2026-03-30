@@ -1,8 +1,23 @@
 import { Link, useNavigate } from "react-router";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { formatRand } from "../lib/currency";
+import { API_BASE } from "../admin/api/client";
+
+type Quote = {
+  subtotalAmount: number;
+  discountAmount: number;
+  shippingAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  shippingMethodId: string | null;
+  shippingMethodInvalid: boolean;
+  freeShippingEnabled: boolean;
+  freeShippingRemaining: number | null;
+  freeShippingApplied?: boolean;
+};
 
 export default function Cart() {
   const { cartItems, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
@@ -12,9 +27,39 @@ export default function Cart() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
 
-  const discount = promoApplied ? cartTotal * 0.2 : 0;
-  const shipping = cartTotal >= 50 ? 0 : 5.99;
-  const total = cartTotal - discount + shipping;
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const discount = Number(quote?.discountAmount ?? (promoApplied ? cartTotal * 0.2 : 0));
+  const shipping = Number(quote?.shippingAmount ?? 0);
+  const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
+  const summaryShippingDisplay = "TBC";
+
+
+  useEffect(() => {
+    const items = cartItems.filter(({ product }) => !!product.backendVariantId).map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    if (!items.length) return;
+    fetch(`${API_BASE}/store/cart/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, shippingAddress: { country: "ZA" } }),
+    })
+      .then((r) => r.json())
+      .then((payload) => {
+        const q = payload?.data as Quote | undefined;
+        if (!q) return;
+        setQuote(q);
+      })
+      .catch(() => undefined);
+  }, [cartItems]);
+
+  useEffect(() => {
+    console.info("[cart] render diagnostics", {
+      cartCount,
+      summaryShippingDisplay,
+      hasQuote: !!quote,
+      shippingBranch: "no-shipping-method-state",
+      cartRenderVersion: "2026-03-30-cart-hotfix",
+    });
+  }, [cartCount, summaryShippingDisplay, quote]);
 
   const handlePromo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +147,7 @@ export default function Cart() {
                     {/* Price + Remove */}
                     <div className="flex items-center gap-3">
                       <span className="font-black text-lg" style={{ color: product.textColor }}>
-                        R{(product.price * quantity).toFixed(2)}
+                        {formatRand(product.price * quantity)}
                       </span>
                       <button
                         onClick={() => removeFromCart(product.id)}
@@ -158,26 +203,24 @@ export default function Cart() {
               <div className="flex flex-col gap-3 pb-5 border-b border-gray-100">
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Subtotal ({cartCount} items)</span>
-                  <span>R{cartTotal.toFixed(2)}</span>
+                  <span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
                 </div>
                 {promoApplied && (
                   <div className="flex justify-between text-green-600 text-sm font-medium">
                     <span>Discount (20%)</span>
-                    <span>-R{discount.toFixed(2)}</span>
+                    <span>-{formatRand(discount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600 text-sm">
                   <span>Shipping</span>
-                  <span>{shipping === 0 ? <span className="text-green-500 font-medium">FREE</span> : `R${shipping.toFixed(2)}`}</span>
+                  <span>{summaryShippingDisplay}</span>
                 </div>
-                {shipping > 0 && (
-                  <p className="text-xs text-pink-500">Add R{(50 - cartTotal).toFixed(2)} more for free shipping!</p>
-                )}
+                {quote?.freeShippingEnabled && (quote.freeShippingRemaining ?? 0) > 0 ? <p className="text-xs text-pink-500">Add {formatRand(Number(quote.freeShippingRemaining))} more for free shipping!</p> : null}
               </div>
 
               <div className="flex justify-between items-center mt-4 mb-6">
                 <span className="font-black text-gray-900 text-lg">Total</span>
-                <span className="font-black text-2xl text-pink-500">R{total.toFixed(2)}</span>
+                <span className="font-black text-2xl text-pink-500">{formatRand(total)}</span>
               </div>
 
               <button
@@ -186,7 +229,6 @@ export default function Cart() {
               >
                 Checkout <ArrowRight size={18} />
               </button>
-
               <Link
                 to="/shop"
                 className="block text-center mt-4 text-sm text-gray-400 hover:text-pink-500 transition-colors"

@@ -57,6 +57,7 @@ export default function Cart() {
       summaryShippingDisplay,
       hasQuote: !!quote,
       shippingBranch: "no-shipping-method-state",
+      cartRenderVersion: "2026-03-30-cart-hotfix",
     });
   }, [cartCount, summaryShippingDisplay, quote]);
 

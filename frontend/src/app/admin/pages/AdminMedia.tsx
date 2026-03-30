@@ -357,6 +357,7 @@ function MediaDetailsModal({
   const [assignSku, setAssignSku] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [unlinkingSku, setUnlinkingSku] = useState<string | null>(null);
+  const [replaceExistingLinks, setReplaceExistingLinks] = useState(false);
 
   const loadAsset = async () => {
     if (!accessToken || !mediaId) return;
@@ -381,6 +382,8 @@ function MediaDetailsModal({
       setAsset(null);
       setFilename("");
       setAltText("");
+      setAssignSku("");
+      setReplaceExistingLinks(false);
       setError(null);
       setShowDeleteConfirm(false);
     }
@@ -444,13 +447,17 @@ function MediaDetailsModal({
   const assignToSku = async () => {
     if (!accessToken || !mediaId || !assignSku.trim()) return;
     try {
+      if (replaceExistingLinks) {
+        const confirmed = window.confirm("Replace existing product links for this image? This will unlink it from other products.");
+        if (!confirmed) return;
+      }
       setAssigning(true);
       setError(null);
       await apiRequest(`/admin/media/${mediaId}/assign-product`, {
         method: "POST",
         body: JSON.stringify({
           sku: assignSku.trim(),
-          replaceExisting: true,
+          replaceExisting: replaceExistingLinks,
         }),
       }, accessToken);
       toast.success(`Assigned to SKU ${assignSku.trim()}`);
@@ -589,6 +596,14 @@ function MediaDetailsModal({
                   >
                     {assigning ? "Assigning..." : "Assign SKU"}
                   </button>
+                  <label className="flex items-center gap-2 text-xs text-amber-700">
+                    <input
+                      type="checkbox"
+                      checked={replaceExistingLinks}
+                      onChange={(e) => setReplaceExistingLinks(e.target.checked)}
+                    />
+                    Replace existing links (will unlink from other products)
+                  </label>
                 </div>
               </div>
 

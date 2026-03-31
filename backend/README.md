@@ -62,6 +62,7 @@ This service provides the production backend foundation for admin APIs and comme
 - `UPLOAD_REGION=<region>`
 - `UPLOAD_ACCESS_KEY_ID=<key>`
 - `UPLOAD_SECRET_ACCESS_KEY=<secret>`
+- `STORAGE_ENCRYPTION_SECRET=<32+ char secret used to encrypt admin-saved storage secrets>`
 
 ### Optional media env vars
 - `UPLOAD_ENDPOINT` (S3-compatible endpoint, e.g. MinIO/R2/B2)

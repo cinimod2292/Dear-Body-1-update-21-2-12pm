@@ -5,7 +5,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { assertS3ObjectExists, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
+import { assertS3ObjectExists, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
@@ -14,11 +14,12 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = createUploadSchema.parse(request.body);
+      const cfg = await resolveUploadConfig();
       const prepared = await prepareUpload(body.filename, body.mimeType);
       request.log.info({
-        uploadProvider: env.UPLOAD_PROVIDER,
+        uploadProvider: cfg.provider,
         publicBaseUrl: env.PUBLIC_BASE_URL ?? null,
-        resolvedLocalPublicBaseUrl: env.UPLOAD_PROVIDER === "s3" ? null : resolveLocalPublicBaseUrl(),
+        resolvedLocalPublicBaseUrl: cfg.provider === "local" ? resolveLocalPublicBaseUrl() : null,
         storageKey: prepared.storageKey,
         uploadUrl: prepared.uploadUrl,
       }, "Prepared media upload");
@@ -31,9 +32,10 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = finalizeUploadSchema.parse(request.body);
-      const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey);
+      const cfg = await resolveUploadConfig();
+      const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey, cfg);
 
-      if (env.UPLOAD_PROVIDER === "local") {
+      if (cfg.provider === "local") {
         const localPath = resolveLocalUploadPath(body.storageKey);
         request.log.info({
           storageKey: body.storageKey,
@@ -56,7 +58,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         }
       }
 
-      if (env.UPLOAD_PROVIDER === "s3") {
+      if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
         try {
           await assertS3ObjectExists(body.storageKey);
         } catch (error) {

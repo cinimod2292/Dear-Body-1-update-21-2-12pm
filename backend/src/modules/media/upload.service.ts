@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import crypto from "node:crypto";
 import path from "node:path";
 import { env } from "../../config/env.js";
+import { prisma } from "../../lib/prisma.js";
+import { decryptStorageSecret } from "../../lib/secrets.js";
 
 export interface PreparedUpload {
   storageKey: string;
@@ -9,6 +11,18 @@ export interface PreparedUpload {
   publicUrl: string;
   method: "PUT";
   headers: Record<string, string>;
+}
+
+export interface UploadConfig {
+  provider: "local" | "s3" | "cloudflare-r2";
+  bucket?: string;
+  endpoint?: string;
+  publicBaseUrl?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  signedUrlTtlSeconds: number;
+  forcePathStyle: boolean;
+  region: string;
 }
 
 export function sanitizeStorageKey(storageKey: string): string {
@@ -19,17 +33,53 @@ function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
-function requireS3Config() {
-  if (!env.UPLOAD_BUCKET) throw new Error("UPLOAD_BUCKET is required when UPLOAD_PROVIDER=s3");
-  if (!env.UPLOAD_REGION) throw new Error("UPLOAD_REGION is required when UPLOAD_PROVIDER=s3");
-  if (!env.UPLOAD_ACCESS_KEY_ID) throw new Error("UPLOAD_ACCESS_KEY_ID is required when UPLOAD_PROVIDER=s3");
-  if (!env.UPLOAD_SECRET_ACCESS_KEY) throw new Error("UPLOAD_SECRET_ACCESS_KEY is required when UPLOAD_PROVIDER=s3");
+function requireS3Config(cfg: UploadConfig) {
+  if (!cfg.bucket) throw new Error("UPLOAD bucket is required");
+  if (!cfg.region) throw new Error("UPLOAD region is required");
+  if (!cfg.accessKeyId) throw new Error("UPLOAD access key id is required");
+  if (!cfg.secretAccessKey) throw new Error("UPLOAD secret access key is required");
   return {
+    bucket: cfg.bucket,
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+  };
+}
+
+function envConfig(): UploadConfig {
+  return {
+    provider: env.UPLOAD_PROVIDER,
     bucket: env.UPLOAD_BUCKET,
-    region: env.UPLOAD_REGION,
+    endpoint: env.UPLOAD_ENDPOINT,
+    publicBaseUrl: env.UPLOAD_PUBLIC_BASE_URL,
     accessKeyId: env.UPLOAD_ACCESS_KEY_ID,
     secretAccessKey: env.UPLOAD_SECRET_ACCESS_KEY,
+    signedUrlTtlSeconds: env.UPLOAD_SIGNED_URL_TTL_SECONDS,
+    forcePathStyle: env.UPLOAD_FORCE_PATH_STYLE,
+    region: env.UPLOAD_REGION ?? "auto",
   };
+}
+
+async function dbConfig(): Promise<UploadConfig | null> {
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: "media", key: "storage" } } });
+  if (!setting) return null;
+  const value = setting.value as Record<string, unknown>;
+  const encryptedSecret = typeof value.encryptedSecretAccessKey === "string" ? value.encryptedSecretAccessKey : "";
+  return {
+    provider: String(value.provider ?? "local") as UploadConfig["provider"],
+    bucket: typeof value.bucket === "string" ? value.bucket : undefined,
+    endpoint: typeof value.endpoint === "string" ? value.endpoint : undefined,
+    publicBaseUrl: typeof value.publicBaseUrl === "string" ? value.publicBaseUrl : undefined,
+    accessKeyId: typeof value.accessKeyId === "string" ? value.accessKeyId : undefined,
+    secretAccessKey: encryptedSecret ? decryptStorageSecret(encryptedSecret) : undefined,
+    signedUrlTtlSeconds: Number(value.signedUrlTtlSeconds ?? 900),
+    forcePathStyle: Boolean(value.forcePathStyle ?? false),
+    region: typeof value.region === "string" ? value.region : "auto",
+  };
+}
+
+export async function resolveUploadConfig(): Promise<UploadConfig> {
+  return (await dbConfig()) ?? envConfig();
 }
 
 function toAmzDate(date: Date): string {
@@ -52,18 +102,18 @@ function encodeS3Path(pathname: string): string {
   return pathname.split("/").map((segment) => encodeRfc3986(segment)).join("/");
 }
 
-function resolveS3Target(storageKey: string) {
-  const { bucket } = requireS3Config();
+function resolveS3Target(storageKey: string, cfg: UploadConfig) {
+  const { bucket } = requireS3Config(cfg);
   const normalizedStorageKey = sanitizeStorageKey(storageKey);
 
-  if (env.UPLOAD_ENDPOINT) {
-    const endpoint = new URL(env.UPLOAD_ENDPOINT);
-    if (env.UPLOAD_FORCE_PATH_STYLE) {
+  if (cfg.endpoint) {
+    const endpoint = new URL(cfg.endpoint);
+    if (cfg.forcePathStyle) {
       const origin = `${endpoint.protocol}//${endpoint.host}`;
       return {
         host: endpoint.host,
         canonicalUri: `/${bucket}/${normalizedStorageKey}`,
-        publicBaseUrl: normalizeBaseUrl(env.UPLOAD_PUBLIC_BASE_URL || `${origin}/${bucket}`),
+        publicBaseUrl: normalizeBaseUrl(cfg.publicBaseUrl || `${origin}/${bucket}`),
         origin,
       };
     }
@@ -73,35 +123,48 @@ function resolveS3Target(storageKey: string) {
     return {
       host,
       canonicalUri: `/${normalizedStorageKey}`,
-      publicBaseUrl: normalizeBaseUrl(env.UPLOAD_PUBLIC_BASE_URL || origin),
+      publicBaseUrl: normalizeBaseUrl(cfg.publicBaseUrl || origin),
       origin,
     };
   }
-  return `${resolveLocalPublicBaseUrl()}/local-upload/${normalizedStorageKey}`;
+  return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
+}
+
+export async function createS3UploadUrl(storageKey: string, mimeType: string): Promise<string> {
+  void mimeType;
+  return createS3PresignedUrl("PUT", storageKey, env.UPLOAD_SIGNED_URL_TTL_SECONDS);
+}
+
+export async function assertS3ObjectExists(storageKey: string): Promise<void> {
+  const headUrl = createS3PresignedUrl("HEAD", storageKey, 60);
+  const response = await fetch(headUrl, { method: "HEAD" });
+  if (!response.ok) {
+    throw new Error(`S3 HEAD failed with status ${response.status}`);
+  }
 }
 
 export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
   const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
 
-  const host = `${bucket}.s3.${env.UPLOAD_REGION}.amazonaws.com`;
+  const host = `${bucket}.s3.${cfg.region}.amazonaws.com`;
   const origin = `https://${host}`;
   return {
     host,
     canonicalUri: `/${normalizedStorageKey}`,
-    publicBaseUrl: normalizeBaseUrl(env.UPLOAD_PUBLIC_BASE_URL || origin),
+    publicBaseUrl: normalizeBaseUrl(cfg.publicBaseUrl || origin),
     origin,
   };
 }
 
-function createS3PresignedUrl(method: "PUT" | "HEAD", storageKey: string, expiresIn: number): string {
-  const { region, accessKeyId, secretAccessKey } = requireS3Config();
+function createS3PresignedUrl(method: "PUT" | "HEAD", storageKey: string, expiresIn: number, cfg: UploadConfig): string {
+  const { region, accessKeyId, secretAccessKey } = requireS3Config(cfg);
   const now = new Date();
   const amzDate = toAmzDate(now);
   const dateStamp = amzDate.slice(0, 8);
   const scope = `${dateStamp}/${region}/s3/aws4_request`;
   const signedHeaders = "host";
-  const target = resolveS3Target(storageKey);
+  const target = resolveS3Target(storageKey, cfg);
   const canonicalUri = encodeS3Path(target.canonicalUri);
 
   const queryParams = new URLSearchParams({
@@ -164,21 +227,22 @@ export function resolveLocalPublicBaseUrl(): string {
   throw new Error("PUBLIC_BASE_URL is required for local uploads outside development/test environments");
 }
 
-export function resolvePublicUrlForStorageKey(storageKey: string): string {
-  if (env.UPLOAD_PROVIDER === "s3") {
-    const target = resolveS3Target(storageKey);
+export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
+  if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
+    const target = resolveS3Target(storageKey, cfg);
     return `${target.publicBaseUrl}/${sanitizeStorageKey(storageKey)}`;
   }
   return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
 }
 
-export async function createS3UploadUrl(storageKey: string, mimeType: string): Promise<string> {
+export async function createS3UploadUrl(storageKey: string, mimeType: string, cfg: UploadConfig): Promise<string> {
   void mimeType;
-  return createS3PresignedUrl("PUT", storageKey, env.UPLOAD_SIGNED_URL_TTL_SECONDS);
+  return createS3PresignedUrl("PUT", storageKey, cfg.signedUrlTtlSeconds, cfg);
 }
 
 export async function assertS3ObjectExists(storageKey: string): Promise<void> {
-  const headUrl = createS3PresignedUrl("HEAD", storageKey, 60);
+  const cfg = await resolveUploadConfig();
+  const headUrl = createS3PresignedUrl("HEAD", storageKey, 60, cfg);
   const response = await fetch(headUrl, { method: "HEAD" });
   if (!response.ok) {
     throw new Error(`S3 HEAD failed with status ${response.status}`);
@@ -186,12 +250,13 @@ export async function assertS3ObjectExists(storageKey: string): Promise<void> {
 }
 
 export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
+  const cfg = await resolveUploadConfig();
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
   const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
 
-  const publicUrl = resolvePublicUrlForStorageKey(storageKey);
-  const uploadUrl = env.UPLOAD_PROVIDER === "s3"
-    ? await createS3UploadUrl(storageKey, mimeType)
+  const publicUrl = resolvePublicUrlForStorageKey(storageKey, cfg);
+  const uploadUrl = (cfg.provider === "s3" || cfg.provider === "cloudflare-r2")
+    ? await createS3UploadUrl(storageKey, mimeType, cfg)
     : publicUrl;
 
   return {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Check, Lock, ArrowLeft, Truck } from "lucide-react";
 import { useCart } from "../context/CartContext";
@@ -70,9 +70,17 @@ export default function Checkout() {
   const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
-  const shipping = Number(quote?.shippingAmount ?? 0);
-  const total = Number(quote?.totalAmount ?? cartTotal + shipping);
   const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
+  const shipping = useMemo(() => {
+    if (quote?.freeShippingApplied) return 0;
+    if (selectedShippingMethodId && selectedShippingMethod) return Number(selectedShippingMethod.price ?? 0);
+    if (quote?.shippingMethodId && quote.shippingMethodId === selectedShippingMethodId) return Number(quote.shippingAmount ?? 0);
+    return Number(quote?.shippingAmount ?? 0);
+  }, [quote?.freeShippingApplied, quote?.shippingAmount, quote?.shippingMethodId, selectedShippingMethodId, selectedShippingMethod]);
+  const subtotalForDisplay = Number(quote?.subtotalAmount ?? cartTotal);
+  const discountForDisplay = Number(quote?.discountAmount ?? 0);
+  const taxForDisplay = Number(quote?.taxAmount ?? 0);
+  const total = Number(quote?.totalAmount ?? (subtotalForDisplay - discountForDisplay + shipping + taxForDisplay));
   const summaryShippingDisplay = (() => {
     if (!selectedShippingMethodId) return "TBC";
     if (quote?.freeShippingApplied) return "FREE";
@@ -83,7 +91,7 @@ export default function Checkout() {
     return "TBC";
   })();
   const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
-  const canProceedToPayment = (quote?.freeShippingApplied ?? false) || !!selectedShippingMethodId;
+  const canProceedToPayment = !shippingSelectionRequired || !!selectedShippingMethodId;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -92,6 +100,7 @@ export default function Checkout() {
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [shippingStepError, setShippingStepError] = useState<string | null>(null);
 
   const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
 
@@ -104,6 +113,12 @@ export default function Checkout() {
   const stepIndex = steps.findIndex(s => s.key === step);
 
   const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
+  const finalizeSuccessfulCheckout = useCallback((orderId: string, source: "initial_load" | "poll") => {
+    console.info("[checkout] successful payment/order completion detection", { orderId, source });
+    setProcessingPayment(false);
+    setOrderPlaced(true);
+    clearCart(`checkout_success_${source}`);
+  }, [clearCart]);
 
   const loadExistingOrder = async (orderId: string) => {
     if (!token) return;
@@ -118,15 +133,26 @@ export default function Checkout() {
       status: o.status,
       checkoutUrl: null,
     });
-    setOrderPlaced(o.paymentStatus === "PAID");
+    if (o.paymentStatus === "PAID") {
+      finalizeSuccessfulCheckout(orderId, "initial_load");
+      return;
+    }
+    setOrderPlaced(false);
     setProcessingPayment(["AWAITING_PAYMENT", "PENDING"].includes(o.paymentStatus));
+    if (searchParams.get("cancelled") || o.paymentStatus === "FAILED") {
+      console.info("[checkout] abandoned cart restore trigger", {
+        orderId,
+        cancelled: Boolean(searchParams.get("cancelled")),
+        paymentStatus: o.paymentStatus,
+      });
+    }
   };
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
     if (!orderId) return;
     loadExistingOrder(orderId).catch(() => undefined);
-  }, [searchParams, token]);
+  }, [searchParams, token, finalizeSuccessfulCheckout]);
 
   useEffect(() => {
     fetch(`${API_BASE}/store/shipping-methods`)
@@ -135,7 +161,7 @@ export default function Checkout() {
         const methods = (payload?.data || []) as StoreShippingMethod[];
         console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
         if (!methods.length) return;
-        setShippingMethods((prev) => (prev.length ? prev : methods));
+        setShippingMethods(methods);
       })
       .catch(() => undefined);
   }, []);
@@ -162,11 +188,23 @@ export default function Checkout() {
         console.info("[checkout] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
         setShippingMethods(q.shippingMethods || []);
-        if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
+        if (q.shippingMethodInvalid) {
+          setSelectedShippingMethodId("");
+          setShippingStepError("Please select a shipping method to continue.");
+        }
         else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
   }, [cartItems, selectedShippingMethodId, form.country, form.state]);
+
+  useEffect(() => {
+    if (!selectedShippingMethodId) return;
+    const methodStillAvailable = shippingMethods.some((method) => method.id === selectedShippingMethodId);
+    if (!methodStillAvailable) {
+      setSelectedShippingMethodId("");
+      setShippingStepError("Please select a shipping method to continue.");
+    }
+  }, [shippingMethods, selectedShippingMethodId]);
 
   useEffect(() => {
     console.info("[checkout] summary shipping state", {
@@ -176,6 +214,16 @@ export default function Checkout() {
       freeShippingApplied: quote?.freeShippingApplied ?? false,
     });
   }, [selectedShippingMethodId, selectedShippingMethod?.name, summaryShippingDisplay, quote?.freeShippingApplied]);
+
+  useEffect(() => {
+    console.info("[checkout] totals recomputed with shipping amount", {
+      subtotalForDisplay,
+      discountForDisplay,
+      shipping,
+      taxForDisplay,
+      total,
+    });
+  }, [subtotalForDisplay, discountForDisplay, shipping, taxForDisplay, total]);
 
 
   useEffect(() => {
@@ -247,12 +295,11 @@ export default function Checkout() {
         });
         setOrderInfo((prev) => prev ? { ...prev, paymentStatus: status, status: payload.data.status } : prev);
         if (status === "PAID") {
-          setProcessingPayment(false);
-          setOrderPlaced(true);
-          clearCart();
+          finalizeSuccessfulCheckout(orderId, "poll");
         }
         if (status === "FAILED") {
           setProcessingPayment(false);
+          console.info("[checkout] abandoned cart restore trigger", { orderId, cancelled: Boolean(searchParams.get("cancelled")), paymentStatus: status });
         }
         if (attempts >= 20) {
           setProcessingTimedOut(true);
@@ -262,7 +309,7 @@ export default function Checkout() {
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [processingPayment, searchParams, token, clearCart]);
+  }, [processingPayment, searchParams, token, finalizeSuccessfulCheckout]);
 
   const applySavedAddress = (addressId: string) => {
     setSelectedAddressId(addressId);
@@ -283,6 +330,8 @@ export default function Checkout() {
     e.preventDefault();
     if (submitting) return;
     setCheckoutError(null);
+    const checkoutSubmitStartedAt = performance.now();
+    console.info("[checkout-timing] submit handler started", { t0: checkoutSubmitStartedAt });
 
     try {
       setSubmitting(true);
@@ -308,6 +357,7 @@ export default function Checkout() {
       });
       const resolvePayload = await resolveRes.json().catch(() => null);
       if (!resolveRes.ok) throw new Error(resolvePayload?.error?.message || "Unable to resolve product variants for checkout");
+      console.info("[checkout-timing] resolve-items response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt) });
 
       const cartRes = await fetch(`${API_BASE}/store/cart`, {
         method: "POST",
@@ -318,6 +368,7 @@ export default function Checkout() {
       if (!cartRes.ok) throw new Error(cartPayload?.error?.message || "Failed to create checkout cart");
       const cartId = cartPayload?.data?.id as string | undefined;
       if (!cartId) throw new Error("Checkout cart missing");
+      console.info("[checkout-timing] checkout cart created", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       for (const item of resolvePayload.data.items as Array<{ variantId: string; quantity: number }>) {
         const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
@@ -331,6 +382,7 @@ export default function Checkout() {
         }
       }
 
+      console.info("[checkout-timing] backend payment-init started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -356,6 +408,7 @@ export default function Checkout() {
       });
       const checkoutPayload = await checkoutRes.json().catch(() => null);
       if (!checkoutRes.ok) throw new Error(checkoutPayload?.error?.message || "Checkout failed");
+      console.info("[checkout-timing] backend response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       const order = checkoutPayload?.data?.order;
       const payment = checkoutPayload?.data?.payment;
@@ -386,6 +439,7 @@ export default function Checkout() {
         });
         const retryPayload = await retryRes.json().catch(() => null);
         if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
+          console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "retry-initiate" });
           console.info("[checkout] retry redirect", {
             checkoutUrlFromBackend: retryPayload.data.checkoutUrl,
             redirectTarget: retryPayload.data.checkoutUrl,
@@ -406,6 +460,7 @@ export default function Checkout() {
       setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
+        console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "checkout-response" });
         console.info("[checkout] initial redirect", {
           checkoutUrlFromBackend: payment.checkoutUrl,
           redirectTarget: payment.checkoutUrl,
@@ -623,7 +678,17 @@ export default function Checkout() {
                     {(shippingMethods.length ? shippingMethods : []).map((opt) => (
                       <label key={opt.id} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
                         <div className="flex items-center gap-3">
-                          <input type="radio" name="shipping" checked={selectedShippingMethodId === opt.id} onChange={() => setSelectedShippingMethodId(opt.id)} className="accent-pink-500" />
+                          <input
+                            type="radio"
+                            name="shipping"
+                            checked={selectedShippingMethodId === opt.id}
+                            onChange={() => {
+                              setSelectedShippingMethodId(opt.id);
+                              setShippingStepError(null);
+                              console.info("[checkout] shipping method selected", { shippingMethodId: opt.id, shippingMethodName: opt.name, shippingMethodPrice: Number(opt.price) });
+                            }}
+                            className="accent-pink-500"
+                          />
                           <div>
                             <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
                             <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
@@ -644,12 +709,21 @@ export default function Checkout() {
                     Back
                   </button>
                   <button
-                    onClick={() => setStep("payment")}
+                    onClick={() => {
+                      if (!canProceedToPayment) {
+                        console.info("[checkout] continue blocked due to no shipping method", { selectedShippingMethodId: selectedShippingMethodId || null });
+                        setShippingStepError("Please select a shipping method to continue.");
+                        return;
+                      }
+                      setShippingStepError(null);
+                      setStep("payment");
+                    }}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold hover:opacity-90 transition-opacity"
                   >
                     Continue to Payment
                   </button>
                 </div>
+                {shippingStepError ? <p className="text-red-500 text-sm mt-3">{shippingStepError}</p> : null}
               </div>
             )}
 
@@ -676,6 +750,7 @@ export default function Checkout() {
                   <button
                     type="submit"
                     disabled={submitting || !canProceedToPayment}
+                    onClick={() => console.info("[checkout-timing] pay button clicked", { step: "payment", canProceedToPayment, submitting })}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Lock size={16} />

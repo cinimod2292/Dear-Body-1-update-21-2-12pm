@@ -11,13 +11,15 @@ interface CartContextType {
   addToCart: (product: Product, quantity?: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
+  clearCart: (reason?: string) => void;
   cartCount: number;
   cartTotal: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 const CUID_REGEX = /^c[a-z0-9]{24}$/;
+const CART_STORAGE_KEY = "storefront_cart";
+const CART_SESSION_KEYS = ["storefront_cart_id", "storefront_checkout_session_id", "storefront_quote_id"] as const;
 
 function isCuid(value: unknown): value is string {
   return typeof value === "string" && CUID_REGEX.test(value);
@@ -38,11 +40,17 @@ function sanitizeStoredCart(raw: unknown): CartItem[] {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    const stored = localStorage.getItem("storefront_cart");
-    if (!stored) return [];
+    const stored = localStorage.getItem(CART_STORAGE_KEY);
+    if (!stored) {
+      console.info("[cart] load source=localStorage empty");
+      return [];
+    }
     try {
-      return sanitizeStoredCart(JSON.parse(stored));
+      const parsed = sanitizeStoredCart(JSON.parse(stored));
+      console.info("[cart] load source=localStorage", { itemCount: parsed.length });
+      return parsed;
     } catch {
+      console.info("[cart] load source=localStorage invalid_json");
       return [];
     }
   });
@@ -78,10 +86,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const clearCart = () => setCartItems([]);
+  const clearCart = (reason = "unspecified") => {
+    console.info("[cart] clearCart invoked", { reason, previousItemCount: cartItems.length });
+    setCartItems([]);
+    localStorage.removeItem(CART_STORAGE_KEY);
+    for (const key of CART_SESSION_KEYS) sessionStorage.removeItem(key);
+    console.info("[cart] cart/session id invalidation complete", { sessionKeys: CART_SESSION_KEYS });
+  };
 
   useEffect(() => {
-    localStorage.setItem("storefront_cart", JSON.stringify(cartItems));
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    console.info("[cart] persistence write", { key: CART_STORAGE_KEY, itemCount: cartItems.length });
   }, [cartItems]);
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);

@@ -27,7 +27,7 @@ const envSchema = z.object({
   UPLOAD_SECRET_ACCESS_KEY: z.string().optional(),
   UPLOAD_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().max(86_400).default(900),
   UPLOAD_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
-  EMAIL_PROVIDER: z.enum(["console", "smtp", "resend"]).default("console"),
+  EMAIL_PROVIDER: z.enum(["console", "smtp", "resend", "sendgrid"]).default("console"),
   EMAIL_FROM: z.string().email(),
   WEBHOOK_SIGNING_SECRET: z.string().min(8),
   PAYMENTS_ENCRYPTION_SECRET: z.string().min(16).optional(),

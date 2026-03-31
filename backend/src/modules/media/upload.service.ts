@@ -225,8 +225,8 @@ export async function createS3UploadUrl(storageKey: string, mimeType: string, cf
   return createS3PresignedUrl("PUT", storageKey, cfg.signedUrlTtlSeconds, cfg);
 }
 
-export async function assertS3ObjectExists(storageKey: string): Promise<void> {
-  const cfg = await resolveUploadConfig();
+export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {
+  const cfg = configOverride ?? await resolveUploadConfig();
   const headUrl = createS3PresignedUrl("HEAD", storageKey, 60, cfg);
   const response = await fetch(headUrl, { method: "HEAD" });
   if (!response.ok) {
@@ -234,8 +234,8 @@ export async function assertS3ObjectExists(storageKey: string): Promise<void> {
   }
 }
 
-export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
-  const cfg = await resolveUploadConfig();
+export async function prepareUpload(filename: string, mimeType: string, configOverride?: UploadConfig): Promise<PreparedUpload> {
+  const cfg = configOverride ?? await resolveUploadConfig();
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
   const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
 

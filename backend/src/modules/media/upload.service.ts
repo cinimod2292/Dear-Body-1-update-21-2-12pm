@@ -102,7 +102,12 @@ function encodeS3Path(pathname: string): string {
   return pathname.split("/").map((segment) => encodeRfc3986(segment)).join("/");
 }
 
-function resolveS3Target(storageKey: string, cfg: UploadConfig) {
+function resolveS3Target(storageKey: string, cfg: UploadConfig): {
+  host: string;
+  canonicalUri: string;
+  publicBaseUrl: string;
+  origin: string;
+} {
   const { bucket } = requireS3Config(cfg);
   const normalizedStorageKey = sanitizeStorageKey(storageKey);
 
@@ -127,26 +132,6 @@ function resolveS3Target(storageKey: string, cfg: UploadConfig) {
       origin,
     };
   }
-  return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
-}
-
-export async function createS3UploadUrl(storageKey: string, mimeType: string): Promise<string> {
-  void mimeType;
-  return createS3PresignedUrl("PUT", storageKey, env.UPLOAD_SIGNED_URL_TTL_SECONDS);
-}
-
-export async function assertS3ObjectExists(storageKey: string): Promise<void> {
-  const headUrl = createS3PresignedUrl("HEAD", storageKey, 60);
-  const response = await fetch(headUrl, { method: "HEAD" });
-  if (!response.ok) {
-    throw new Error(`S3 HEAD failed with status ${response.status}`);
-  }
-}
-
-export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
-  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
-
   const host = `${bucket}.s3.${cfg.region}.amazonaws.com`;
   const origin = `https://${host}`;
   return {

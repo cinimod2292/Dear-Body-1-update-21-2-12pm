@@ -14,13 +14,23 @@ import { DEFAULT_EMAIL_TEMPLATES } from "./default-templates.js";
 
 const DEFAULT_SAMPLE_DATA: Record<string, unknown> = {
   firstName: "Customer",
+  lastName: "Smith",
+  customerName: "Customer Smith",
   storeName: "Dear Body",
+  companyName: "Dear Body",
+  supportEmail: "hello@dearbody.com",
+  siteUrl: "https://example.com",
   orderNumber: "10001234",
+  orderDate: "2026-01-01",
+  orderItems: "Hydrating Serum x1, Body Butter x2",
   totalAmount: "$120.00",
+  orderTotal: "$120.00",
   amount: "$120.00",
   carrier: "UPS",
   trackingNumber: "1Z12345E0205271688",
+  trackingUrl: "https://tracking.example.com/1Z12345E0205271688",
   resetUrl: "https://example.com/reset?token=test",
+  verificationUrl: "https://example.com/verify?token=test",
   eventType: "refunded",
   name: "Jane Doe",
   email: "jane@example.com",
@@ -172,6 +182,28 @@ export async function deleteEmailTemplate(id: string) {
   await getEmailTemplate(id);
   await prisma.emailTemplate.delete({ where: { id } });
   return { deleted: true };
+}
+
+export async function resetEmailTemplateToDefault(id: string) {
+  const current = await getEmailTemplate(id);
+  const fallback = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === current.key);
+  if (!fallback) {
+    throw new AppError(400, "Template has no system default", "EMAIL_TEMPLATE_NO_DEFAULT");
+  }
+
+  return prisma.emailTemplate.update({
+    where: { id },
+    data: {
+      name: fallback.name,
+      category: fallback.category,
+      subject: fallback.subject,
+      htmlBody: fallback.htmlBody,
+      textBody: null,
+      placeholderKeys: fallback.placeholderKeys,
+      isEnabled: true,
+      isSystemDefault: true,
+    },
+  });
 }
 
 interface ResolvedTemplate {

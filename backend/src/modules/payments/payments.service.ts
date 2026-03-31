@@ -258,7 +258,8 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
     status: updatedOrder.status,
     paymentStatus: updatedOrder.paymentStatus,
   });
-  if (status === "PAID") {
+  const becamePaid = status === "PAID" && currentOrder.paymentStatus !== "PAID";
+  if (becamePaid) {
     await sendPaymentSuccessEmail(orderId).catch(() => undefined);
   }
   await prisma.orderEvent.create({

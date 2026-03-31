@@ -18,7 +18,6 @@ import {
   listOrders,
   removeCartItem,
   resolveStorefrontItems,
-  sendOrderCreatedEmailSafe,
   updateCartItem,
   updateFulfillmentStatus,
   updateOrderStatus,
@@ -88,7 +87,6 @@ export async function ordersRoutes(app: FastifyInstance) {
         returnUrl: withOrderId(body.payment.returnUrl, order.id),
         cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
-      void sendOrderCreatedEmailSafe(order!.id);
       console.info("[checkout-timing] response returned to frontend", {
         cartId,
         orderId: order.id,
@@ -99,7 +97,6 @@ export async function ordersRoutes(app: FastifyInstance) {
       return reply.status(201).send({ data: { order, payment } });
     }
 
-    void sendOrderCreatedEmailSafe(order!.id);
     console.info("[checkout-timing] response returned to frontend", {
       cartId,
       orderId: order?.id,

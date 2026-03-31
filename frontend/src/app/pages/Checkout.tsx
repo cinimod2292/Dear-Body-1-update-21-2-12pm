@@ -70,9 +70,17 @@ export default function Checkout() {
   const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
-  const shipping = Number(quote?.shippingAmount ?? 0);
-  const total = Number(quote?.totalAmount ?? cartTotal + shipping);
   const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
+  const shipping = useMemo(() => {
+    if (quote?.freeShippingApplied) return 0;
+    if (selectedShippingMethodId && selectedShippingMethod) return Number(selectedShippingMethod.price ?? 0);
+    if (quote?.shippingMethodId && quote.shippingMethodId === selectedShippingMethodId) return Number(quote.shippingAmount ?? 0);
+    return Number(quote?.shippingAmount ?? 0);
+  }, [quote?.freeShippingApplied, quote?.shippingAmount, quote?.shippingMethodId, selectedShippingMethodId, selectedShippingMethod]);
+  const subtotalForDisplay = Number(quote?.subtotalAmount ?? cartTotal);
+  const discountForDisplay = Number(quote?.discountAmount ?? 0);
+  const taxForDisplay = Number(quote?.taxAmount ?? 0);
+  const total = Number(quote?.totalAmount ?? (subtotalForDisplay - discountForDisplay + shipping + taxForDisplay));
   const summaryShippingDisplay = (() => {
     if (!selectedShippingMethodId) return "TBC";
     if (quote?.freeShippingApplied) return "FREE";
@@ -83,7 +91,7 @@ export default function Checkout() {
     return "TBC";
   })();
   const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
-  const canProceedToPayment = (quote?.freeShippingApplied ?? false) || !!selectedShippingMethodId;
+  const canProceedToPayment = !shippingSelectionRequired || !!selectedShippingMethodId;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -92,6 +100,7 @@ export default function Checkout() {
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [shippingStepError, setShippingStepError] = useState<string | null>(null);
 
   const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
 
@@ -152,7 +161,7 @@ export default function Checkout() {
         const methods = (payload?.data || []) as StoreShippingMethod[];
         console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
         if (!methods.length) return;
-        setShippingMethods((prev) => (prev.length ? prev : methods));
+        setShippingMethods(methods);
       })
       .catch(() => undefined);
   }, []);
@@ -179,11 +188,23 @@ export default function Checkout() {
         console.info("[checkout] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
         setShippingMethods(q.shippingMethods || []);
-        if (q.shippingMethodInvalid) setSelectedShippingMethodId("");
+        if (q.shippingMethodInvalid) {
+          setSelectedShippingMethodId("");
+          setShippingStepError("Please select a shipping method to continue.");
+        }
         else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
   }, [cartItems, selectedShippingMethodId, form.country, form.state]);
+
+  useEffect(() => {
+    if (!selectedShippingMethodId) return;
+    const methodStillAvailable = shippingMethods.some((method) => method.id === selectedShippingMethodId);
+    if (!methodStillAvailable) {
+      setSelectedShippingMethodId("");
+      setShippingStepError("Please select a shipping method to continue.");
+    }
+  }, [shippingMethods, selectedShippingMethodId]);
 
   useEffect(() => {
     console.info("[checkout] summary shipping state", {
@@ -193,6 +214,16 @@ export default function Checkout() {
       freeShippingApplied: quote?.freeShippingApplied ?? false,
     });
   }, [selectedShippingMethodId, selectedShippingMethod?.name, summaryShippingDisplay, quote?.freeShippingApplied]);
+
+  useEffect(() => {
+    console.info("[checkout] totals recomputed with shipping amount", {
+      subtotalForDisplay,
+      discountForDisplay,
+      shipping,
+      taxForDisplay,
+      total,
+    });
+  }, [subtotalForDisplay, discountForDisplay, shipping, taxForDisplay, total]);
 
 
   useEffect(() => {
@@ -647,7 +678,17 @@ export default function Checkout() {
                     {(shippingMethods.length ? shippingMethods : []).map((opt) => (
                       <label key={opt.id} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
                         <div className="flex items-center gap-3">
-                          <input type="radio" name="shipping" checked={selectedShippingMethodId === opt.id} onChange={() => setSelectedShippingMethodId(opt.id)} className="accent-pink-500" />
+                          <input
+                            type="radio"
+                            name="shipping"
+                            checked={selectedShippingMethodId === opt.id}
+                            onChange={() => {
+                              setSelectedShippingMethodId(opt.id);
+                              setShippingStepError(null);
+                              console.info("[checkout] shipping method selected", { shippingMethodId: opt.id, shippingMethodName: opt.name, shippingMethodPrice: Number(opt.price) });
+                            }}
+                            className="accent-pink-500"
+                          />
                           <div>
                             <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
                             <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
@@ -668,12 +709,21 @@ export default function Checkout() {
                     Back
                   </button>
                   <button
-                    onClick={() => setStep("payment")}
+                    onClick={() => {
+                      if (!canProceedToPayment) {
+                        console.info("[checkout] continue blocked due to no shipping method", { selectedShippingMethodId: selectedShippingMethodId || null });
+                        setShippingStepError("Please select a shipping method to continue.");
+                        return;
+                      }
+                      setShippingStepError(null);
+                      setStep("payment");
+                    }}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold hover:opacity-90 transition-opacity"
                   >
                     Continue to Payment
                   </button>
                 </div>
+                {shippingStepError ? <p className="text-red-500 text-sm mt-3">{shippingStepError}</p> : null}
               </div>
             )}
 

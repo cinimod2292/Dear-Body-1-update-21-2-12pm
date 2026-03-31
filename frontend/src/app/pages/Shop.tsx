@@ -15,13 +15,14 @@ export default function Shop() {
   const initialSearch = searchParams.get("search") || "";
 
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [sortBy, setSortBy] = useState("price-asc");
+  const [sortBy, setSortBy] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const previousDynamicPriceMax = useRef(0);
+  const hasUserAdjustedMax = useRef(false);
+  const userSelectedMax = useRef<number | null>(null);
 
   useEffect(() => {
     fetchStoreProducts()
@@ -71,11 +72,11 @@ export default function Shop() {
 
   useEffect(() => {
     setPriceRange(([currentMin, currentMax]) => {
-      const previousMax = previousDynamicPriceMax.current;
       const nextMin = Math.min(Math.max(currentMin, 0), dynamicPriceMax);
-      const shouldFollowMax = currentMax >= previousMax;
-      const unclampedMax = shouldFollowMax ? dynamicPriceMax : currentMax;
-      const nextMax = Math.min(Math.max(unclampedMax, nextMin), dynamicPriceMax);
+      const preferredMax = hasUserAdjustedMax.current
+        ? (userSelectedMax.current ?? currentMax)
+        : dynamicPriceMax;
+      const nextMax = Math.min(Math.max(preferredMax, nextMin), dynamicPriceMax);
 
       if (nextMin === currentMin && nextMax === currentMax) {
         return [currentMin, currentMax];
@@ -84,7 +85,6 @@ export default function Shop() {
       return [nextMin, nextMax];
     });
 
-    previousDynamicPriceMax.current = dynamicPriceMax;
   }, [dynamicPriceMax]);
 
   const filteredProducts = useMemo(() => {
@@ -93,12 +93,11 @@ export default function Shop() {
     result = result.filter(p => p.price >= priceRange[0] && p.price <= priceRange[1] + 0.01);
 
     switch (sortBy) {
+      case "price-asc":
+        result.sort((a, b) => a.price - b.price);
+        break;
       case "price-desc":
         result.sort((a, b) => b.price - a.price);
-        break;
-      case "price-asc":
-      default:
-        result.sort((a, b) => a.price - b.price);
         break;
     }
 
@@ -171,6 +170,7 @@ export default function Shop() {
                 onChange={e => setSortBy(e.target.value)}
                 className="appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-full text-gray-700 font-medium focus:outline-none focus:border-pink-400 cursor-pointer"
               >
+                <option value="" disabled>Sort by</option>
                 {sortOptions.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
@@ -193,7 +193,14 @@ export default function Shop() {
                     min={0}
                     max={dynamicPriceMax}
                     value={priceRange[1]}
-                    onChange={e => setPriceRange([priceRange[0], Math.max(priceRange[0], Number(e.target.value))])}
+                    onChange={e => {
+                      const nextMax = Math.max(priceRange[0], Number(e.target.value));
+                      const isCustomMax = nextMax < dynamicPriceMax;
+
+                      hasUserAdjustedMax.current = isCustomMax;
+                      userSelectedMax.current = isCustomMax ? nextMax : null;
+                      setPriceRange([priceRange[0], nextMax]);
+                    }}
                     className="flex-1 accent-pink-500"
                   />
                   <span className="text-gray-600 text-sm w-12">R{priceRange[1]}</span>

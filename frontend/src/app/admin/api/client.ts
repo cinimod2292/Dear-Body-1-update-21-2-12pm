@@ -53,7 +53,9 @@ async function parseJsonSafe(res: Response) {
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const makeRequest = async (requestToken?: string) => {
     const headers = new Headers(options.headers);
-    headers.set("Content-Type", "application/json");
+    if (options.body !== undefined && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
     if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);
 
     const response = await fetch(`${API_BASE}${path}`, {
@@ -87,7 +89,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
     if (response.status === 401 && !isRefreshCall) {
       adminAuthHandlers?.onHardAuthFailure();
     }
-    const message = payload?.error?.message || `Request failed (${response.status})`;
+    const message = payload?.error?.message || payload?.message || `Request failed (${response.status})`;
     throw new Error(message);
   }
 

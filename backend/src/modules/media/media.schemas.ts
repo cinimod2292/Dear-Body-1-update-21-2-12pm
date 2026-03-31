@@ -28,3 +28,12 @@ export const updateMediaAssetSchema = z.object({
   filename: z.string().trim().min(1).max(255).optional(),
   altText: z.string().trim().max(255).nullable().optional(),
 });
+
+export const assignMediaToProductSchema = z.object({
+  sku: z.string().trim().min(1),
+  replaceExisting: z.boolean().optional().default(false),
+});
+
+export const unlinkMediaFromProductSchema = z.object({
+  sku: z.string().trim().min(1),
+});

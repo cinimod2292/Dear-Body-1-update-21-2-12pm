@@ -1,9 +1,11 @@
+import fs from "node:fs/promises";
 import { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
+import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { prepareUpload } from "./upload.service.js";
+import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
+import { assertS3ObjectExists, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
@@ -13,6 +15,13 @@ export async function mediaRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = createUploadSchema.parse(request.body);
       const prepared = await prepareUpload(body.filename, body.mimeType);
+      request.log.info({
+        uploadProvider: env.UPLOAD_PROVIDER,
+        publicBaseUrl: env.PUBLIC_BASE_URL ?? null,
+        resolvedLocalPublicBaseUrl: env.UPLOAD_PROVIDER === "s3" ? null : resolveLocalPublicBaseUrl(),
+        storageKey: prepared.storageKey,
+        uploadUrl: prepared.uploadUrl,
+      }, "Prepared media upload");
       return reply.send({ data: prepared });
     },
   );
@@ -22,6 +31,45 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = finalizeUploadSchema.parse(request.body);
+      const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey);
+
+      if (env.UPLOAD_PROVIDER === "local") {
+        const localPath = resolveLocalUploadPath(body.storageKey);
+        request.log.info({
+          storageKey: body.storageKey,
+          localPath,
+          resolvedPublicUrl,
+          publicBaseUrl: env.PUBLIC_BASE_URL ?? null,
+        }, "Finalizing local media upload");
+
+        try {
+          await fs.access(localPath);
+        } catch {
+          request.log.error({
+            storageKey: body.storageKey,
+            localPath,
+            resolvedPublicUrl,
+          }, "Finalize failed: local upload file missing");
+          throw new AppError(422, "Uploaded file not found for storage key; upload may have failed or landed on a different runtime instance.", "MEDIA_UPLOAD_FILE_MISSING", {
+            storageKey: body.storageKey,
+          });
+        }
+      }
+
+      if (env.UPLOAD_PROVIDER === "s3") {
+        try {
+          await assertS3ObjectExists(body.storageKey);
+        } catch (error) {
+          request.log.error({
+            storageKey: body.storageKey,
+            err: error,
+          }, "Finalize failed: uploaded object not found in S3");
+          throw new AppError(422, "Uploaded object not found in persistent storage.", "MEDIA_UPLOAD_FILE_MISSING", {
+            storageKey: body.storageKey,
+          });
+        }
+      }
+
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: body.storageKey.split("/").pop() ?? body.storageKey,
@@ -29,14 +77,72 @@ export async function mediaRoutes(app: FastifyInstance) {
           byteSize: Number(body.metadata?.byteSize ?? 0),
           kind: body.kind ?? "FILE",
           storageKey: body.storageKey,
-          publicUrl: body.publicUrl,
+          publicUrl: resolvedPublicUrl,
           altText: body.altText,
           uploadedById: request.user.sub,
           metadata: body.metadata as Prisma.InputJsonValue | undefined,
         },
       });
 
+      request.log.info({
+        mediaAssetId: asset.id,
+        storageKey: asset.storageKey,
+        publicUrl: asset.publicUrl,
+      }, "Media upload finalized");
       return reply.send({ data: asset });
+    },
+  );
+
+  app.get(
+    "/admin/media/local-upload/diagnostics",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+    async (request, reply) => {
+      const query = request.query as { limit?: string };
+      const limit = Math.min(Math.max(Number(query.limit ?? 200) || 200, 1), 500);
+      const localBaseUrl = (() => {
+        try {
+          return resolveLocalPublicBaseUrl();
+        } catch {
+          return null;
+        }
+      })();
+
+      const candidates = await prisma.mediaAsset.findMany({
+        where: {
+          OR: [
+            { publicUrl: { contains: "/local-upload/", mode: "insensitive" } },
+            { storageKey: { startsWith: "uploads/" } },
+          ],
+        },
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, storageKey: true, publicUrl: true, createdAt: true },
+      });
+
+      const results = await Promise.all(candidates.map(async (asset) => {
+        const localPath = resolveLocalUploadPath(asset.storageKey);
+        const expectedPublicUrl = `${localBaseUrl ?? "<PUBLIC_BASE_URL_UNSET>"}/local-upload/${asset.storageKey}`;
+        try {
+          await fs.access(localPath);
+          return { ...asset, localPath, expectedPublicUrl, fileExists: true };
+        } catch {
+          return { ...asset, localPath, expectedPublicUrl, fileExists: false };
+        }
+      }));
+
+      const missing = results.filter((row) => !row.fileExists);
+      request.log.info({
+        checked: results.length,
+        missing: missing.length,
+      }, "Completed local-upload diagnostics");
+
+      return reply.send({
+        data: {
+          checked: results.length,
+          missing: missing.length,
+          items: missing,
+        },
+      });
     },
   );
 
@@ -79,7 +185,11 @@ export async function mediaRoutes(app: FastifyInstance) {
           galleries: {
             select: {
               product: {
-                select: { id: true, name: true },
+                select: {
+                  id: true,
+                  name: true,
+                  variants: { select: { sku: true }, orderBy: { createdAt: "asc" }, take: 1 },
+                },
               },
             },
             take: 5,
@@ -98,10 +208,108 @@ export async function mediaRoutes(app: FastifyInstance) {
           ...asset,
           usage: {
             galleryCount: asset._count.galleries,
-            products: asset.galleries.map((entry) => entry.product),
+            products: asset.galleries.map((entry) => ({
+              id: entry.product.id,
+              name: entry.product.name,
+              sku: entry.product.variants[0]?.sku ?? null,
+            })),
           },
         },
       });
+    },
+  );
+
+  app.post(
+    "/admin/media/:mediaId/assign-product",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const body = assignMediaToProductSchema.parse(request.body);
+
+      const [asset, variant] = await Promise.all([
+        prisma.mediaAsset.findUnique({ where: { id: mediaId }, select: { id: true } }),
+        prisma.productVariant.findUnique({
+          where: { sku: body.sku },
+          include: { product: { select: { id: true, name: true } } },
+        }),
+      ]);
+      if (!asset) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
+      if (!variant) throw new AppError(404, `SKU "${body.sku}" not found`, "SKU_NOT_FOUND");
+
+      if (body.replaceExisting) {
+        await prisma.productGalleryImage.deleteMany({
+          where: {
+            mediaAssetId: mediaId,
+            productId: { not: variant.product.id },
+          },
+        });
+      }
+
+      const maxPosition = await prisma.productGalleryImage.aggregate({
+        where: { productId: variant.product.id },
+        _max: { position: true },
+      });
+      const position = (maxPosition._max.position ?? -1) + 1;
+
+      await prisma.productGalleryImage.upsert({
+        where: {
+          productId_mediaAssetId: {
+            productId: variant.product.id,
+            mediaAssetId: mediaId,
+          },
+        },
+        update: {},
+        create: {
+          productId: variant.product.id,
+          mediaAssetId: mediaId,
+          position,
+        },
+      });
+
+      request.log.info({
+        mediaId,
+        sku: body.sku,
+        productId: variant.product.id,
+        replaceExisting: body.replaceExisting,
+      }, "Assigned media to product");
+
+      return reply.send({
+        data: {
+          mediaId,
+          sku: body.sku,
+          product: variant.product,
+        },
+      });
+    },
+  );
+
+  app.post(
+    "/admin/media/:mediaId/unlink-product",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const body = unlinkMediaFromProductSchema.parse(request.body);
+
+      const variant = await prisma.productVariant.findUnique({
+        where: { sku: body.sku },
+        select: { productId: true },
+      });
+      if (!variant) throw new AppError(404, `SKU "${body.sku}" not found`, "SKU_NOT_FOUND");
+
+      const removed = await prisma.productGalleryImage.deleteMany({
+        where: {
+          mediaAssetId: mediaId,
+          productId: variant.productId,
+        },
+      });
+
+      request.log.info({
+        mediaId,
+        sku: body.sku,
+        removed: removed.count,
+      }, "Unlinked media from product");
+
+      return reply.send({ data: { removed: removed.count } });
     },
   );
 

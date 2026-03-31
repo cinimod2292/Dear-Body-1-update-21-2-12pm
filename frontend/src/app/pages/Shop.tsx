@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { SlidersHorizontal, X, ChevronDown } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
@@ -24,6 +24,7 @@ export default function Shop() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousDynamicPriceMax = useRef(100);
 
   useEffect(() => {
     fetchStoreProducts()
@@ -45,7 +46,7 @@ export default function Shop() {
     }
   };
 
-  const filteredProducts = useMemo(() => {
+  const productsForFilters = useMemo(() => {
     let result = [...products];
 
     if (selectedCategory !== "All") {
@@ -60,6 +61,38 @@ export default function Shop() {
       );
     }
 
+    return result;
+  }, [products, selectedCategory, initialSearch]);
+
+  const dynamicPriceMax = useMemo(() => {
+    const prices = productsForFilters
+      .map((product) => Number(product.price))
+      .filter((price) => Number.isFinite(price) && price >= 0);
+
+    return prices.length ? Math.max(...prices) : 0;
+  }, [productsForFilters]);
+
+  useEffect(() => {
+    setPriceRange(([currentMin, currentMax]) => {
+      const previousMax = previousDynamicPriceMax.current;
+      const nextMin = Math.min(Math.max(currentMin, 0), dynamicPriceMax);
+      const shouldFollowMax = currentMax >= previousMax;
+      const unclampedMax = shouldFollowMax ? dynamicPriceMax : currentMax;
+      const nextMax = Math.min(Math.max(unclampedMax, nextMin), dynamicPriceMax);
+
+      if (nextMin === currentMin && nextMax === currentMax) {
+        return [currentMin, currentMax];
+      }
+
+      return [nextMin, nextMax];
+    });
+
+    previousDynamicPriceMax.current = dynamicPriceMax;
+  }, [dynamicPriceMax]);
+
+  const filteredProducts = useMemo(() => {
+    let result = [...productsForFilters];
+
     result = result.filter(p => p.price >= priceRange[0] && p.price <= priceRange[1] + 0.01);
 
     switch (sortBy) {
@@ -70,8 +103,10 @@ export default function Shop() {
     }
 
     return result;
-  }, [selectedCategory, sortBy, priceRange, initialSearch]);
+  }, [productsForFilters, sortBy, priceRange]);
+
   const categories = useMemo(() => getCategories(products), [products]);
+
 
   const categoryColors: Record<string, string> = {
     "All": "from-pink-500 to-orange-500",
@@ -156,9 +191,9 @@ export default function Shop() {
                   <input
                     type="range"
                     min={0}
-                    max={100}
+                    max={dynamicPriceMax}
                     value={priceRange[1]}
-                    onChange={e => setPriceRange([priceRange[0], Number(e.target.value)])}
+                    onChange={e => setPriceRange([priceRange[0], Math.max(priceRange[0], Number(e.target.value))])}
                     className="flex-1 accent-pink-500"
                   />
                   <span className="text-gray-600 text-sm w-12">R{priceRange[1]}</span>

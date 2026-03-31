@@ -77,6 +77,12 @@ function resolveS3Target(storageKey: string) {
       origin,
     };
   }
+  return `${resolveLocalPublicBaseUrl()}/local-upload/${normalizedStorageKey}`;
+}
+
+export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
+  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
 
   const host = `${bucket}.s3.${env.UPLOAD_REGION}.amazonaws.com`;
   const origin = `https://${host}`;

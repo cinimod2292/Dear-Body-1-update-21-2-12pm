@@ -717,11 +717,18 @@ export default function AdminMedia() {
           session.accessToken,
         );
 
-        const uploadResponse = await fetch(prep.data.uploadUrl, {
-          method: prep.data.method,
-          headers: prep.data.headers,
-          body: file,
-        });
+        let uploadResponse: Response;
+        try {
+          uploadResponse = await fetch(prep.data.uploadUrl, {
+            method: prep.data.method,
+            headers: prep.data.headers,
+            body: file,
+          });
+        } catch (error) {
+          throw new Error(
+            `Browser upload request failed before reaching storage. Likely bucket CORS issue for admin origin. ${error instanceof Error ? error.message : ""}`.trim(),
+          );
+        }
         if (!uploadResponse.ok) {
           throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
         }

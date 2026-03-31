@@ -695,44 +695,51 @@ export default function AdminMedia() {
   }, [session?.accessToken, params]);
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !session?.accessToken) return;
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length || !session?.accessToken) return;
 
     try {
       setUploading(true);
-      const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
-      const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
-        "/admin/media/uploads/prepare",
-        {
+      let uploadedCount = 0;
+      for (const file of files) {
+        const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
+        const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+          "/admin/media/uploads/prepare",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              byteSize: file.size,
+              kind,
+            }),
+          },
+          session.accessToken,
+        );
+
+        const uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
+        }
+
+        await apiRequest("/admin/media/uploads/finalize", {
           method: "POST",
           body: JSON.stringify({
-            filename: file.name,
-            mimeType: file.type || "application/octet-stream",
-            byteSize: file.size,
+            storageKey: prep.data.storageKey,
+            publicUrl: prep.data.publicUrl,
             kind,
+            metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+            altText: file.name,
           }),
-        },
-        session.accessToken,
-      );
+        }, session.accessToken);
+        uploadedCount += 1;
+      }
 
-      await fetch(prep.data.uploadUrl, {
-        method: prep.data.method,
-        headers: prep.data.headers,
-        body: file,
-      });
-
-      await apiRequest("/admin/media/uploads/finalize", {
-        method: "POST",
-        body: JSON.stringify({
-          storageKey: prep.data.storageKey,
-          publicUrl: prep.data.publicUrl,
-          kind,
-          metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
-          altText: file.name,
-        }),
-      }, session.accessToken);
-
-      toast.success("File uploaded");
+      toast.success(`${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded`);
       await loadMedia();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
@@ -770,7 +777,7 @@ export default function AdminMedia() {
           <button onClick={() => setBulkImportOpen(true)} className="px-4 py-2 rounded-lg border border-gray-200 text-sm">Bulk Image Import</button>
           <label className="inline-flex items-center px-4 py-2 rounded-lg bg-gray-900 text-white text-sm cursor-pointer">
             {uploading ? "Uploading..." : "Upload File"}
-            <input type="file" className="hidden" onChange={onFileSelect} disabled={uploading} />
+            <input type="file" multiple className="hidden" onChange={onFileSelect} disabled={uploading} />
           </label>
         </div>
       </div>

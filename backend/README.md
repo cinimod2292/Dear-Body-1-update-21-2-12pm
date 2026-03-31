@@ -51,3 +51,7 @@ This service provides the production backend foundation for admin APIs and comme
 
 ## API prefix
 - All routes are prefixed by `API_PREFIX` (default `/api`).
+
+## Media storage note
+- `UPLOAD_PROVIDER=local` stores files on the runtime filesystem (`.local-uploads`) and is intended for local development/testing only.
+- In production, use persistent object storage (`UPLOAD_PROVIDER=s3` with bucket/endpoint settings), otherwise files can disappear after instance restart/redeploy.

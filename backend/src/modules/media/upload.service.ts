@@ -33,6 +33,9 @@ export function resolveLocalUploadPath(storageKey: string): string {
 }
 
 export function resolveLocalPublicBaseUrl(): string {
+  if (env.NODE_ENV === "production") {
+    throw new Error("UPLOAD_PROVIDER=local is not supported in production. Configure UPLOAD_PROVIDER=s3 for persistent media storage.");
+  }
   if (env.PUBLIC_BASE_URL) return normalizeBaseUrl(env.PUBLIC_BASE_URL);
   if (env.NODE_ENV === "development" || env.NODE_ENV === "test") {
     return `http://localhost:${env.PORT}`;

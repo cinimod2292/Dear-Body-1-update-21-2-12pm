@@ -299,6 +299,8 @@ export default function Checkout() {
     e.preventDefault();
     if (submitting) return;
     setCheckoutError(null);
+    const checkoutSubmitStartedAt = performance.now();
+    console.info("[checkout-timing] submit handler started", { t0: checkoutSubmitStartedAt });
 
     try {
       setSubmitting(true);
@@ -324,6 +326,7 @@ export default function Checkout() {
       });
       const resolvePayload = await resolveRes.json().catch(() => null);
       if (!resolveRes.ok) throw new Error(resolvePayload?.error?.message || "Unable to resolve product variants for checkout");
+      console.info("[checkout-timing] resolve-items response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt) });
 
       const cartRes = await fetch(`${API_BASE}/store/cart`, {
         method: "POST",
@@ -334,6 +337,7 @@ export default function Checkout() {
       if (!cartRes.ok) throw new Error(cartPayload?.error?.message || "Failed to create checkout cart");
       const cartId = cartPayload?.data?.id as string | undefined;
       if (!cartId) throw new Error("Checkout cart missing");
+      console.info("[checkout-timing] checkout cart created", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       for (const item of resolvePayload.data.items as Array<{ variantId: string; quantity: number }>) {
         const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
@@ -347,6 +351,7 @@ export default function Checkout() {
         }
       }
 
+      console.info("[checkout-timing] backend payment-init started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -372,6 +377,7 @@ export default function Checkout() {
       });
       const checkoutPayload = await checkoutRes.json().catch(() => null);
       if (!checkoutRes.ok) throw new Error(checkoutPayload?.error?.message || "Checkout failed");
+      console.info("[checkout-timing] backend response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       const order = checkoutPayload?.data?.order;
       const payment = checkoutPayload?.data?.payment;
@@ -402,6 +408,7 @@ export default function Checkout() {
         });
         const retryPayload = await retryRes.json().catch(() => null);
         if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
+          console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "retry-initiate" });
           console.info("[checkout] retry redirect", {
             checkoutUrlFromBackend: retryPayload.data.checkoutUrl,
             redirectTarget: retryPayload.data.checkoutUrl,
@@ -422,6 +429,7 @@ export default function Checkout() {
       setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
+        console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "checkout-response" });
         console.info("[checkout] initial redirect", {
           checkoutUrlFromBackend: payment.checkoutUrl,
           redirectTarget: payment.checkoutUrl,
@@ -692,6 +700,7 @@ export default function Checkout() {
                   <button
                     type="submit"
                     disabled={submitting || !canProceedToPayment}
+                    onClick={() => console.info("[checkout-timing] pay button clicked", { step: "payment", canProceedToPayment, submitting })}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Lock size={16} />

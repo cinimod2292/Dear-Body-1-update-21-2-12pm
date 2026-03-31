@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Check, Lock, ArrowLeft, Truck } from "lucide-react";
 import { useCart } from "../context/CartContext";
@@ -104,6 +104,12 @@ export default function Checkout() {
   const stepIndex = steps.findIndex(s => s.key === step);
 
   const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
+  const finalizeSuccessfulCheckout = useCallback((orderId: string, source: "initial_load" | "poll") => {
+    console.info("[checkout] successful payment/order completion detection", { orderId, source });
+    setProcessingPayment(false);
+    setOrderPlaced(true);
+    clearCart(`checkout_success_${source}`);
+  }, [clearCart]);
 
   const loadExistingOrder = async (orderId: string) => {
     if (!token) return;
@@ -118,15 +124,26 @@ export default function Checkout() {
       status: o.status,
       checkoutUrl: null,
     });
-    setOrderPlaced(o.paymentStatus === "PAID");
+    if (o.paymentStatus === "PAID") {
+      finalizeSuccessfulCheckout(orderId, "initial_load");
+      return;
+    }
+    setOrderPlaced(false);
     setProcessingPayment(["AWAITING_PAYMENT", "PENDING"].includes(o.paymentStatus));
+    if (searchParams.get("cancelled") || o.paymentStatus === "FAILED") {
+      console.info("[checkout] abandoned cart restore trigger", {
+        orderId,
+        cancelled: Boolean(searchParams.get("cancelled")),
+        paymentStatus: o.paymentStatus,
+      });
+    }
   };
 
   useEffect(() => {
     const orderId = searchParams.get("orderId");
     if (!orderId) return;
     loadExistingOrder(orderId).catch(() => undefined);
-  }, [searchParams, token]);
+  }, [searchParams, token, finalizeSuccessfulCheckout]);
 
   useEffect(() => {
     fetch(`${API_BASE}/store/shipping-methods`)
@@ -247,12 +264,11 @@ export default function Checkout() {
         });
         setOrderInfo((prev) => prev ? { ...prev, paymentStatus: status, status: payload.data.status } : prev);
         if (status === "PAID") {
-          setProcessingPayment(false);
-          setOrderPlaced(true);
-          clearCart();
+          finalizeSuccessfulCheckout(orderId, "poll");
         }
         if (status === "FAILED") {
           setProcessingPayment(false);
+          console.info("[checkout] abandoned cart restore trigger", { orderId, cancelled: Boolean(searchParams.get("cancelled")), paymentStatus: status });
         }
         if (attempts >= 20) {
           setProcessingTimedOut(true);
@@ -262,7 +278,7 @@ export default function Checkout() {
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [processingPayment, searchParams, token, clearCart]);
+  }, [processingPayment, searchParams, token, finalizeSuccessfulCheckout]);
 
   const applySavedAddress = (addressId: string) => {
     setSelectedAddressId(addressId);

@@ -49,6 +49,7 @@ export default function AdminProductEditor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -123,6 +124,104 @@ export default function AdminProductEditor() {
 
   const selectedTagIds = useMemo(() => (product.tags ?? []).map((t) => t.tagId), [product.tags]);
   const selectedMediaIds = useMemo(() => (product.galleries ?? []).map((g) => g.mediaAssetId), [product.galleries]);
+  const selectedMediaAssets = useMemo(
+    () => selectedMediaIds
+      .map((mediaId) => mediaAssets.find((asset) => asset.id === mediaId))
+      .filter((asset): asset is MediaAsset => Boolean(asset)),
+    [selectedMediaIds, mediaAssets],
+  );
+
+  const reorderGallery = (mediaAssetId: string, direction: "up" | "down") => {
+    setProduct((prev) => {
+      const current = [...(prev.galleries ?? [])];
+      const idx = current.findIndex((entry) => entry.mediaAssetId === mediaAssetId);
+      if (idx < 0) return prev;
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= current.length) return prev;
+      [current[idx], current[target]] = [current[target], current[idx]];
+      return { ...prev, galleries: current };
+    });
+  };
+
+  const setPrimaryImage = (mediaAssetId: string) => {
+    setProduct((prev) => {
+      const current = [...(prev.galleries ?? [])];
+      const idx = current.findIndex((entry) => entry.mediaAssetId === mediaAssetId);
+      if (idx <= 0) return prev;
+      const [selected] = current.splice(idx, 1);
+      current.unshift(selected);
+      return { ...prev, galleries: current };
+    });
+  };
+
+  const removeGalleryImage = (mediaAssetId: string) => {
+    setProduct((prev) => ({
+      ...prev,
+      galleries: (prev.galleries ?? []).filter((entry) => entry.mediaAssetId !== mediaAssetId),
+    }));
+  };
+
+  const uploadMediaFiles = async (files: FileList | null) => {
+    if (!files?.length || !session?.accessToken) return;
+    try {
+      setUploadingMedia(true);
+      const uploadedAssets: MediaAsset[] = [];
+      for (const file of Array.from(files)) {
+        const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
+        const prep = await apiRequest<{ data: { uploadUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+          "/admin/media/uploads/prepare",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              byteSize: file.size,
+              kind,
+            }),
+          },
+          session.accessToken,
+        );
+
+        const uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+        if (!uploadResponse.ok) throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
+
+        const finalize = await apiRequest<{ data: MediaAsset }>(
+          "/admin/media/uploads/finalize",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              storageKey: prep.data.storageKey,
+              kind,
+              metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+              altText: file.name,
+            }),
+          },
+          session.accessToken,
+        );
+        uploadedAssets.push(finalize.data);
+      }
+
+      if (uploadedAssets.length) {
+        setMediaAssets((prev) => [...uploadedAssets, ...prev.filter((asset) => !uploadedAssets.some((u) => u.id === asset.id))]);
+        setProduct((prev) => {
+          const existing = new Set((prev.galleries ?? []).map((entry) => entry.mediaAssetId));
+          const additions = uploadedAssets
+            .filter((asset) => !existing.has(asset.id))
+            .map((asset) => ({ mediaAssetId: asset.id }));
+          return { ...prev, galleries: [...(prev.galleries ?? []), ...additions] };
+        });
+      }
+      toast.success(`${uploadedAssets.length} file${uploadedAssets.length === 1 ? "" : "s"} uploaded`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
 
   const saveProduct = async (e: FormEvent) => {
     e.preventDefault();
@@ -318,6 +417,48 @@ export default function AdminProductEditor() {
 
         <section className="bg-white border border-gray-200 rounded-xl p-5">
           <h3 className="font-bold mb-3">Media Gallery</h3>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">Manage linked product images, upload new ones, and set display order.</p>
+            <label className="inline-flex items-center px-3 py-2 rounded-lg bg-gray-900 text-white text-xs cursor-pointer">
+              {uploadingMedia ? "Uploading..." : "Upload Image(s)"}
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                disabled={uploadingMedia}
+                onChange={(event) => {
+                  uploadMediaFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          <div className="mb-5">
+            <h4 className="text-sm font-semibold mb-2">Linked Images</h4>
+            {selectedMediaAssets.length === 0 ? (
+              <p className="text-xs text-gray-500">No images linked yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {selectedMediaAssets.map((asset, index) => (
+                  <div key={asset.id} className="rounded-lg border border-gray-200 p-2">
+                    <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+                      {asset.publicUrl && asset.mimeType.startsWith("image")
+                        ? <img src={asset.publicUrl} alt={asset.filename} className="w-full h-full object-cover" />
+                        : <span className="text-[10px] text-gray-500">{asset.mimeType}</span>}
+                    </div>
+                    <p className="mt-2 text-[11px] truncate">{asset.filename}</p>
+                    <p className="text-[10px] text-gray-400">{index === 0 ? "Primary image" : `Position ${index + 1}`}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <button type="button" onClick={() => reorderGallery(asset.id, "up")} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↑</button>
+                      <button type="button" onClick={() => reorderGallery(asset.id, "down")} disabled={index === selectedMediaAssets.length - 1} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↓</button>
+                      <button type="button" onClick={() => setPrimaryImage(asset.id)} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">Set Primary</button>
+                      <button type="button" onClick={() => removeGalleryImage(asset.id)} className="px-2 py-1 rounded border border-red-200 text-red-600 text-[11px]">Unlink</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           {mediaAssets.length === 0 ? <EmptyState label="No media found. Upload files from Media page." /> : (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {mediaAssets.map((m) => {

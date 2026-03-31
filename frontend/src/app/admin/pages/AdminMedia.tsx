@@ -16,7 +16,7 @@ interface MediaDetailResponse {
     updatedAt: string;
     usage: {
       galleryCount: number;
-      products: Array<{ id: string; name: string }>;
+      products: Array<{ id: string; name: string; sku: string | null }>;
     };
   };
 }
@@ -354,6 +354,10 @@ function MediaDetailsModal({
   const [altText, setAltText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [assignSku, setAssignSku] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [unlinkingSku, setUnlinkingSku] = useState<string | null>(null);
+  const [replaceExistingLinks, setReplaceExistingLinks] = useState(false);
 
   const loadAsset = async () => {
     if (!accessToken || !mediaId) return;
@@ -364,6 +368,7 @@ function MediaDetailsModal({
       setAsset(res.data);
       setFilename(res.data.filename);
       setAltText(res.data.altText ?? "");
+      setAssignSku(res.data.usage.products[0]?.sku ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load media details");
     } finally {
@@ -377,6 +382,8 @@ function MediaDetailsModal({
       setAsset(null);
       setFilename("");
       setAltText("");
+      setAssignSku("");
+      setReplaceExistingLinks(false);
       setError(null);
       setShowDeleteConfirm(false);
     }
@@ -434,6 +441,51 @@ function MediaDetailsModal({
       setError(err instanceof Error ? err.message : "Failed to delete media asset");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const assignToSku = async () => {
+    if (!accessToken || !mediaId || !assignSku.trim()) return;
+    try {
+      if (replaceExistingLinks) {
+        const confirmed = window.confirm("Replace existing product links for this image? This will unlink it from other products.");
+        if (!confirmed) return;
+      }
+      setAssigning(true);
+      setError(null);
+      await apiRequest(`/admin/media/${mediaId}/assign-product`, {
+        method: "POST",
+        body: JSON.stringify({
+          sku: assignSku.trim(),
+          replaceExisting: replaceExistingLinks,
+        }),
+      }, accessToken);
+      toast.success(`Assigned to SKU ${assignSku.trim()}`);
+      await loadAsset();
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign SKU");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const unlinkSku = async (sku: string) => {
+    if (!accessToken || !mediaId || !sku) return;
+    try {
+      setUnlinkingSku(sku);
+      setError(null);
+      await apiRequest(`/admin/media/${mediaId}/unlink-product`, {
+        method: "POST",
+        body: JSON.stringify({ sku }),
+      }, accessToken);
+      toast.success(`Unlinked SKU ${sku}`);
+      await loadAsset();
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unlink SKU");
+    } finally {
+      setUnlinkingSku(null);
     }
   };
 
@@ -507,8 +559,52 @@ function MediaDetailsModal({
                   Attached to {asset.usage.galleryCount} product gallery {asset.usage.galleryCount === 1 ? "entry" : "entries"}.
                 </p>
                 {asset.usage.products.length > 0 ? (
-                  <p className="text-xs text-gray-600">Products: {asset.usage.products.map((p) => p.name).join(", ")}</p>
-                ) : null}
+                  <div className="space-y-2">
+                    {asset.usage.products.map((p) => (
+                      <div key={`${p.id}-${p.sku ?? "no-sku"}`} className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1">
+                        <p className="text-xs text-gray-600">
+                          {p.name}
+                          {p.sku ? <span className="text-gray-400"> · SKU {p.sku}</span> : null}
+                        </p>
+                        {p.sku ? (
+                          <button
+                            onClick={() => unlinkSku(p.sku as string)}
+                            disabled={unlinkingSku === p.sku}
+                            className="px-2 py-1 text-[11px] rounded border border-gray-200 disabled:opacity-50"
+                          >
+                            {unlinkingSku === p.sku ? "Unlinking..." : "Unlink"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-xs text-gray-500">Not linked to any product yet.</p>}
+                <div className="pt-2 border-t border-gray-100 space-y-2">
+                  <label className="block text-xs text-gray-700">
+                    Assign to product SKU
+                    <input
+                      value={assignSku}
+                      onChange={(e) => setAssignSku(e.target.value)}
+                      placeholder="e.g. DB-SERUM-001"
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                    />
+                  </label>
+                  <button
+                    onClick={assignToSku}
+                    disabled={assigning || !assignSku.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs disabled:opacity-50"
+                  >
+                    {assigning ? "Assigning..." : "Assign SKU"}
+                  </button>
+                  <label className="flex items-center gap-2 text-xs text-amber-700">
+                    <input
+                      type="checkbox"
+                      checked={replaceExistingLinks}
+                      onChange={(e) => setReplaceExistingLinks(e.target.checked)}
+                    />
+                    Replace existing links (will unlink from other products)
+                  </label>
+                </div>
               </div>
 
               <div className="rounded-lg border border-gray-200 p-3 text-sm space-y-3">
@@ -599,44 +695,51 @@ export default function AdminMedia() {
   }, [session?.accessToken, params]);
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !session?.accessToken) return;
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length || !session?.accessToken) return;
 
     try {
       setUploading(true);
-      const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
-      const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
-        "/admin/media/uploads/prepare",
-        {
+      let uploadedCount = 0;
+      for (const file of files) {
+        const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
+        const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+          "/admin/media/uploads/prepare",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              byteSize: file.size,
+              kind,
+            }),
+          },
+          session.accessToken,
+        );
+
+        const uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
+        }
+
+        await apiRequest("/admin/media/uploads/finalize", {
           method: "POST",
           body: JSON.stringify({
-            filename: file.name,
-            mimeType: file.type || "application/octet-stream",
-            byteSize: file.size,
+            storageKey: prep.data.storageKey,
+            publicUrl: prep.data.publicUrl,
             kind,
+            metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+            altText: file.name,
           }),
-        },
-        session.accessToken,
-      );
+        }, session.accessToken);
+        uploadedCount += 1;
+      }
 
-      await fetch(prep.data.uploadUrl, {
-        method: prep.data.method,
-        headers: prep.data.headers,
-        body: file,
-      });
-
-      await apiRequest("/admin/media/uploads/finalize", {
-        method: "POST",
-        body: JSON.stringify({
-          storageKey: prep.data.storageKey,
-          publicUrl: prep.data.publicUrl,
-          kind,
-          metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
-          altText: file.name,
-        }),
-      }, session.accessToken);
-
-      toast.success("File uploaded");
+      toast.success(`${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded`);
       await loadMedia();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
@@ -674,7 +777,7 @@ export default function AdminMedia() {
           <button onClick={() => setBulkImportOpen(true)} className="px-4 py-2 rounded-lg border border-gray-200 text-sm">Bulk Image Import</button>
           <label className="inline-flex items-center px-4 py-2 rounded-lg bg-gray-900 text-white text-sm cursor-pointer">
             {uploading ? "Uploading..." : "Upload File"}
-            <input type="file" className="hidden" onChange={onFileSelect} disabled={uploading} />
+            <input type="file" multiple className="hidden" onChange={onFileSelect} disabled={uploading} />
           </label>
         </div>
       </div>

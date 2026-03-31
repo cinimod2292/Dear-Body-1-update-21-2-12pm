@@ -230,6 +230,12 @@ export default function AdminProductEditor() {
     }
   };
 
+  const normalizeOptionalText = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  };
+
   const saveProduct = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken) return;
@@ -253,8 +259,8 @@ export default function AdminProductEditor() {
     const payload = {
       name: product.name,
       slug: product.slug,
-      description: product.description,
-      shortDescription: product.shortDescription,
+      description: normalizeOptionalText(product.description),
+      shortDescription: normalizeOptionalText(product.shortDescription),
       status: product.status,
       visibility: product.visibility,
       featured: product.featured,

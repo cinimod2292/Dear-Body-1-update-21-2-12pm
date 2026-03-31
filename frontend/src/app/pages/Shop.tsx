@@ -5,11 +5,8 @@ import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
 
 const sortOptions = [
-  { value: "featured", label: "Featured" },
   { value: "price-asc", label: "Price: Low to High" },
   { value: "price-desc", label: "Price: High to Low" },
-  { value: "rating", label: "Top Rated" },
-  { value: "reviews", label: "Most Reviewed" },
 ];
 
 export default function Shop() {
@@ -18,13 +15,13 @@ export default function Shop() {
   const initialSearch = searchParams.get("search") || "";
 
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [sortBy, setSortBy] = useState("featured");
+  const [sortBy, setSortBy] = useState("price-asc");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const previousDynamicPriceMax = useRef(100);
+  const previousDynamicPriceMax = useRef(0);
 
   useEffect(() => {
     fetchStoreProducts()
@@ -96,10 +93,13 @@ export default function Shop() {
     result = result.filter(p => p.price >= priceRange[0] && p.price <= priceRange[1] + 0.01);
 
     switch (sortBy) {
-      case "price-asc": result.sort((a, b) => a.price - b.price); break;
-      case "price-desc": result.sort((a, b) => b.price - a.price); break;
-      case "rating": result.sort((a, b) => b.rating - a.rating); break;
-      case "reviews": result.sort((a, b) => b.reviews - a.reviews); break;
+      case "price-desc":
+        result.sort((a, b) => b.price - a.price);
+        break;
+      case "price-asc":
+      default:
+        result.sort((a, b) => a.price - b.price);
+        break;
     }
 
     return result;

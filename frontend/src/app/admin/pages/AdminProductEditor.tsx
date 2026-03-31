@@ -234,6 +234,22 @@ export default function AdminProductEditor() {
     e.preventDefault();
     if (!session?.accessToken) return;
 
+    const seoPayload = (() => {
+      const seo = product.seoMetadata;
+      if (!seo || typeof seo !== "object") return undefined;
+
+      const normalized = {
+        title: typeof seo.title === "string" && seo.title.trim() ? seo.title.trim() : undefined,
+        description: typeof seo.description === "string" && seo.description.trim() ? seo.description.trim() : undefined,
+        canonicalUrl: typeof seo.canonicalUrl === "string" && seo.canonicalUrl.trim() ? seo.canonicalUrl.trim() : undefined,
+        ogTitle: typeof seo.ogTitle === "string" && seo.ogTitle.trim() ? seo.ogTitle.trim() : undefined,
+        ogDescription: typeof seo.ogDescription === "string" && seo.ogDescription.trim() ? seo.ogDescription.trim() : undefined,
+        ogImageUrl: typeof seo.ogImageUrl === "string" && seo.ogImageUrl.trim() ? seo.ogImageUrl.trim() : undefined,
+      };
+
+      return Object.values(normalized).some(Boolean) ? normalized : undefined;
+    })();
+
     const payload = {
       name: product.name,
       slug: product.slug,
@@ -244,7 +260,7 @@ export default function AdminProductEditor() {
       featured: product.featured,
       brandId: product.brandId || undefined,
       categoryId: product.categoryId || undefined,
-      seo: product.seoMetadata,
+      seo: seoPayload,
       tagIds: selectedTagIds,
       gallery: selectedMediaIds.map((id, idx) => ({ mediaAssetId: id, position: idx })),
     };

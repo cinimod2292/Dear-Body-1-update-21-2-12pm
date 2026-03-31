@@ -89,7 +89,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
     if (response.status === 401 && !isRefreshCall) {
       adminAuthHandlers?.onHardAuthFailure();
     }
-    const message = payload?.error?.message || payload?.message || `Request failed (${response.status})`;
+    const validationIssue = Array.isArray(payload?.error?.details) ? payload.error.details[0] : null;
+    const validationHint = validationIssue && typeof validationIssue === "object" && validationIssue !== null
+      ? `${Array.isArray((validationIssue as { path?: unknown }).path) ? (validationIssue as { path: Array<string | number> }).path.join(".") : "field"}: ${typeof (validationIssue as { message?: unknown }).message === "string" ? (validationIssue as { message: string }).message : "invalid value"}`
+      : null;
+    const baseMessage = payload?.error?.message || payload?.message || `Request failed (${response.status})`;
+    const message = validationHint && baseMessage === "Invalid request data"
+      ? `${baseMessage} (${validationHint})`
+      : baseMessage;
     throw new Error(message);
   }
 

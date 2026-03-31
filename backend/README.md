@@ -55,3 +55,16 @@ This service provides the production backend foundation for admin APIs and comme
 ## Media storage note
 - `UPLOAD_PROVIDER=local` stores files on the runtime filesystem (`.local-uploads`) and is intended for local development/testing only.
 - In production, use persistent object storage (`UPLOAD_PROVIDER=s3` with bucket/endpoint settings), otherwise files can disappear after instance restart/redeploy.
+
+### Required production media env vars (`UPLOAD_PROVIDER=s3`)
+- `UPLOAD_PROVIDER=s3`
+- `UPLOAD_BUCKET=<bucket-name>`
+- `UPLOAD_REGION=<region>`
+- `UPLOAD_ACCESS_KEY_ID=<key>`
+- `UPLOAD_SECRET_ACCESS_KEY=<secret>`
+
+### Optional media env vars
+- `UPLOAD_ENDPOINT` (S3-compatible endpoint, e.g. MinIO/R2/B2)
+- `UPLOAD_PUBLIC_BASE_URL` (public-read base URL if different from `UPLOAD_ENDPOINT`)
+- `UPLOAD_SIGNED_URL_TTL_SECONDS` (default `900`)
+- `UPLOAD_FORCE_PATH_STYLE` (`true` for many S3-compatible providers)

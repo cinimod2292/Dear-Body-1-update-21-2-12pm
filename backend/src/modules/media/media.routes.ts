@@ -5,7 +5,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
+import { assertS3ObjectExists, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
@@ -51,6 +51,20 @@ export async function mediaRoutes(app: FastifyInstance) {
             resolvedPublicUrl,
           }, "Finalize failed: local upload file missing");
           throw new AppError(422, "Uploaded file not found for storage key; upload may have failed or landed on a different runtime instance.", "MEDIA_UPLOAD_FILE_MISSING", {
+            storageKey: body.storageKey,
+          });
+        }
+      }
+
+      if (env.UPLOAD_PROVIDER === "s3") {
+        try {
+          await assertS3ObjectExists(body.storageKey);
+        } catch (error) {
+          request.log.error({
+            storageKey: body.storageKey,
+            err: error,
+          }, "Finalize failed: uploaded object not found in S3");
+          throw new AppError(422, "Uploaded object not found in persistent storage.", "MEDIA_UPLOAD_FILE_MISSING", {
             storageKey: body.storageKey,
           });
         }

@@ -71,8 +71,15 @@ export async function ordersRoutes(app: FastifyInstance) {
     return reply.send({ data: await applyCoupon(cartId, request.body) });
   });
   app.post("/store/checkout/:cartId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
+    const checkoutRouteStartedAt = Date.now();
     const { cartId } = request.params as { cartId: string };
+    console.info("[checkout-timing] payment-init route entered", { cartId, requestId: request.id });
     const order = await checkoutCart(cartId, request.body, request.customer.id);
+    console.info("[checkout-timing] order creation/update complete", {
+      cartId,
+      orderId: order?.id,
+      elapsedMs: Date.now() - checkoutRouteStartedAt,
+    });
     const body = (request.body ?? {}) as { payment?: { gateway?: "stitch"; returnUrl?: string; cancelUrl?: string; referenceId?: string } };
 
     if (body.payment?.gateway === "stitch") {
@@ -81,12 +88,24 @@ export async function ordersRoutes(app: FastifyInstance) {
         returnUrl: withOrderId(body.payment.returnUrl, order.id),
         cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
-      await sendOrderCreatedEmailSafe(order!.id);
+      void sendOrderCreatedEmailSafe(order!.id);
+      console.info("[checkout-timing] response returned to frontend", {
+        cartId,
+        orderId: order.id,
+        paymentProvider: "stitch",
+        elapsedMs: Date.now() - checkoutRouteStartedAt,
+      });
 
       return reply.status(201).send({ data: { order, payment } });
     }
 
-    await sendOrderCreatedEmailSafe(order!.id);
+    void sendOrderCreatedEmailSafe(order!.id);
+    console.info("[checkout-timing] response returned to frontend", {
+      cartId,
+      orderId: order?.id,
+      paymentProvider: "none",
+      elapsedMs: Date.now() - checkoutRouteStartedAt,
+    });
 
     return reply.status(201).send({ data: { order } });
   });

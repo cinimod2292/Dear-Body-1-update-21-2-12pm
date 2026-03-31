@@ -20,6 +20,26 @@ export function assertOrThrow(condition: unknown, statusCode: number, message: s
 
 export function registerErrorHandler(app: { setErrorHandler: Function }) {
   app.setErrorHandler((error: unknown, request: FastifyRequest, reply: FastifyReply) => {
+    if (
+      typeof error === "object"
+      && error !== null
+      && "statusCode" in error
+      && typeof (error as { statusCode: unknown }).statusCode === "number"
+      && "message" in error
+      && typeof (error as { message: unknown }).message === "string"
+    ) {
+      const fastifyError = error as { statusCode: number; code?: string; message: string };
+      if (fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
+        return reply.status(fastifyError.statusCode).send({
+          error: {
+            code: fastifyError.code ?? "BAD_REQUEST",
+            message: fastifyError.message,
+            requestId: request.id,
+          },
+        });
+      }
+    }
+
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({
         error: {

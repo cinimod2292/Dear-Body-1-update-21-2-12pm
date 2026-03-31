@@ -53,7 +53,9 @@ async function parseJsonSafe(res: Response) {
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const makeRequest = async (requestToken?: string) => {
     const headers = new Headers(options.headers);
-    headers.set("Content-Type", "application/json");
+    if (options.body !== undefined && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
     if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);
 
     const response = await fetch(`${API_BASE}${path}`, {
@@ -87,7 +89,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
     if (response.status === 401 && !isRefreshCall) {
       adminAuthHandlers?.onHardAuthFailure();
     }
-    const message = payload?.error?.message || `Request failed (${response.status})`;
+    const validationIssue = Array.isArray(payload?.error?.details) ? payload.error.details[0] : null;
+    const validationHint = validationIssue && typeof validationIssue === "object" && validationIssue !== null
+      ? `${Array.isArray((validationIssue as { path?: unknown }).path) ? (validationIssue as { path: Array<string | number> }).path.join(".") : "field"}: ${typeof (validationIssue as { message?: unknown }).message === "string" ? (validationIssue as { message: string }).message : "invalid value"}`
+      : null;
+    const baseMessage = payload?.error?.message || payload?.message || `Request failed (${response.status})`;
+    const message = validationHint && baseMessage === "Invalid request data"
+      ? `${baseMessage} (${validationHint})`
+      : baseMessage;
     throw new Error(message);
   }
 

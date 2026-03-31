@@ -13,6 +13,11 @@ export interface PreparedUpload {
   headers: Record<string, string>;
 }
 
+function resolveApiBaseUrl(): string {
+  if (env.PUBLIC_BASE_URL) return normalizeBaseUrl(env.PUBLIC_BASE_URL);
+  return `http://localhost:${env.PORT}`;
+}
+
 export interface UploadConfig {
   provider: "local" | "s3" | "cloudflare-r2";
   bucket?: string;
@@ -142,7 +147,7 @@ function resolveS3Target(storageKey: string, cfg: UploadConfig): {
   };
 }
 
-function createS3PresignedUrl(method: "PUT" | "HEAD", storageKey: string, expiresIn: number, cfg: UploadConfig): string {
+function createS3PresignedUrl(method: "PUT" | "HEAD" | "GET", storageKey: string, expiresIn: number, cfg: UploadConfig): string {
   const { region, accessKeyId, secretAccessKey } = requireS3Config(cfg);
   const now = new Date();
   const amzDate = toAmzDate(now);
@@ -214,8 +219,7 @@ export function resolveLocalPublicBaseUrl(): string {
 
 export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
   if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
-    const target = resolveS3Target(storageKey, cfg);
-    return `${target.publicBaseUrl}/${sanitizeStorageKey(storageKey)}`;
+    return `${resolveApiBaseUrl()}${env.API_PREFIX}/media/public/${sanitizeStorageKey(storageKey)}`;
   }
   return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
 }
@@ -225,8 +229,12 @@ export async function createS3UploadUrl(storageKey: string, mimeType: string, cf
   return createS3PresignedUrl("PUT", storageKey, cfg.signedUrlTtlSeconds, cfg);
 }
 
-export async function assertS3ObjectExists(storageKey: string): Promise<void> {
-  const cfg = await resolveUploadConfig();
+export async function createS3DownloadUrl(storageKey: string, cfg: UploadConfig): Promise<string> {
+  return createS3PresignedUrl("GET", storageKey, cfg.signedUrlTtlSeconds, cfg);
+}
+
+export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {
+  const cfg = configOverride ?? await resolveUploadConfig();
   const headUrl = createS3PresignedUrl("HEAD", storageKey, 60, cfg);
   const response = await fetch(headUrl, { method: "HEAD" });
   if (!response.ok) {
@@ -234,8 +242,8 @@ export async function assertS3ObjectExists(storageKey: string): Promise<void> {
   }
 }
 
-export async function prepareUpload(filename: string, mimeType: string): Promise<PreparedUpload> {
-  const cfg = await resolveUploadConfig();
+export async function prepareUpload(filename: string, mimeType: string, configOverride?: UploadConfig): Promise<PreparedUpload> {
+  const cfg = configOverride ?? await resolveUploadConfig();
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
   const storageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitized}`;
 

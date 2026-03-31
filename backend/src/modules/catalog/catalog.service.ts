@@ -13,6 +13,7 @@ import {
   updateVariantSchema,
 } from "./catalog.schemas.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
+import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
 
 const IMPORT_TEMPLATE_HEADERS = [
   "sku",
@@ -134,6 +135,26 @@ function parseCsvLine(line: string): string[] {
 
   result.push(current);
   return result;
+}
+
+function withResolvedMediaUrls<T extends { galleries?: Array<{ mediaAsset?: { storageKey?: string; publicUrl?: string | null } | null }>; }>(
+  product: T,
+  publicUrlForStorageKey: (storageKey: string) => string,
+): T {
+  if (!Array.isArray(product.galleries)) return product;
+  return {
+    ...product,
+    galleries: product.galleries.map((gallery) => {
+      if (!gallery?.mediaAsset?.storageKey) return gallery;
+      return {
+        ...gallery,
+        mediaAsset: {
+          ...gallery.mediaAsset,
+          publicUrl: publicUrlForStorageKey(gallery.mediaAsset.storageKey),
+        },
+      };
+    }),
+  };
 }
 
 function parseCsv(content: string): Array<Record<string, string>> {
@@ -902,6 +923,7 @@ export async function listProducts(rawQuery: unknown) {
     ...(query.tag ? { tags: { some: { tag: { slug: query.tag } } } } : {}),
   };
 
+  const cfg = await resolveUploadConfig();
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
@@ -920,7 +942,7 @@ export async function listProducts(rawQuery: unknown) {
     prisma.product.count({ where }),
   ]);
 
-  return toPaginatedResponse(items, total, query);
+  return toPaginatedResponse(items.map((item) => withResolvedMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
 }
 
 export async function listStorefrontProducts(rawQuery: unknown) {
@@ -939,6 +961,7 @@ export async function listStorefrontProducts(rawQuery: unknown) {
     variants: { some: { isActive: true } },
   };
 
+  const cfg = await resolveUploadConfig();
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
@@ -954,10 +977,11 @@ export async function listStorefrontProducts(rawQuery: unknown) {
     prisma.product.count({ where }),
   ]);
 
-  return toPaginatedResponse(items, total, query);
+  return toPaginatedResponse(items.map((item) => withResolvedMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
 }
 
 export async function getProductById(productId: string) {
+  const cfg = await resolveUploadConfig();
   const product = await prisma.product.findUnique({
     where: { id: productId },
     include: {
@@ -971,10 +995,11 @@ export async function getProductById(productId: string) {
   });
 
   if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
-  return product;
+  return withResolvedMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
 }
 
 export async function getStorefrontProductById(productId: string) {
+  const cfg = await resolveUploadConfig();
   const product = await prisma.product.findFirst({
     where: {
       id: productId,
@@ -990,7 +1015,7 @@ export async function getStorefrontProductById(productId: string) {
   });
 
   if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
-  return product;
+  return withResolvedMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
 }
 
 export async function createProduct(rawBody: unknown) {

@@ -5,10 +5,21 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { assertS3ObjectExists, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
+import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
+  app.get("/media/public/*", async (request, reply) => {
+    const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
+    if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
+    const cfg = await resolveUploadConfig();
+    if (cfg.provider === "local") {
+      return reply.redirect(`${resolveLocalPublicBaseUrl()}/local-upload/${storageKey}`);
+    }
+    const downloadUrl = await createS3DownloadUrl(storageKey, cfg);
+    return reply.redirect(downloadUrl);
+  });
+
   app.post(
     "/admin/media/uploads/prepare",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
@@ -167,12 +178,17 @@ export async function mediaRoutes(app: FastifyInstance) {
           } : {}),
       };
 
+      const cfg = await resolveUploadConfig();
       const [items, total] = await Promise.all([
         prisma.mediaAsset.findMany({ where, skip, take, orderBy }),
         prisma.mediaAsset.count({ where }),
       ]);
 
-      return reply.send({ data: toPaginatedResponse(items, total, query) });
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
+      }));
+      return reply.send({ data: toPaginatedResponse(normalizedItems, total, query) });
     },
   );
 
@@ -205,9 +221,11 @@ export async function mediaRoutes(app: FastifyInstance) {
 
       if (!asset) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
 
+      const cfg = await resolveUploadConfig();
       return reply.send({
         data: {
           ...asset,
+          publicUrl: resolvePublicUrlForStorageKey(asset.storageKey, cfg),
           usage: {
             galleryCount: asset._count.galleries,
             products: asset.galleries.map((entry) => ({

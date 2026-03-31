@@ -2,10 +2,10 @@ import { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { encryptStorageSecret } from "../../lib/secrets.js";
+import { decryptStorageSecret, encryptStorageSecret } from "../../lib/secrets.js";
 import { listQuerySchema, toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { upsertSettingSchema, upsertStorageSettingsSchema } from "./settings.schemas.js";
-import { assertS3ObjectExists, prepareUpload, resolveUploadConfig } from "../media/upload.service.js";
+import { assertS3ObjectExists, prepareUpload, UploadConfig } from "../media/upload.service.js";
 
 const STORAGE_SCOPE = "media";
 const STORAGE_KEY = "storage";
@@ -118,18 +118,31 @@ export async function settingsRoutes(app: FastifyInstance) {
     return reply.send({ data: toStorageResponse(saved.value as Record<string, unknown>) });
   });
 
-  app.post("/admin/settings/storage/test", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (_request, reply) => {
-    const cfg = await resolveUploadConfig();
+  app.post("/admin/settings/storage/test", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const body = upsertStorageSettingsSchema.parse(request.body);
+    const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: STORAGE_SCOPE, key: STORAGE_KEY } } });
+    const normalized = normalizeStorageConfig(body, (existing?.value ?? {}) as Record<string, unknown>);
+    const cfg: UploadConfig = {
+      provider: normalized.provider,
+      bucket: normalized.bucket,
+      endpoint: normalized.endpoint,
+      publicBaseUrl: normalized.publicBaseUrl,
+      accessKeyId: normalized.accessKeyId,
+      secretAccessKey: normalized.encryptedSecretAccessKey ? decryptStorageSecret(normalized.encryptedSecretAccessKey) : undefined,
+      signedUrlTtlSeconds: normalized.signedUrlTtlSeconds,
+      forcePathStyle: normalized.forcePathStyle,
+      region: normalized.region,
+    };
     if (cfg.provider === "local") {
       return reply.send({ data: { ok: true, message: "Local storage selected (development/test only)." } });
     }
     try {
-      const prepared = await prepareUpload("storage-test.txt", "text/plain");
+      const prepared = await prepareUpload("storage-test.txt", "text/plain", cfg);
       const putRes = await fetch(prepared.uploadUrl, { method: "PUT", headers: prepared.headers, body: "storage-test" });
       if (!putRes.ok) {
         throw new Error(`Upload permission test failed (${putRes.status})`);
       }
-      await assertS3ObjectExists(prepared.storageKey);
+      await assertS3ObjectExists(prepared.storageKey, cfg);
       return reply.send({ data: { ok: true, message: "Storage connection test succeeded. Ensure bucket CORS allows browser PUT from admin origin." } });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Storage connection test failed";

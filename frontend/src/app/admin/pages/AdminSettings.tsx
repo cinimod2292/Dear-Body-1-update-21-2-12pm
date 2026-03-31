@@ -124,6 +124,18 @@ export default function AdminSettings() {
   });
   const [storageSecret, setStorageSecret] = useState("");
 
+  const buildStoragePayload = () => ({
+    provider: storageConfig.provider,
+    bucket: storageConfig.bucket || undefined,
+    accountId: storageConfig.accountId || undefined,
+    accessKeyId: storageConfig.accessKeyId || undefined,
+    secretAccessKey: storageSecret || undefined,
+    endpoint: storageConfig.endpoint || undefined,
+    publicBaseUrl: storageConfig.publicBaseUrl || undefined,
+    signedUrlTtlSeconds: storageConfig.signedUrlTtlSeconds,
+    forcePathStyle: storageConfig.forcePathStyle,
+  });
+
   const load = async () => {
     if (!session?.accessToken) return;
     try {
@@ -297,17 +309,7 @@ export default function AdminSettings() {
     if (!session?.accessToken || saving) return;
     try {
       setSaving(true);
-      const payload = {
-        provider: storageConfig.provider,
-        bucket: storageConfig.bucket || undefined,
-        accountId: storageConfig.accountId || undefined,
-        accessKeyId: storageConfig.accessKeyId || undefined,
-        secretAccessKey: storageSecret || undefined,
-        endpoint: storageConfig.endpoint || undefined,
-        publicBaseUrl: storageConfig.publicBaseUrl || undefined,
-        signedUrlTtlSeconds: storageConfig.signedUrlTtlSeconds,
-        forcePathStyle: storageConfig.forcePathStyle,
-      };
+      const payload = buildStoragePayload();
       const res = await apiRequest<{ data: StorageSettings }>("/admin/settings/storage", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
       setStorageConfig(res.data);
       setStorageSecret("");
@@ -323,7 +325,8 @@ export default function AdminSettings() {
     if (!session?.accessToken || saving) return;
     try {
       setSaving(true);
-      const res = await apiRequest<{ data: { ok: boolean; message: string } }>("/admin/settings/storage/test", { method: "POST" }, session.accessToken);
+      const payload = buildStoragePayload();
+      const res = await apiRequest<{ data: { ok: boolean; message: string } }>("/admin/settings/storage/test", { method: "POST", body: JSON.stringify(payload) }, session.accessToken);
       if (res.data.ok) toast.success(res.data.message);
       else toast.error(res.data.message);
     } catch (err) {

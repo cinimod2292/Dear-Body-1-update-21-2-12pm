@@ -13,6 +13,11 @@ export interface PreparedUpload {
   headers: Record<string, string>;
 }
 
+function resolveApiBaseUrl(): string {
+  if (env.PUBLIC_BASE_URL) return normalizeBaseUrl(env.PUBLIC_BASE_URL);
+  return `http://localhost:${env.PORT}`;
+}
+
 export interface UploadConfig {
   provider: "local" | "s3" | "cloudflare-r2";
   bucket?: string;
@@ -142,7 +147,7 @@ function resolveS3Target(storageKey: string, cfg: UploadConfig): {
   };
 }
 
-function createS3PresignedUrl(method: "PUT" | "HEAD", storageKey: string, expiresIn: number, cfg: UploadConfig): string {
+function createS3PresignedUrl(method: "PUT" | "HEAD" | "GET", storageKey: string, expiresIn: number, cfg: UploadConfig): string {
   const { region, accessKeyId, secretAccessKey } = requireS3Config(cfg);
   const now = new Date();
   const amzDate = toAmzDate(now);
@@ -214,8 +219,7 @@ export function resolveLocalPublicBaseUrl(): string {
 
 export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
   if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
-    const target = resolveS3Target(storageKey, cfg);
-    return `${target.publicBaseUrl}/${sanitizeStorageKey(storageKey)}`;
+    return `${resolveApiBaseUrl()}${env.API_PREFIX}/media/public/${sanitizeStorageKey(storageKey)}`;
   }
   return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
 }
@@ -223,6 +227,10 @@ export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadCon
 export async function createS3UploadUrl(storageKey: string, mimeType: string, cfg: UploadConfig): Promise<string> {
   void mimeType;
   return createS3PresignedUrl("PUT", storageKey, cfg.signedUrlTtlSeconds, cfg);
+}
+
+export async function createS3DownloadUrl(storageKey: string, cfg: UploadConfig): Promise<string> {
+  return createS3PresignedUrl("GET", storageKey, cfg.signedUrlTtlSeconds, cfg);
 }
 
 export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {

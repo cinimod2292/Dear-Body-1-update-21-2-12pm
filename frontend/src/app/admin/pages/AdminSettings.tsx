@@ -58,6 +58,19 @@ interface AbandonedCartConfig {
   helpText: string;
 }
 
+interface StorageSettings {
+  provider: "local" | "s3" | "cloudflare-r2";
+  bucket: string;
+  accountId: string;
+  accessKeyId: string;
+  accessKeyIdMasked?: string;
+  secretAccessKeyConfigured: boolean;
+  endpoint: string;
+  publicBaseUrl: string;
+  signedUrlTtlSeconds: number;
+  forcePathStyle: boolean;
+}
+
 export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
@@ -97,19 +110,33 @@ export default function AdminSettings() {
     templateKey: "abandoned_cart_reminder",
     helpText: "When a cart is auto-cleared, any reserved stock is released.",
   });
+  const [storageConfig, setStorageConfig] = useState<StorageSettings>({
+    provider: "local",
+    bucket: "",
+    accountId: "",
+    accessKeyId: "",
+    accessKeyIdMasked: "",
+    secretAccessKeyConfigured: false,
+    endpoint: "",
+    publicBaseUrl: "",
+    signedUrlTtlSeconds: 900,
+    forcePathStyle: false,
+  });
+  const [storageSecret, setStorageSecret] = useState("");
 
   const load = async () => {
     if (!session?.accessToken) return;
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
         apiRequest<{ data: XeroSettings }>("/admin/integrations/xero/settings", {}, session.accessToken),
         apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
         apiRequest<{ data: AbandonedCartConfig }>("/admin/ops/abandoned-carts/config", {}, session.accessToken),
+        apiRequest<{ data: StorageSettings }>("/admin/settings/storage", {}, session.accessToken),
       ]);
 
       if (settingsRes.status === "fulfilled") {
@@ -140,8 +167,9 @@ export default function AdminSettings() {
       }
       if (xeroSyncRes.status === "fulfilled") setXeroSyncRecords(xeroSyncRes.value.data.items);
       if (abandonedConfigRes.status === "fulfilled") setAbandonedConfig(abandonedConfigRes.value.data);
+      if (storageRes.status === "fulfilled") setStorageConfig(storageRes.value.data);
 
-      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes].filter((r) => r.status === "rejected");
+      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         toast.error(`Loaded with partial failures (${failed.length})`);
       }
@@ -264,6 +292,47 @@ export default function AdminSettings() {
     }
   };
 
+  const saveStorage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || saving) return;
+    try {
+      setSaving(true);
+      const payload = {
+        provider: storageConfig.provider,
+        bucket: storageConfig.bucket || undefined,
+        accountId: storageConfig.accountId || undefined,
+        accessKeyId: storageConfig.accessKeyId || undefined,
+        secretAccessKey: storageSecret || undefined,
+        endpoint: storageConfig.endpoint || undefined,
+        publicBaseUrl: storageConfig.publicBaseUrl || undefined,
+        signedUrlTtlSeconds: storageConfig.signedUrlTtlSeconds,
+        forcePathStyle: storageConfig.forcePathStyle,
+      };
+      const res = await apiRequest<{ data: StorageSettings }>("/admin/settings/storage", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
+      setStorageConfig(res.data);
+      setStorageSecret("");
+      toast.success("Storage settings saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save storage settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testStorage = async () => {
+    if (!session?.accessToken || saving) return;
+    try {
+      setSaving(true);
+      const res = await apiRequest<{ data: { ok: boolean; message: string } }>("/admin/settings/storage/test", { method: "POST" }, session.accessToken);
+      if (res.data.ok) toast.success(res.data.message);
+      else toast.error(res.data.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Storage connection failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading settings..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
@@ -297,6 +366,39 @@ export default function AdminSettings() {
           <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
         </div>
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
+      </form>
+
+      <form onSubmit={saveStorage} className="space-y-4">
+        <h2 className="text-2xl font-black text-gray-900">Storage Settings</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
+            const provider = e.target.value as StorageSettings["provider"];
+            setStorageConfig((prev) => ({
+              ...prev,
+              provider,
+              endpoint: provider === "cloudflare-r2" && prev.accountId ? `https://${prev.accountId}.r2.cloudflarestorage.com` : prev.endpoint,
+            }));
+          }}>
+            <option value="local">local</option>
+            <option value="s3">s3</option>
+            <option value="cloudflare-r2">cloudflare-r2</option>
+          </select>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Bucket Name" value={storageConfig.bucket} onChange={(e) => setStorageConfig((prev) => ({ ...prev, bucket: e.target.value }))} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Account ID (Cloudflare R2)" value={storageConfig.accountId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accountId: e.target.value, endpoint: prev.provider === "cloudflare-r2" && e.target.value ? `https://${e.target.value}.r2.cloudflarestorage.com` : prev.endpoint }))} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Access Key ID ${storageConfig.accessKeyIdMasked ? `(current ${storageConfig.accessKeyIdMasked})` : ""}`} value={storageConfig.accessKeyId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accessKeyId: e.target.value }))} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Secret Access Key ${storageConfig.secretAccessKeyConfigured ? "(configured, leave blank to keep)" : ""}`} value={storageSecret} onChange={(e) => setStorageSecret(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Endpoint URL" value={storageConfig.endpoint} onChange={(e) => setStorageConfig((prev) => ({ ...prev, endpoint: e.target.value }))} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Public Base URL (optional public origin)" value={storageConfig.publicBaseUrl} onChange={(e) => setStorageConfig((prev) => ({ ...prev, publicBaseUrl: e.target.value }))} />
+          <input type="number" min={60} max={86400} className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Signed URL TTL (seconds)" value={storageConfig.signedUrlTtlSeconds} onChange={(e) => setStorageConfig((prev) => ({ ...prev, signedUrlTtlSeconds: Number(e.target.value) }))} />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={storageConfig.forcePathStyle} onChange={(e) => setStorageConfig((prev) => ({ ...prev, forcePathStyle: e.target.checked }))} />Force path style</label>
+          <p className="text-xs text-amber-700">Cloudflare R2 endpoint suggestion: https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</p>
+          <p className="text-xs text-amber-700">Browser uploads require bucket CORS for PUT from your admin origin.</p>
+          <p className="text-xs text-amber-700">Local storage is not durable in production.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Storage Settings"}</button>
+          <button type="button" onClick={testStorage} disabled={saving} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Test Connection</button>
+        </div>
       </form>
 
       <section className="space-y-3">

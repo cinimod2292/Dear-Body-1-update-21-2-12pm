@@ -164,7 +164,7 @@ export default function Cart() {
 
             {/* Clear Cart */}
             <button
-              onClick={clearCart}
+              onClick={() => clearCart("manual_cart_clear")}
               className="text-sm text-gray-400 hover:text-red-500 transition-colors text-right font-medium"
             >
               Clear entire cart

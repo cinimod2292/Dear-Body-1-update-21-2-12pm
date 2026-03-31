@@ -258,7 +258,8 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
     status: updatedOrder.status,
     paymentStatus: updatedOrder.paymentStatus,
   });
-  if (status === "PAID") {
+  const becamePaid = status === "PAID" && currentOrder.paymentStatus !== "PAID";
+  if (becamePaid) {
     await sendPaymentSuccessEmail(orderId).catch(() => undefined);
   }
   await prisma.orderEvent.create({
@@ -278,10 +279,15 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 }
 
 export async function initiateOrderPayment(orderId: string, rawBody: unknown, actorId?: string) {
+  const paymentInitStartedAt = Date.now();
   const body = paymentInitiationSchema.parse(rawBody);
   const gateway = getGateway(body.gateway);
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  console.info("[checkout-timing] auth/user/cart lookup complete", {
+    orderId,
+    elapsedMs: Date.now() - paymentInitStartedAt,
+  });
 
   const config = await getStitchGatewayConfig();
   if (order.paymentStatus === "PAID") {
@@ -313,6 +319,11 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       transactionId: latestAttempt.id,
       checkoutUrl: latestCheckoutUrl,
     });
+    console.info("[checkout-timing] response returned to frontend", {
+      orderId: order.id,
+      reusedCheckoutUrl: true,
+      elapsedMs: Date.now() - paymentInitStartedAt,
+    });
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,
@@ -337,6 +348,10 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     totalAmount: payableAmount,
     amountPassedToGatewayMajor: payableAmount,
   });
+  console.info("[checkout-timing] Stitch API request start", {
+    orderId: order.id,
+    elapsedMs: Date.now() - paymentInitStartedAt,
+  });
 
   const result = await gateway.initiatePayment(config, {
     orderId: order.id,
@@ -346,6 +361,10 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     returnUrl: body.returnUrl,
     cancelUrl: body.cancelUrl,
     customerEmail: order.customer?.email,
+  });
+  console.info("[checkout-timing] Stitch API response received", {
+    orderId: order.id,
+    elapsedMs: Date.now() - paymentInitStartedAt,
   });
   console.info("[payments] fresh checkout URL from gateway", {
     orderId: order.id,
@@ -409,6 +428,11 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       nextValue: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
       details: { provider: gateway.name, referenceId: result.referenceId } as Prisma.InputJsonValue,
     },
+  });
+  console.info("[checkout-timing] response returned to frontend", {
+    orderId: order.id,
+    reusedCheckoutUrl: false,
+    elapsedMs: Date.now() - paymentInitStartedAt,
   });
 
   return {

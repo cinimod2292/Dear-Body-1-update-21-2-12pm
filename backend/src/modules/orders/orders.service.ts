@@ -335,6 +335,7 @@ async function recordOrderEvent(orderId: string, actorId: string | undefined, ev
 }
 
 export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
+  const checkoutStartedAt = Date.now();
   const body = checkoutSchema.parse(rawBody);
   const existingCart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true } });
   if (!existingCart) throw new AppError(404, "Cart not found", "CART_NOT_FOUND");
@@ -370,6 +371,10 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId) {
     throw new AppError(400, "Please select a shipping method to continue.", "SHIPPING_METHOD_REQUIRED");
   }
+  console.info("[checkout-timing] shipping/totals calculation complete", {
+    cartId,
+    elapsedMs: Date.now() - checkoutStartedAt,
+  });
   console.info("[checkout] finalized cart totals before order create", {
     cartId: cart.id,
     persistedShippingAddressId: cart.shippingAddressId,
@@ -465,6 +470,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
     });
 
     return created;
+  });
+  console.info("[checkout-timing] order creation/update complete", {
+    cartId,
+    orderId: order.id,
+    elapsedMs: Date.now() - checkoutStartedAt,
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });

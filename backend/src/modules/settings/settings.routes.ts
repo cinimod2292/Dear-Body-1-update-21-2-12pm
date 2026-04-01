@@ -4,11 +4,29 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { decryptStorageSecret, encryptStorageSecret } from "../../lib/secrets.js";
 import { listQuerySchema, toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
-import { upsertSettingSchema, upsertStorageSettingsSchema } from "./settings.schemas.js";
+import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
+import { sendEmail } from "../notifications/notification.service.js";
+import {
+  sendgridTestSchema,
+  upsertSendgridSettingsSchema,
+  upsertSettingSchema,
+  upsertStorageSettingsSchema,
+} from "./settings.schemas.js";
 import { assertS3ObjectExists, prepareUpload, UploadConfig } from "../media/upload.service.js";
 
 const STORAGE_SCOPE = "media";
 const STORAGE_KEY = "storage";
+const SENDGRID_SCOPE = "email";
+const SENDGRID_KEY = "provider.sendgrid";
+
+interface SendgridStoredConfig {
+  enabled?: boolean;
+  fromEmail?: string;
+  fromName?: string;
+  replyToEmail?: string;
+  sandboxMode?: boolean;
+  encryptedApiKey?: string;
+}
 
 function maskToken(value?: string) {
   if (!value) return "";
@@ -63,6 +81,17 @@ function normalizeStorageConfig(input: ReturnType<typeof upsertStorageSettingsSc
     signedUrlTtlSeconds,
     forcePathStyle,
     region: "auto",
+  };
+}
+
+function toSendgridResponse(config: SendgridStoredConfig | null) {
+  return {
+    enabled: Boolean(config?.enabled),
+    fromEmail: config?.fromEmail ?? "",
+    fromName: config?.fromName ?? "",
+    replyToEmail: config?.replyToEmail ?? "",
+    sandboxMode: Boolean(config?.sandboxMode),
+    apiKeyConfigured: Boolean(config?.encryptedApiKey),
   };
 }
 
@@ -148,5 +177,58 @@ export async function settingsRoutes(app: FastifyInstance) {
       const msg = error instanceof Error ? error.message : "Storage connection test failed";
       throw new AppError(400, msg, "STORAGE_TEST_FAILED");
     }
+  });
+
+  app.get("/admin/settings/email/sendgrid", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => {
+    const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SENDGRID_SCOPE, key: SENDGRID_KEY } } });
+    const value = (setting?.value ?? null) as unknown as SendgridStoredConfig | null;
+    return reply.send({ data: toSendgridResponse(value) });
+  });
+
+  app.put("/admin/settings/email/sendgrid", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const body = upsertSendgridSettingsSchema.parse(request.body);
+    const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: SENDGRID_SCOPE, key: SENDGRID_KEY } } });
+    const existingValue = (existing?.value ?? {}) as unknown as SendgridStoredConfig;
+
+    const next: SendgridStoredConfig = {
+      enabled: body.enabled,
+      fromEmail: body.fromEmail?.trim() || undefined,
+      fromName: body.fromName?.trim() || undefined,
+      replyToEmail: body.replyToEmail?.trim() || undefined,
+      sandboxMode: body.sandboxMode,
+      encryptedApiKey: body.apiKey?.trim() ? encryptSecret(body.apiKey.trim()) : existingValue.encryptedApiKey,
+    };
+
+    await prisma.setting.upsert({
+      where: { scope_key: { scope: SENDGRID_SCOPE, key: SENDGRID_KEY } },
+      update: { value: next as unknown as Prisma.InputJsonValue },
+      create: { scope: SENDGRID_SCOPE, key: SENDGRID_KEY, value: next as unknown as Prisma.InputJsonValue },
+    });
+
+    return reply.send({ data: toSendgridResponse(next) });
+  });
+
+  app.post("/admin/settings/email/sendgrid/test", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const body = sendgridTestSchema.parse(request.body);
+    const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SENDGRID_SCOPE, key: SENDGRID_KEY } } });
+    if (!setting) {
+      throw new AppError(400, "SendGrid settings are not configured", "SENDGRID_NOT_CONFIGURED");
+    }
+    const value = setting.value as unknown as SendgridStoredConfig;
+    if (!value.enabled) {
+      throw new AppError(400, "SendGrid is disabled", "SENDGRID_DISABLED");
+    }
+    if (!value.encryptedApiKey || !decryptSecret(value.encryptedApiKey)) {
+      throw new AppError(400, "SendGrid API key is missing", "SENDGRID_API_KEY_REQUIRED");
+    }
+
+    await sendEmail({
+      to: body.to,
+      subject: "SendGrid test email",
+      html: "<p>This is a SendGrid configuration test email.</p>",
+      meta: { source: "admin_sendgrid_test" },
+    });
+
+    return reply.send({ data: { ok: true, message: `Test email queued to ${body.to}` } });
   });
 }

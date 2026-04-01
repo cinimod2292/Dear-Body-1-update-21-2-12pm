@@ -452,46 +452,72 @@ export default function AdminEmailTemplates() {
         <p className="text-sm text-gray-600 mt-1">Simple content editing for non-technical admins. Advanced HTML is still available when needed.</p>
       </header>
 
-      <section className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_460px] gap-6 items-start">
-        <aside className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search templates" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">All</option>
-              {CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2.5">
-            <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs">Seed Defaults</button>
-            <button type="button" onClick={saveTheme} className="px-3 py-2 rounded-lg border border-gray-300 text-xs">Save Theme</button>
-          </div>
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Existing DB templates keep their content until you reset them.</p>
-
-          <div className="space-y-3 max-h-[700px] overflow-auto pr-1">
-            {filteredTemplates.length === 0 ? <EmptyState label="No templates found." /> : filteredTemplates.map((item) => (
-              <article key={item.id} className={`rounded-xl border p-4 ${item.id === selectedId ? "border-pink-300 bg-pink-50" : "border-gray-200 bg-white"}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-pink-600 font-semibold">{item.category}</p>
-                    <h3 className="font-semibold text-gray-900 mt-1">{item.name}</h3>
-                    <p className="text-xs text-gray-600 mt-2 leading-relaxed">{TEMPLATE_META[item.key]?.description ?? "Custom template"}</p>
-                    <p className="text-xs text-gray-500 mt-2">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
-                  </div>
-                  <span className={`text-[11px] px-2 py-1 rounded-full ${item.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>{item.isEnabled ? "Active" : "Disabled"}</span>
+      <section className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <input className="flex-1 min-w-56 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search templates" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">All categories</option>
+            {CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+          <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs">Seed Defaults</button>
+          <button type="button" onClick={saveTheme} className="px-3 py-2 rounded-lg border border-gray-300 text-xs">Save Theme</button>
+        </div>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Existing DB templates keep their content until you reset them.</p>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {filteredTemplates.length === 0 ? <EmptyState label="No templates found." /> : filteredTemplates.map((item) => (
+            <article key={item.id} className={`min-w-[280px] max-w-[320px] rounded-xl border p-4 shrink-0 ${item.id === selectedId ? "border-pink-300 bg-pink-50" : "border-gray-200 bg-white"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-pink-600 font-semibold">{item.category}</p>
+                  <h3 className="font-semibold text-gray-900 mt-1">{item.name}</h3>
+                  <p className="text-xs text-gray-600 mt-2 leading-relaxed">{TEMPLATE_META[item.key]?.description ?? "Custom template"}</p>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setSelectedId(item.id)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs bg-white">Edit</button>
-                  <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Preview</button>
-                  <button type="button" onClick={() => duplicateTemplate(item)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Duplicate</button>
-                  <button type="button" onClick={() => resetToDefault(item.id)} className="px-2.5 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </aside>
+                <span className={`text-[11px] px-2 py-1 rounded-full ${item.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>{item.isEnabled ? "Active" : "Disabled"}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Updated: {new Date(item.updatedAt).toLocaleDateString()}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => setSelectedId(item.id)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs bg-white">Edit</button>
+                <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Preview</button>
+                <button type="button" onClick={() => duplicateTemplate(item)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Duplicate</button>
+                <button type="button" onClick={() => resetToDefault(item.id)} className="px-2.5 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
-        {!selectedTemplate ? <div className="xl:col-span-2"><EmptyState label="Select a template to begin." /></div> : (
-          <>
+      {!selectedTemplate ? <EmptyState label="Select a template to begin." /> : (
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 items-start">
+          <aside className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs text-gray-500">Preview</p>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 rounded text-xs ${previewMode === "desktop" ? "bg-gray-900 text-white" : "bg-white border"}`}>Desktop</button>
+                  <button type="button" onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 rounded text-xs ${previewMode === "mobile" ? "bg-gray-900 text-white" : "bg-white border"}`}>Mobile</button>
+                </div>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{preview?.subject || form.subject || "(No subject)"}</p>
+              <p className="text-xs text-gray-500 mt-1">Preheader: {preheaderPreview}</p>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+              <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[540px]"}`}>
+                <div className="p-4" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
+              </div>
+            </div>
+
+            <details className="rounded-xl border border-gray-200 p-4">
+              <summary className="cursor-pointer text-sm font-semibold">Sample data + test send</summary>
+              <div className="mt-4 space-y-3">
+                <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-36 font-mono" value={sampleDataJson} onChange={(e) => setSampleDataJson(e.target.value)} />
+                <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="recipient@example.com" />
+                <button type="button" onClick={testSend} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Send test email</button>
+                {preview?.missingPlaceholders?.length ? <p className="text-xs text-amber-600">Missing values: {preview.missingPlaceholders.join(", ")}</p> : null}
+              </div>
+            </details>
+          </aside>
+
           <section className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -595,40 +621,9 @@ export default function AdminEmailTemplates() {
                   <button type="button" onClick={() => resetToDefault(form.id)} className="px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs">Reset</button>
                 </div>
               </form>
-            </section>
-
-              <aside className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <p className="text-xs text-gray-500">Preview</p>
-                    <div className="flex gap-1">
-                      <button type="button" onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 rounded text-xs ${previewMode === "desktop" ? "bg-gray-900 text-white" : "bg-white border"}`}>Desktop</button>
-                      <button type="button" onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 rounded text-xs ${previewMode === "mobile" ? "bg-gray-900 text-white" : "bg-white border"}`}>Mobile</button>
-                    </div>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900">{preview?.subject || form.subject || "(No subject)"}</p>
-                  <p className="text-xs text-gray-500 mt-1">Preheader: {preheaderPreview}</p>
-                </div>
-
-                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                  <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[430px]"}`}>
-                    <div className="p-4" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
-                  </div>
-                </div>
-
-                <details className="rounded-xl border border-gray-200 p-4">
-                  <summary className="cursor-pointer text-sm font-semibold">Sample data + test send</summary>
-                  <div className="mt-4 space-y-3">
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-36 font-mono" value={sampleDataJson} onChange={(e) => setSampleDataJson(e.target.value)} />
-                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="recipient@example.com" />
-                    <button type="button" onClick={testSend} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Send test email</button>
-                    {preview?.missingPlaceholders?.length ? <p className="text-xs text-amber-600">Missing values: {preview.missingPlaceholders.join(", ")}</p> : null}
-                  </div>
-                </details>
-              </aside>
-          </>
-        )}
-      </section>
+          </section>
+        </section>
+      )}
     </div>
   );
 }

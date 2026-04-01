@@ -71,6 +71,15 @@ interface StorageSettings {
   forcePathStyle: boolean;
 }
 
+interface SendgridSettings {
+  enabled: boolean;
+  fromEmail: string;
+  fromName: string;
+  replyToEmail: string;
+  sandboxMode: boolean;
+  apiKeyConfigured: boolean;
+}
+
 export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
@@ -123,6 +132,16 @@ export default function AdminSettings() {
     forcePathStyle: false,
   });
   const [storageSecret, setStorageSecret] = useState("");
+  const [sendgridConfig, setSendgridConfig] = useState<SendgridSettings>({
+    enabled: false,
+    fromEmail: "",
+    fromName: "",
+    replyToEmail: "",
+    sandboxMode: false,
+    apiKeyConfigured: false,
+  });
+  const [sendgridApiKey, setSendgridApiKey] = useState("");
+  const [sendgridTestTo, setSendgridTestTo] = useState("");
 
   const buildStoragePayload = () => ({
     provider: storageConfig.provider,
@@ -141,7 +160,7 @@ export default function AdminSettings() {
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
@@ -149,6 +168,7 @@ export default function AdminSettings() {
         apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
         apiRequest<{ data: AbandonedCartConfig }>("/admin/ops/abandoned-carts/config", {}, session.accessToken),
         apiRequest<{ data: StorageSettings }>("/admin/settings/storage", {}, session.accessToken),
+        apiRequest<{ data: SendgridSettings }>("/admin/settings/email/sendgrid", {}, session.accessToken),
       ]);
 
       if (settingsRes.status === "fulfilled") {
@@ -180,8 +200,9 @@ export default function AdminSettings() {
       if (xeroSyncRes.status === "fulfilled") setXeroSyncRecords(xeroSyncRes.value.data.items);
       if (abandonedConfigRes.status === "fulfilled") setAbandonedConfig(abandonedConfigRes.value.data);
       if (storageRes.status === "fulfilled") setStorageConfig(storageRes.value.data);
+      if (sendgridRes.status === "fulfilled") setSendgridConfig(sendgridRes.value.data);
 
-      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes].filter((r) => r.status === "rejected");
+      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         toast.error(`Loaded with partial failures (${failed.length})`);
       }
@@ -321,6 +342,48 @@ export default function AdminSettings() {
     }
   };
 
+  const saveSendgrid = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || saving) return;
+    try {
+      setSaving(true);
+      const payload = {
+        enabled: sendgridConfig.enabled,
+        fromEmail: sendgridConfig.fromEmail || undefined,
+        fromName: sendgridConfig.fromName || undefined,
+        replyToEmail: sendgridConfig.replyToEmail || undefined,
+        sandboxMode: sendgridConfig.sandboxMode,
+        apiKey: sendgridApiKey || undefined,
+      };
+      const res = await apiRequest<{ data: SendgridSettings }>("/admin/settings/email/sendgrid", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
+      setSendgridConfig(res.data);
+      setSendgridApiKey("");
+      toast.success("SendGrid settings saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save SendGrid settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testSendgrid = async () => {
+    if (!session?.accessToken || saving || !sendgridTestTo.trim()) return;
+    try {
+      setSaving(true);
+      const res = await apiRequest<{ data: { ok: boolean; message: string } }>(
+        "/admin/settings/email/sendgrid/test",
+        { method: "POST", body: JSON.stringify({ to: sendgridTestTo.trim() }) },
+        session.accessToken,
+      );
+      if (res.data.ok) toast.success(res.data.message);
+      else toast.error(res.data.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "SendGrid test failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const testStorage = async () => {
     if (!session?.accessToken || saving) return;
     try {
@@ -401,6 +464,24 @@ export default function AdminSettings() {
         <div className="flex items-center gap-2">
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Storage Settings"}</button>
           <button type="button" onClick={testStorage} disabled={saving} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Test Connection</button>
+        </div>
+      </form>
+
+      <form onSubmit={saveSendgrid} className="space-y-4">
+        <h2 className="text-2xl font-black text-gray-900">SendGrid Email</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.enabled} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable SendGrid provider settings</label>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="From Email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="From Name" value={sendgridConfig.fromName} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromName: e.target.value }))} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Reply-To Email (optional)" value={sendgridConfig.replyToEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, replyToEmail: e.target.value }))} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${sendgridConfig.apiKeyConfigured ? "(configured, leave blank to keep)" : "(required to send)"}`} value={sendgridApiKey} onChange={(e) => setSendgridApiKey(e.target.value)} />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.sandboxMode} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, sandboxMode: e.target.checked }))} />Use SendGrid sandbox mode</label>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Test recipient email" value={sendgridTestTo} onChange={(e) => setSendgridTestTo(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save SendGrid Settings"}</button>
+            <button type="button" onClick={testSendgrid} disabled={saving || !sendgridTestTo.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Send Test Email</button>
+          </div>
+          <p className="text-xs text-gray-500">Set backend EMAIL_PROVIDER=sendgrid to use SendGrid for outbound mail.</p>
         </div>
       </form>
 

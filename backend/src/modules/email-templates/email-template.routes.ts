@@ -7,6 +7,7 @@ import {
   patchEmailTemplate,
   previewTemplate,
   previewTemplateByKey,
+  resetEmailTemplateToDefault,
   seedDefaultTemplates,
   sendTestEmailTemplate,
 } from "./email-template.service.js";
@@ -60,6 +61,15 @@ export async function emailTemplateRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       return reply.send({ data: await deleteEmailTemplate(id) });
+    },
+  );
+
+  app.post(
+    "/admin/email-templates/:id/reset-default",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      return reply.send({ data: await resetEmailTemplateToDefault(id) });
     },
   );
 

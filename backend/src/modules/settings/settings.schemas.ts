@@ -19,3 +19,16 @@ export const upsertStorageSettingsSchema = z.object({
   signedUrlTtlSeconds: z.coerce.number().int().positive().max(86_400).optional(),
   forcePathStyle: z.coerce.boolean().optional(),
 });
+
+export const upsertSendgridSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  fromEmail: z.string().email().optional(),
+  fromName: z.string().trim().optional(),
+  replyToEmail: z.string().email().optional(),
+  sandboxMode: z.boolean().default(false),
+  apiKey: z.string().trim().optional(),
+});
+
+export const sendgridTestSchema = z.object({
+  to: z.string().email(),
+});

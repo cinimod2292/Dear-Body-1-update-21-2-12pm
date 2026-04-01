@@ -478,6 +478,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
+  await sendOrderCreatedEmailSafe(order.id);
 
   return prisma.order.findUnique({
     where: { id: order.id },

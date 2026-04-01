@@ -27,6 +27,7 @@ import AdminOrderDetail from "./admin/pages/AdminOrderDetail";
 import AdminCmsEditor from "./admin/pages/AdminCmsEditor";
 import AdminOperations from "./admin/pages/AdminOperations";
 import AdminShippingMethods from "./admin/pages/AdminShippingMethods";
+import AdminEmailTemplates from "./admin/pages/AdminEmailTemplates";
 
 export const router = createBrowserRouter([
   {
@@ -74,6 +75,7 @@ export const router = createBrowserRouter([
           { path: "cms", Component: AdminCmsEditor },
           { path: "operations", Component: AdminOperations },
           { path: "shipping-methods", Component: AdminShippingMethods },
+          { path: "email-templates", Component: AdminEmailTemplates },
         ],
       },
     ],

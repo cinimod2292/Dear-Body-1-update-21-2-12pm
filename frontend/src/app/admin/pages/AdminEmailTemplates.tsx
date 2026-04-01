@@ -345,6 +345,14 @@ export default function AdminEmailTemplates() {
         <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Seed Defaults</button>
       </section>
 
+      <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="font-semibold">Using existing templates?</p>
+        <p className="mt-1">
+          Existing database templates keep their current HTML. Use <span className="font-semibold">Seed Defaults</span> to add missing templates and
+          <span className="font-semibold"> Reset</span> on a template to apply the latest branded default content.
+        </p>
+      </section>
+
       {filteredTemplates.length === 0 ? <EmptyState label="No templates found for current filters." /> : (
         <>
           {viewMode === "gallery" ? (

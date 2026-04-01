@@ -5,7 +5,9 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { useAdminAuth } from "../context/AdminAuthContext";
 
 type TemplateCategory = "ACCOUNT" | "ORDER" | "PAYMENT" | "SHIPPING" | "SECURITY" | "SUPPORT" | "MARKETING" | "SYSTEM";
-type EditorSection = "header" | "content" | "cta" | "footer" | "advanced";
+type EditorMode = "simple" | "advanced";
+
+type ThemeLink = { label: string; url: string };
 
 interface EmailTemplate {
   id: string;
@@ -31,92 +33,160 @@ interface TemplatePreview {
   source: "database" | "fallback-default";
 }
 
-interface BrandTheme {
-  companyName: string;
+interface ThemeSettings {
+  logoUrl: string;
+  brandName: string;
+  primaryColor: string;
+  accentColor: string;
+  buttonBg: string;
+  buttonTextColor: string;
+  headingColor: string;
+  bodyTextColor: string;
+  contentBg: string;
+  outerBg: string;
+  footerBg: string;
+  footerText: string;
   supportEmail: string;
   siteUrl: string;
-  headerGradientStart: string;
-  headerGradientEnd: string;
-  buttonText: string;
+  links: ThemeLink[];
 }
 
-interface TemplateCardMeta {
-  description: string;
-  audience: string;
+interface SimpleTemplateFields {
+  preheader: string;
+  heading: string;
+  intro: string;
+  ctaText: string;
+  ctaUrl: string;
+  footerNote: string;
+  showCta: boolean;
+  showFooter: boolean;
 }
 
-const TEMPLATE_META: Record<string, TemplateCardMeta> = {
-  welcome: { description: "Greets new customers and introduces your brand.", audience: "New customer" },
-  welcome_email: { description: "System welcome variant with brand defaults.", audience: "New customer" },
-  password_reset: { description: "Secure password reset flow email.", audience: "Customer account" },
-  email_verification: { description: "Verifies ownership of customer email.", audience: "Customer account" },
-  order_confirmation: { description: "Confirms order placement and summary.", audience: "Customer order" },
-  order_shipped: { description: "Shares shipment and tracking details.", audience: "Customer order" },
-  order_delivered: { description: "Confirms final delivery completion.", audience: "Customer order" },
-  contact_form_notification: { description: "Alerts team to new support inquiry.", audience: "Support team" },
-  admin_new_order_notification: { description: "Internal alert for new orders.", audience: "Admin team" },
-  newsletter_signup_confirmation: { description: "Confirms newsletter subscription.", audience: "Marketing" },
+const TEMPLATE_META: Record<string, { description: string }> = {
+  welcome: { description: "Greets new customers and introduces your brand." },
+  welcome_email: { description: "System welcome variant with brand defaults." },
+  password_reset: { description: "Secure password reset flow email." },
+  email_verification: { description: "Verifies ownership of customer email." },
+  order_confirmation: { description: "Confirms order placement and summary." },
+  order_shipped: { description: "Shares shipment and tracking details." },
+  order_delivered: { description: "Confirms final delivery completion." },
+  contact_form_notification: { description: "Alerts team to a new support inquiry." },
+  admin_new_order_notification: { description: "Internal alert for new order placement." },
+  newsletter_signup_confirmation: { description: "Confirms newsletter subscription." },
 };
 
 const CATEGORY_OPTIONS: TemplateCategory[] = ["ACCOUNT", "ORDER", "PAYMENT", "SHIPPING", "SECURITY", "SUPPORT", "MARKETING", "SYSTEM"];
 
-const VARIABLE_GROUPS: Array<{ label: string; vars: Array<{ key: string; example: string; description: string }> }> = [
+const VARIABLE_GROUPS: Array<{ label: string; vars: Array<{ key: string; description: string; example: string }> }> = [
   {
     label: "Customer",
     vars: [
-      { key: "customerName", example: "Jane Smith", description: "Full customer name" },
-      { key: "firstName", example: "Jane", description: "Customer first name" },
-      { key: "lastName", example: "Smith", description: "Customer last name" },
-      { key: "supportEmail", example: "hello@dearbody.com", description: "Support inbox" },
+      { key: "firstName", description: "Customer first name", example: "Jane" },
+      { key: "customerName", description: "Customer full name", example: "Jane Smith" },
+      { key: "email", description: "Customer email", example: "jane@example.com" },
     ],
   },
   {
     label: "Order",
     vars: [
-      { key: "orderNumber", example: "10001234", description: "Store order number" },
-      { key: "orderDate", example: "2026-03-31", description: "Date order was placed" },
-      { key: "orderItems", example: "Body Lotion x2", description: "Order item summary" },
-      { key: "orderTotal", example: "$120.00", description: "Total amount" },
-      { key: "trackingNumber", example: "1Z12345", description: "Shipment tracking number" },
-      { key: "trackingUrl", example: "https://tracking.example.com", description: "Track URL" },
+      { key: "orderNumber", description: "Store order number", example: "10001234" },
+      { key: "orderDate", description: "Date order was placed", example: "2026-03-31" },
+      { key: "orderItems", description: "Order item summary", example: "Hydrating Serum x1" },
+      { key: "orderTotal", description: "Order total", example: "$120.00" },
+      { key: "trackingUrl", description: "Shipment tracking link", example: "https://tracking.example.com/123" },
     ],
   },
   {
-    label: "Brand & Links",
+    label: "Brand & Support",
     vars: [
-      { key: "companyName", example: "Dear Body", description: "Brand/company name" },
-      { key: "siteUrl", example: "https://example.com", description: "Storefront URL" },
-      { key: "verificationUrl", example: "https://example.com/verify", description: "Email verification URL" },
-      { key: "resetUrl", example: "https://example.com/reset", description: "Password reset URL" },
+      { key: "companyName", description: "Brand/company name", example: "Dear Body" },
+      { key: "siteUrl", description: "Storefront URL", example: "https://example.com" },
+      { key: "supportEmail", description: "Support inbox", example: "hello@dearbody.com" },
+      { key: "resetUrl", description: "Password reset URL", example: "https://example.com/reset" },
+      { key: "verificationUrl", description: "Email verification URL", example: "https://example.com/verify" },
     ],
   },
 ];
 
+const DEFAULT_THEME: ThemeSettings = {
+  logoUrl: "",
+  brandName: "Dear Body",
+  primaryColor: "#f472b6",
+  accentColor: "#fb923c",
+  buttonBg: "#111827",
+  buttonTextColor: "#ffffff",
+  headingColor: "#111827",
+  bodyTextColor: "#374151",
+  contentBg: "#ffffff",
+  outerBg: "#f8fafc",
+  footerBg: "#111827",
+  footerText: "#d1d5db",
+  supportEmail: "hello@dearbody.com",
+  siteUrl: "https://example.com",
+  links: [
+    { label: "Instagram", url: "" },
+    { label: "TikTok", url: "" },
+  ],
+};
+
+function stripHtml(input: string) {
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildSimpleHtml(theme: ThemeSettings, fields: SimpleTemplateFields) {
+  const links = theme.links.filter((item) => item.label.trim() && item.url.trim());
+  const logo = theme.logoUrl.trim()
+    ? `<img src="${theme.logoUrl}" alt="${theme.brandName}" style="max-height:40px;display:block;margin:0 auto 8px auto;" />`
+    : "";
+  const cta = fields.showCta && fields.ctaText.trim() && fields.ctaUrl.trim()
+    ? `<tr><td style="padding:8px 32px 18px 32px;"><a href="${fields.ctaUrl}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:${theme.buttonBg};color:${theme.buttonTextColor};text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${fields.ctaText}</a></td></tr>`
+    : "";
+  const footerLinks = links.length
+    ? `<div style="margin-top:8px;">${links.map((item) => `<a href="${item.url}" style="color:${theme.footerText};text-decoration:none;margin-right:10px;">${item.label}</a>`).join("")}</div>`
+    : "";
+  const footer = fields.showFooter
+    ? `<tr><td style="padding:20px 32px;background:${theme.footerBg};color:${theme.footerText};font-size:13px;line-height:1.6;">${fields.footerNote || "Need help? Contact us anytime."}<br/><a href="mailto:{{supportEmail}}" style="color:${theme.footerText};text-decoration:underline;">{{supportEmail}}</a> · <a href="{{siteUrl}}" style="color:${theme.footerText};text-decoration:underline;">{{siteUrl}}</a>${footerLinks}</td></tr>`
+    : "";
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;background:${theme.outerBg};font-family:Arial,sans-serif;color:${theme.bodyTextColor};">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${fields.preheader}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${theme.outerBg};padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:${theme.contentBg};border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+            <tr><td style="padding:18px 24px;text-align:center;background:linear-gradient(90deg,${theme.primaryColor},${theme.accentColor});color:#fff;font-size:20px;font-weight:800;">${logo}${theme.brandName}</td></tr>
+            <tr><td style="padding:26px 32px 8px 32px;color:${theme.headingColor};font-size:28px;font-weight:800;line-height:1.2;">${fields.heading}</td></tr>
+            <tr><td style="padding:8px 32px 10px 32px;color:${theme.bodyTextColor};font-size:16px;line-height:1.65;">${fields.intro}</td></tr>
+            ${cta}
+            ${footer}
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 export default function AdminEmailTemplates() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
-  const [viewMode, setViewMode] = useState<"gallery" | "list">("gallery");
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState("");
+  const [mode, setMode] = useState<EditorMode>("simple");
+  const [theme, setTheme] = useState<ThemeSettings>(DEFAULT_THEME);
+  const [variableSearch, setVariableSearch] = useState("");
+  const [activeField, setActiveField] = useState<keyof SimpleTemplateFields | "subject" | "htmlBody">("intro");
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
-  const [section, setSection] = useState<EditorSection>("header");
   const [preview, setPreview] = useState<TemplatePreview | null>(null);
-  const [targetField, setTargetField] = useState<"subject" | "html">("html");
-  const [sampleDataJson, setSampleDataJson] = useState("{\n  \"customerName\": \"Jane Smith\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"companyName\": \"Dear Body\",\n  \"orderNumber\": \"10001234\",\n  \"orderDate\": \"2026-03-31\",\n  \"orderItems\": \"Hydrating Serum x1\",\n  \"orderTotal\": \"$120.00\",\n  \"trackingNumber\": \"1Z12345E0205271688\",\n  \"trackingUrl\": \"https://tracking.example.com/track/1Z12345E0205271688\",\n  \"supportEmail\": \"hello@dearbody.com\",\n  \"siteUrl\": \"https://example.com\",\n  \"verificationUrl\": \"https://example.com/verify?token=test\",\n  \"resetUrl\": \"https://example.com/reset?token=test\"\n}");
   const [testEmail, setTestEmail] = useState("");
-  const [theme, setTheme] = useState<BrandTheme>({
-    companyName: "Dear Body",
-    supportEmail: "hello@dearbody.com",
-    siteUrl: "https://example.com",
-    headerGradientStart: "#ec4899",
-    headerGradientEnd: "#f97316",
-    buttonText: "Shop Now",
-  });
+  const [sampleDataJson, setSampleDataJson] = useState('{\n  "firstName": "Jane",\n  "customerName": "Jane Smith",\n  "companyName": "Dear Body",\n  "orderNumber": "10001234",\n  "orderDate": "2026-03-31",\n  "orderItems": "Hydrating Serum x1",\n  "orderTotal": "$120.00",\n  "supportEmail": "hello@dearbody.com",\n  "siteUrl": "https://example.com",\n  "trackingUrl": "https://tracking.example.com/123"\n}');
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
 
   const [form, setForm] = useState({
     id: "",
@@ -130,26 +200,57 @@ export default function AdminEmailTemplates() {
     isEnabled: true,
   });
 
+  const [simpleFields, setSimpleFields] = useState<SimpleTemplateFields>({
+    preheader: "",
+    heading: "",
+    intro: "",
+    ctaText: "",
+    ctaUrl: "",
+    footerNote: "",
+    showCta: true,
+    showFooter: true,
+  });
+
   const filteredTemplates = useMemo(() => templates.filter((item) => {
-    if (statusFilter === "active" && !item.isEnabled) return false;
-    if (statusFilter === "disabled" && item.isEnabled) return false;
-    return true;
-  }), [templates, statusFilter]);
+    const matchesQuery = !query.trim() || [item.name, item.key, item.subject].join(" ").toLowerCase().includes(query.trim().toLowerCase());
+    const matchesCategory = !categoryFilter || item.category === categoryFilter;
+    return matchesQuery && matchesCategory;
+  }), [templates, query, categoryFilter]);
 
   const selectedTemplate = useMemo(() => filteredTemplates.find((item) => item.id === selectedId) ?? null, [filteredTemplates, selectedId]);
-  const preheader = useMemo(() => {
-    const noTags = form.htmlBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    return noTags.slice(0, 120) || "Email preheader preview";
-  }, [form.htmlBody]);
+
+  const groupedVariables = useMemo(() => VARIABLE_GROUPS.map((group) => ({
+    ...group,
+    vars: group.vars.filter((item) => {
+      const q = variableSearch.trim().toLowerCase();
+      if (!q) return true;
+      return item.key.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
+    }),
+  })).filter((group) => group.vars.length > 0), [variableSearch]);
+
+  const effectiveHtml = useMemo(() => (mode === "simple" ? buildSimpleHtml(theme, simpleFields) : form.htmlBody), [mode, theme, simpleFields, form.htmlBody]);
+  const preheaderPreview = useMemo(() => (simpleFields.preheader || stripHtml(effectiveHtml).slice(0, 120) || "Email preview text"), [simpleFields.preheader, effectiveHtml]);
 
   const parseSampleData = () => {
-    try {
-      const parsed = JSON.parse(sampleDataJson);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Sample data must be a JSON object");
-      return parsed as Record<string, unknown>;
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : "Invalid sample JSON");
+    const parsed = JSON.parse(sampleDataJson);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Sample data must be a JSON object");
     }
+    return parsed as Record<string, unknown>;
+  };
+
+  const hydrateSimpleFields = (template: EmailTemplate) => {
+    const plain = stripHtml(template.htmlBody);
+    setSimpleFields((prev) => ({
+      preheader: prev.preheader || plain.slice(0, 90),
+      heading: template.name || prev.heading,
+      intro: plain.slice(0, 300),
+      ctaText: prev.ctaText || "Shop Now",
+      ctaUrl: prev.ctaUrl || "{{siteUrl}}",
+      footerNote: prev.footerNote || "Thanks for being part of our community.",
+      showCta: true,
+      showFooter: true,
+    }));
   };
 
   const load = async () => {
@@ -157,69 +258,80 @@ export default function AdminEmailTemplates() {
     try {
       setLoading(true);
       setError(null);
-      const params = new URLSearchParams({ page: "1", perPage: "200" });
-      if (query.trim()) params.set("q", query.trim());
-      if (categoryFilter) params.set("category", categoryFilter);
-      const res = await apiRequest<{ data: { items: EmailTemplate[] } }>(`/admin/email-templates?${params.toString()}`, {}, session.accessToken);
-      const items = Array.isArray(res.data.items) ? res.data.items : [];
+      const [templateRes, settingsRes] = await Promise.all([
+        apiRequest<{ data: { items: EmailTemplate[] } }>("/admin/email-templates?page=1&perPage=200", {}, session.accessToken),
+        apiRequest<{ data: { items: Array<{ scope: string; key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=200", {}, session.accessToken),
+      ]);
+      const items = Array.isArray(templateRes.data.items) ? templateRes.data.items : [];
       setTemplates(items);
       const nextId = selectedId && items.some((item) => item.id === selectedId) ? selectedId : (items[0]?.id ?? "");
       setSelectedId(nextId);
+
+      const settingsMap = new Map(settingsRes.data.items.map((item) => [`${item.scope}:${item.key}`, item.value]));
+      const rawTheme = settingsMap.get("email:template.theme.v1");
+      if (rawTheme && typeof rawTheme === "object") {
+        const value = rawTheme as Partial<ThemeSettings>;
+        setTheme((prev) => ({ ...prev, ...value, links: Array.isArray(value.links) ? value.links as ThemeLink[] : prev.links }));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load email templates");
+      setError(err instanceof Error ? err.message : "Failed to load templates");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-  }, [session?.accessToken, query, categoryFilter]);
+    void load();
+  }, [session?.accessToken]);
 
   useEffect(() => {
     if (!selectedTemplate) return;
     setForm({
       id: selectedTemplate.id,
-      key: selectedTemplate.key ?? "",
-      name: selectedTemplate.name ?? "",
-      category: selectedTemplate.category ?? "ACCOUNT",
-      subject: selectedTemplate.subject ?? "",
-      htmlBody: selectedTemplate.htmlBody ?? "",
+      key: selectedTemplate.key,
+      name: selectedTemplate.name,
+      category: selectedTemplate.category,
+      subject: selectedTemplate.subject,
+      htmlBody: selectedTemplate.htmlBody,
       textBody: selectedTemplate.textBody ?? "",
       placeholderKeys: Array.isArray(selectedTemplate.placeholderKeys) ? selectedTemplate.placeholderKeys.join(", ") : "",
-      isEnabled: Boolean(selectedTemplate.isEnabled),
+      isEnabled: selectedTemplate.isEnabled,
     });
     setPreview(null);
+    hydrateSimpleFields(selectedTemplate);
   }, [selectedTemplate?.id]);
 
   const insertVariable = (variableKey: string) => {
     const token = `{{${variableKey}}}`;
-    if (targetField === "subject") {
-      setForm((prev) => ({ ...prev, subject: `${prev.subject}${token}` }));
-    } else {
-      setForm((prev) => ({ ...prev, htmlBody: `${prev.htmlBody}${token}` }));
+    const append = <T extends string>(value: T) => `${value}${value.endsWith(" ") || !value ? "" : " "}${token}`;
+
+    if (activeField === "subject") {
+      setForm((prev) => ({ ...prev, subject: append(prev.subject) }));
+      return;
     }
+    if (activeField === "htmlBody") {
+      setForm((prev) => ({ ...prev, htmlBody: append(prev.htmlBody) }));
+      return;
+    }
+
+    setSimpleFields((prev) => ({ ...prev, [activeField]: append(String(prev[activeField])) }));
   };
 
-  const applyThemeToHtml = () => {
-    setForm((prev) => {
-      let nextHtml = prev.htmlBody;
-      nextHtml = nextHtml.replace(/Dear Body/g, "{{companyName}}");
-      nextHtml = nextHtml.replace(/hello@dearbody\.com/g, "{{supportEmail}}");
-      nextHtml = nextHtml.replace(/https:\/\/example\.com/g, "{{siteUrl}}");
-      nextHtml = nextHtml.replace(/Shop Now/g, theme.buttonText);
-      nextHtml = nextHtml.replace(/linear-gradient\(90deg,[^)]+\)/g, `linear-gradient(90deg,${theme.headerGradientStart},${theme.headerGradientEnd})`);
-      return { ...prev, htmlBody: nextHtml };
-    });
-    toast.success("Brand styles applied to HTML");
-  };
-
-  const addCtaBlock = () => {
-    setForm((prev) => ({
-      ...prev,
-      htmlBody: `${prev.htmlBody}\n<p style="margin:20px 0;"><a href="{{siteUrl}}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:linear-gradient(90deg,#ec4899,#f97316);color:#fff;text-decoration:none;font-weight:700;">${theme.buttonText}</a></p>`,
-    }));
-    toast.success("CTA block added");
+  const saveTheme = async () => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest("/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          scope: "email",
+          key: "template.theme.v1",
+          value: theme,
+        }),
+      }, session.accessToken);
+      toast.success("Theme saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save theme");
+    }
   };
 
   const saveTemplate = async (e: FormEvent) => {
@@ -232,7 +344,7 @@ export default function AdminEmailTemplates() {
         name: form.name.trim(),
         category: form.category,
         subject: form.subject,
-        htmlBody: form.htmlBody,
+        htmlBody: effectiveHtml,
         textBody: form.textBody.trim() ? form.textBody : undefined,
         placeholderKeys: form.placeholderKeys.split(",").map((item) => item.trim()).filter(Boolean),
         isEnabled: form.isEnabled,
@@ -251,12 +363,22 @@ export default function AdminEmailTemplates() {
     if (!session?.accessToken || !form.id) return;
     try {
       const sampleData = parseSampleData();
-      const merged = { ...sampleData, companyName: theme.companyName, supportEmail: theme.supportEmail, siteUrl: theme.siteUrl };
-      const res = await apiRequest<{ data: TemplatePreview }>(`/admin/email-templates/${form.id}/preview`, { method: "POST", body: JSON.stringify({ sampleData: merged }) }, session.accessToken);
+      const merged = {
+        ...sampleData,
+        companyName: theme.brandName,
+        supportEmail: theme.supportEmail,
+        siteUrl: theme.siteUrl,
+      };
+      const res = await apiRequest<{ data: TemplatePreview }>(`/admin/email-templates/${form.id}/preview`, {
+        method: "POST",
+        body: JSON.stringify({
+          sampleData: merged,
+        }),
+      }, session.accessToken);
       setPreview(res.data);
-      toast.success("Live preview refreshed");
+      toast.success("Preview refreshed");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to preview template");
+      toast.error(err instanceof Error ? err.message : "Preview failed");
     }
   };
 
@@ -264,8 +386,11 @@ export default function AdminEmailTemplates() {
     if (!session?.accessToken || !form.id || !testEmail.trim()) return;
     try {
       const sampleData = parseSampleData();
-      const merged = { ...sampleData, companyName: theme.companyName, supportEmail: theme.supportEmail, siteUrl: theme.siteUrl };
-      await apiRequest(`/admin/email-templates/${form.id}/test-send`, { method: "POST", body: JSON.stringify({ to: testEmail.trim(), sampleData: merged }) }, session.accessToken);
+      const merged = { ...sampleData, companyName: theme.brandName, supportEmail: theme.supportEmail, siteUrl: theme.siteUrl };
+      await apiRequest(`/admin/email-templates/${form.id}/test-send`, {
+        method: "POST",
+        body: JSON.stringify({ to: testEmail.trim(), sampleData: merged }),
+      }, session.accessToken);
       toast.success("Test email queued");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Test send failed");
@@ -276,7 +401,7 @@ export default function AdminEmailTemplates() {
     if (!session?.accessToken) return;
     try {
       await apiRequest(`/admin/email-templates/${id}/reset-default`, { method: "POST", body: JSON.stringify({}) }, session.accessToken);
-      toast.success("Template reset to system default");
+      toast.success("Template reset to default");
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Reset failed");
@@ -296,12 +421,11 @@ export default function AdminEmailTemplates() {
 
   const duplicateTemplate = async (template: EmailTemplate) => {
     if (!session?.accessToken) return;
-    const cloneKey = `${template.key}_copy_${Date.now().toString().slice(-4)}`;
     try {
       await apiRequest("/admin/email-templates", {
         method: "PUT",
         body: JSON.stringify({
-          key: cloneKey,
+          key: `${template.key}_copy_${Date.now().toString().slice(-4)}`,
           name: `${template.name} (Copy)`,
           category: template.category,
           subject: template.subject,
@@ -318,237 +442,182 @@ export default function AdminEmailTemplates() {
     }
   };
 
-  if (loading) return <LoadingState label="Loading template builder..." />;
+  if (loading) return <LoadingState label="Loading email template studio..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <header className="rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 via-white to-orange-50 p-5">
         <h1 className="text-2xl font-black text-gray-900">Email Template Studio</h1>
-        <p className="text-sm text-gray-600 mt-1">Create branded, polished lifecycle emails with a guided builder and live preview.</p>
+        <p className="text-sm text-gray-600 mt-1">Simple content editing for non-technical admins. Advanced HTML is still available when needed.</p>
       </header>
 
-      <section className="flex flex-wrap items-center gap-2">
-        <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm min-w-64" placeholder="Search templates..." value={query} onChange={(e) => setQuery(e.target.value)} />
-        <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-          <option value="">All categories</option>
-          {CATEGORY_OPTIONS.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-        </select>
-        <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "disabled")}>
-          <option value="all">All status</option>
-          <option value="active">Active</option>
-          <option value="disabled">Disabled</option>
-        </select>
-        <button type="button" onClick={() => setViewMode((prev) => (prev === "gallery" ? "list" : "gallery"))} className="px-3 py-2 rounded-lg border border-gray-300 text-sm">
-          {viewMode === "gallery" ? "Switch to List" : "Switch to Gallery"}
-        </button>
-        <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Seed Defaults</button>
-      </section>
+      <section className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <aside className="xl:col-span-4 rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search templates" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+              <option value="">All</option>
+              {CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs">Seed Defaults</button>
+            <button type="button" onClick={saveTheme} className="px-3 py-2 rounded-lg border border-gray-300 text-xs">Save Theme</button>
+          </div>
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Existing DB templates keep their content until you reset them.</p>
 
-      <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <p className="font-semibold">Using existing templates?</p>
-        <p className="mt-1">
-          Existing database templates keep their current HTML. Use <span className="font-semibold">Seed Defaults</span> to add missing templates and
-          <span className="font-semibold"> Reset</span> on a template to apply the latest branded default content.
-        </p>
-      </section>
-
-      {filteredTemplates.length === 0 ? <EmptyState label="No templates found for current filters." /> : (
-        <>
-          {viewMode === "gallery" ? (
-            <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredTemplates.map((item) => {
-                const meta = TEMPLATE_META[item.key] ?? { description: "Custom or system template.", audience: "General" };
-                return (
-                  <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs text-pink-600 font-semibold uppercase tracking-wide">{item.category}</p>
-                        <h3 className="font-bold text-gray-900 mt-1">{item.name}</h3>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${item.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>{item.isEnabled ? "Active" : "Disabled"}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 mt-2">{meta.description}</p>
-                    <p className="text-xs text-gray-500 mt-2">Audience: {meta.audience}</p>
-                    <p className="text-xs text-gray-500 mt-1">Updated: {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "-"}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => { setSelectedId(item.id); setSection("header"); }} className="px-3 py-1.5 rounded-lg bg-pink-500 text-white text-xs">Edit</button>
-                      <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs">Preview</button>
-                      <button type="button" onClick={() => duplicateTemplate(item)} className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs">Duplicate</button>
-                      <button type="button" onClick={() => resetToDefault(item.id)} className="px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 text-xs">Reset</button>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-          ) : (
-            <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600"><tr><th className="text-left px-3 py-2">Template</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Updated</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
-                <tbody>
-                  {filteredTemplates.map((item) => (
-                    <tr key={item.id} className="border-t border-gray-100">
-                      <td className="px-3 py-2"><p className="font-medium">{item.name}</p><p className="text-xs text-gray-500">{item.key}</p></td>
-                      <td className="px-3 py-2">{item.isEnabled ? "Active" : "Disabled"}</td>
-                      <td className="px-3 py-2">{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : "-"}</td>
-                      <td className="px-3 py-2"><button type="button" className="text-pink-600 text-xs" onClick={() => setSelectedId(item.id)}>Edit</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          )}
-        </>
-      )}
-
-      {!selectedTemplate ? null : (
-        <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-          <div className="grid grid-cols-1 xl:grid-cols-12 min-h-[700px]">
-            <aside className="xl:col-span-2 border-r border-gray-100 p-4 bg-gray-50">
-              <h4 className="font-semibold text-sm text-gray-700 mb-3">Builder Sections</h4>
-              {[
-                { id: "header", label: "Header & Brand" },
-                { id: "content", label: "Content" },
-                { id: "cta", label: "CTA & Variables" },
-                { id: "footer", label: "Footer" },
-                { id: "advanced", label: "Advanced" },
-              ].map((item) => (
-                <button key={item.id} type="button" onClick={() => setSection(item.id as EditorSection)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-2 ${section === item.id ? "bg-pink-100 text-pink-700 font-semibold" : "hover:bg-gray-100 text-gray-600"}`}>
-                  {item.label}
-                </button>
-              ))}
-              <div className="mt-4 text-xs text-gray-500">
-                <p className="font-semibold mb-1">Editing mode</p>
-                <p>{section === "advanced" ? "Advanced mode (raw HTML/text)" : "Friendly mode (guided controls)"}</p>
-              </div>
-            </aside>
-
-            <main className="xl:col-span-6 border-r border-gray-100 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Live Preview</p>
-                  <h3 className="font-bold text-gray-900">{form.name}</h3>
+          <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
+            {filteredTemplates.length === 0 ? <EmptyState label="No templates found." /> : filteredTemplates.map((item) => (
+              <article key={item.id} className={`rounded-xl border p-3 ${item.id === selectedId ? "border-pink-300 bg-pink-50" : "border-gray-200 bg-white"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-pink-600 font-semibold">{item.category}</p>
+                    <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                    <p className="text-xs text-gray-600 mt-1">{TEMPLATE_META[item.key]?.description ?? "Custom template"}</p>
+                    <p className="text-xs text-gray-500 mt-1">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
+                  </div>
+                  <span className={`text-[11px] px-2 py-1 rounded-full ${item.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>{item.isEnabled ? "Active" : "Disabled"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 rounded text-xs ${previewMode === "desktop" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600"}`}>Desktop</button>
-                  <button type="button" onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 rounded text-xs ${previewMode === "mobile" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600"}`}>Mobile</button>
-                  <button type="button" onClick={previewTemplate} className="px-2 py-1 rounded text-xs border border-gray-300">Refresh</button>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => setSelectedId(item.id)} className="px-2 py-1 rounded border border-gray-300 text-xs">Edit</button>
+                  <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-2 py-1 rounded border border-gray-300 text-xs">Preview</button>
+                  <button type="button" onClick={() => duplicateTemplate(item)} className="px-2 py-1 rounded border border-gray-300 text-xs">Duplicate</button>
+                  <button type="button" onClick={() => resetToDefault(item.id)} className="px-2 py-1 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
                 </div>
-              </div>
+              </article>
+            ))}
+          </div>
+        </aside>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs text-gray-500 mb-1">Subject preview</p>
-                <p className="font-semibold text-sm text-gray-900">{preview?.subject || form.subject || "(No subject)"}</p>
-                <p className="text-xs text-gray-500 mt-2">Preheader: {preheader}</p>
+        {!selectedTemplate ? <div className="xl:col-span-8"><EmptyState label="Select a template to begin." /></div> : (
+          <section className="xl:col-span-8 rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-bold text-gray-900">{form.name}</h2>
+                <p className="text-xs text-gray-500">Key: {form.key}</p>
               </div>
-
-              <div className="mt-4 flex justify-center">
-                <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${previewMode === "mobile" ? "w-[360px]" : "w-full max-w-[760px]"}`}>
-                  <div className="p-4 text-sm" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || form.htmlBody }} />
-                </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setMode("simple")} className={`px-3 py-1.5 rounded text-xs ${mode === "simple" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"}`}>Simple mode</button>
+                <button type="button" onClick={() => setMode("advanced")} className={`px-3 py-1.5 rounded text-xs ${mode === "advanced" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"}`}>Advanced mode</button>
               </div>
-            </main>
+            </div>
 
-            <aside className="xl:col-span-4 p-4 space-y-3">
+            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
               <form onSubmit={saveTemplate} className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Template Name" required />
-                  <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono" value={form.key} onChange={(e) => setForm((p) => ({ ...p, key: e.target.value }))} placeholder="template_key" required />
+                  <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Template name" required />
+                  <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono" value={form.key} onChange={(e) => setForm((prev) => ({ ...prev, key: e.target.value }))} placeholder="template_key" required />
                 </div>
-                <input className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject line" />
-                <div className="flex items-center gap-2 text-xs">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.isEnabled} onChange={(e) => setForm((p) => ({ ...p, isEnabled: e.target.checked }))} />Active</label>
-                  <select className="rounded border border-gray-200 px-2 py-1" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value as TemplateCategory }))}>
-                    {CATEGORY_OPTIONS.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                </div>
+                <input className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
 
-                {section === "header" && (
-                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <h4 className="font-semibold text-sm">Brand Theme</h4>
-                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={theme.companyName} onChange={(e) => setTheme((p) => ({ ...p, companyName: e.target.value }))} placeholder="Company Name" />
-                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={theme.supportEmail} onChange={(e) => setTheme((p) => ({ ...p, supportEmail: e.target.value }))} placeholder="Support Email" />
+                {mode === "simple" ? (
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-3">
+                    <h3 className="font-semibold text-sm">Simple content editor</h3>
+                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.preheader} onFocus={() => setActiveField("preheader")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, preheader: e.target.value }))} placeholder="Preheader" />
+                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.heading} onFocus={() => setActiveField("heading")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, heading: e.target.value }))} placeholder="Heading" />
+                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-sm min-h-28" value={simpleFields.intro} onFocus={() => setActiveField("intro")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, intro: e.target.value }))} placeholder="Body copy" />
                     <div className="grid grid-cols-2 gap-2">
-                      <input type="color" className="w-full h-9 rounded border border-gray-200" value={theme.headerGradientStart} onChange={(e) => setTheme((p) => ({ ...p, headerGradientStart: e.target.value }))} />
-                      <input type="color" className="w-full h-9 rounded border border-gray-200" value={theme.headerGradientEnd} onChange={(e) => setTheme((p) => ({ ...p, headerGradientEnd: e.target.value }))} />
+                      <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.ctaText} onFocus={() => setActiveField("ctaText")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaText: e.target.value }))} placeholder="CTA text" />
+                      <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.ctaUrl} onFocus={() => setActiveField("ctaUrl")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaUrl: e.target.value }))} placeholder="CTA URL" />
                     </div>
-                    <button type="button" onClick={applyThemeToHtml} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Apply Brand Theme</button>
-                  </div>
-                )}
-
-                {section === "content" && (
-                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <h4 className="font-semibold text-sm">Content</h4>
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-44 font-mono" value={form.htmlBody} onChange={(e) => setForm((p) => ({ ...p, htmlBody: e.target.value }))} />
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-24 font-mono" value={form.textBody} onChange={(e) => setForm((p) => ({ ...p, textBody: e.target.value }))} placeholder="Plain text fallback (optional)" />
-                  </div>
-                )}
-
-                {section === "cta" && (
-                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <h4 className="font-semibold text-sm">CTA & Variables</h4>
-                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={theme.buttonText} onChange={(e) => setTheme((p) => ({ ...p, buttonText: e.target.value }))} placeholder="CTA Button Text" />
-                    <button type="button" onClick={addCtaBlock} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Add CTA block</button>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500">Insert into:</label>
-                      <select className="rounded border border-gray-200 px-2 py-1 text-xs" value={targetField} onChange={(e) => setTargetField(e.target.value as "subject" | "html")}>
-                        <option value="html">HTML body</option>
-                        <option value="subject">Subject</option>
-                      </select>
-                    </div>
-                    <div className="max-h-60 overflow-auto space-y-2">
-                      {VARIABLE_GROUPS.map((group) => (
-                        <div key={group.label}>
-                          <p className="text-xs font-semibold text-gray-700">{group.label}</p>
-                          <div className="space-y-1 mt-1">
-                            {group.vars.map((v) => (
-                              <button key={v.key} type="button" onClick={() => insertVariable(v.key)} className="w-full text-left px-2 py-1.5 rounded border border-gray-200 hover:bg-pink-50">
-                                <p className="text-xs font-mono text-pink-600">{`{{${v.key}}}`}</p>
-                                <p className="text-[11px] text-gray-500">{v.description} · e.g. {v.example}</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.footerNote} onFocus={() => setActiveField("footerNote")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, footerNote: e.target.value }))} placeholder="Footer note" />
+                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                      <label className="flex items-center gap-1.5"><input type="checkbox" checked={simpleFields.showCta} onChange={(e) => setSimpleFields((prev) => ({ ...prev, showCta: e.target.checked }))} />Show CTA</label>
+                      <label className="flex items-center gap-1.5"><input type="checkbox" checked={simpleFields.showFooter} onChange={(e) => setSimpleFields((prev) => ({ ...prev, showFooter: e.target.checked }))} />Show footer</label>
                     </div>
                   </div>
-                )}
-
-                {section === "footer" && (
-                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <h4 className="font-semibold text-sm">Footer & Contact</h4>
-                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={theme.siteUrl} onChange={(e) => setTheme((p) => ({ ...p, siteUrl: e.target.value }))} placeholder="Site URL" />
-                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={form.placeholderKeys} onChange={(e) => setForm((p) => ({ ...p, placeholderKeys: e.target.value }))} placeholder="Allowed placeholders (comma separated)" />
-                    <p className="text-xs text-gray-500">These theme fields are inserted via template variables ({`{{companyName}}`}, {`{{supportEmail}}`}, {`{{siteUrl}}`}).</p>
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-gray-200 p-3">
+                    <h3 className="font-semibold text-sm">Advanced HTML editor</h3>
+                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-64 font-mono" value={form.htmlBody} onFocus={() => setActiveField("htmlBody")} onChange={(e) => setForm((prev) => ({ ...prev, htmlBody: e.target.value }))} />
+                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-24 font-mono" value={form.textBody} onChange={(e) => setForm((prev) => ({ ...prev, textBody: e.target.value }))} placeholder="Plain text fallback" />
+                    <input className="w-full rounded border border-gray-200 px-2 py-1 text-xs" value={form.placeholderKeys} onChange={(e) => setForm((prev) => ({ ...prev, placeholderKeys: e.target.value }))} placeholder="Placeholder keys (comma-separated)" />
                   </div>
                 )}
 
-                {section === "advanced" && (
-                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <h4 className="font-semibold text-sm">Advanced Mode</h4>
-                    <p className="text-xs text-gray-500">Full raw HTML/text editing for power users.</p>
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-52 font-mono" value={form.htmlBody} onChange={(e) => setForm((p) => ({ ...p, htmlBody: e.target.value }))} />
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-24 font-mono" value={form.textBody} onChange={(e) => setForm((p) => ({ ...p, textBody: e.target.value }))} />
+                <details className="rounded-xl border border-gray-200 p-3" open={showAdvancedTools} onToggle={(e) => setShowAdvancedTools((e.currentTarget as HTMLDetailsElement).open)}>
+                  <summary className="cursor-pointer text-sm font-semibold">Theme editor</summary>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <input className="rounded border border-gray-200 px-2 py-1.5 text-sm col-span-2" value={theme.logoUrl} onChange={(e) => setTheme((prev) => ({ ...prev, logoUrl: e.target.value }))} placeholder="Logo URL (optional)" />
+                    <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={theme.brandName} onChange={(e) => setTheme((prev) => ({ ...prev, brandName: e.target.value }))} placeholder="Brand name" />
+                    <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={theme.supportEmail} onChange={(e) => setTheme((prev) => ({ ...prev, supportEmail: e.target.value }))} placeholder="Support email" />
+                    <input className="rounded border border-gray-200 px-2 py-1.5 text-sm col-span-2" value={theme.siteUrl} onChange={(e) => setTheme((prev) => ({ ...prev, siteUrl: e.target.value }))} placeholder="Site URL" />
+                    <label className="text-xs">Primary<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.primaryColor} onChange={(e) => setTheme((prev) => ({ ...prev, primaryColor: e.target.value }))} /></label>
+                    <label className="text-xs">Accent<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.accentColor} onChange={(e) => setTheme((prev) => ({ ...prev, accentColor: e.target.value }))} /></label>
+                    <label className="text-xs">Button BG<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.buttonBg} onChange={(e) => setTheme((prev) => ({ ...prev, buttonBg: e.target.value }))} /></label>
+                    <label className="text-xs">Button Text<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.buttonTextColor} onChange={(e) => setTheme((prev) => ({ ...prev, buttonTextColor: e.target.value }))} /></label>
+                    <label className="text-xs">Heading<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.headingColor} onChange={(e) => setTheme((prev) => ({ ...prev, headingColor: e.target.value }))} /></label>
+                    <label className="text-xs">Body<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.bodyTextColor} onChange={(e) => setTheme((prev) => ({ ...prev, bodyTextColor: e.target.value }))} /></label>
+                    <label className="text-xs">Content BG<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.contentBg} onChange={(e) => setTheme((prev) => ({ ...prev, contentBg: e.target.value }))} /></label>
+                    <label className="text-xs">Outer BG<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.outerBg} onChange={(e) => setTheme((prev) => ({ ...prev, outerBg: e.target.value }))} /></label>
+                    <label className="text-xs">Footer BG<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.footerBg} onChange={(e) => setTheme((prev) => ({ ...prev, footerBg: e.target.value }))} /></label>
+                    <label className="text-xs">Footer Text<input type="color" className="mt-1 w-full h-9 rounded border" value={theme.footerText} onChange={(e) => setTheme((prev) => ({ ...prev, footerText: e.target.value }))} /></label>
+                    {theme.links.map((link, index) => (
+                      <div key={`${link.label}-${index}`} className="col-span-2 grid grid-cols-2 gap-2">
+                        <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={link.label} onChange={(e) => setTheme((prev) => ({ ...prev, links: prev.links.map((item, idx) => idx === index ? { ...item, label: e.target.value } : item) }))} placeholder="Link label" />
+                        <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={link.url} onChange={(e) => setTheme((prev) => ({ ...prev, links: prev.links.map((item, idx) => idx === index ? { ...item, url: e.target.value } : item) }))} placeholder="Link URL" />
+                      </div>
+                    ))}
                   </div>
-                )}
+                </details>
 
-                <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                  <h4 className="font-semibold text-sm">Sample Data & Test Send</h4>
-                  <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-36 font-mono" value={sampleDataJson} onChange={(e) => setSampleDataJson(e.target.value)} />
-                  <input className="w-full rounded border border-gray-200 px-2 py-1 text-sm" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="recipient@example.com" />
-                  <div className="flex flex-wrap gap-2">
-                    <button type="submit" disabled={saving} className="px-3 py-1.5 rounded bg-gray-900 text-white text-xs">{saving ? "Saving..." : "Save Template"}</button>
-                    <button type="button" onClick={previewTemplate} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Refresh Preview</button>
-                    <button type="button" onClick={testSend} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Send Test</button>
-                    <button type="button" onClick={() => resetToDefault(form.id)} className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
+                <details className="rounded-xl border border-gray-200 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">Insert variables</summary>
+                  <div className="mt-3 space-y-2">
+                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={variableSearch} onChange={(e) => setVariableSearch(e.target.value)} placeholder="Search variables" />
+                    {groupedVariables.map((group) => (
+                      <div key={group.label} className="space-y-1">
+                        <p className="text-xs font-semibold text-gray-700">{group.label}</p>
+                        {group.vars.map((item) => (
+                          <button type="button" key={item.key} onClick={() => insertVariable(item.key)} className="w-full text-left rounded border border-gray-200 px-2 py-1.5 hover:bg-pink-50">
+                            <p className="text-xs font-mono text-pink-600">{`{{${item.key}}}`}</p>
+                            <p className="text-[11px] text-gray-500">{item.description} · e.g. {item.example}</p>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
                   </div>
-                  {preview?.missingPlaceholders?.length ? <p className="text-xs text-amber-600">Missing values: {preview.missingPlaceholders.join(", ")}</p> : null}
+                </details>
+
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" disabled={saving} className="px-3 py-1.5 rounded bg-gray-900 text-white text-xs">{saving ? "Saving..." : "Save template"}</button>
+                  <button type="button" onClick={previewTemplate} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Refresh preview</button>
+                  <button type="button" onClick={() => resetToDefault(form.id)} className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
                 </div>
               </form>
-            </aside>
-          </div>
-        </section>
-      )}
+
+              <div className="space-y-3">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs text-gray-500">Preview</p>
+                    <div className="flex gap-1">
+                      <button type="button" onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 rounded text-xs ${previewMode === "desktop" ? "bg-gray-900 text-white" : "bg-white border"}`}>Desktop</button>
+                      <button type="button" onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 rounded text-xs ${previewMode === "mobile" ? "bg-gray-900 text-white" : "bg-white border"}`}>Mobile</button>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900">{preview?.subject || form.subject || "(No subject)"}</p>
+                  <p className="text-xs text-gray-500 mt-1">Preheader: {preheaderPreview}</p>
+                </div>
+
+                <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[760px]"}`}>
+                  <div className="p-3" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
+                </div>
+
+                <details className="rounded-xl border border-gray-200 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">Sample data + test send</summary>
+                  <div className="mt-3 space-y-2">
+                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-36 font-mono" value={sampleDataJson} onChange={(e) => setSampleDataJson(e.target.value)} />
+                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="recipient@example.com" />
+                    <button type="button" onClick={testSend} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Send test email</button>
+                    {preview?.missingPlaceholders?.length ? <p className="text-xs text-amber-600">Missing values: {preview.missingPlaceholders.join(", ")}</p> : null}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+        )}
+      </section>
     </div>
   );
 }

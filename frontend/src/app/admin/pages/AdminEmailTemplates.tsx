@@ -446,52 +446,53 @@ export default function AdminEmailTemplates() {
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   return (
-    <div className="space-y-4">
-      <header className="rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 via-white to-orange-50 p-5">
+    <div className="max-w-[1440px] mx-auto px-4 xl:px-6 space-y-6">
+      <header className="rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 via-white to-orange-50 p-6">
         <h1 className="text-2xl font-black text-gray-900">Email Template Studio</h1>
         <p className="text-sm text-gray-600 mt-1">Simple content editing for non-technical admins. Advanced HTML is still available when needed.</p>
       </header>
 
-      <section className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <aside className="xl:col-span-4 rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <section className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_460px] gap-6 items-start">
+        <aside className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
             <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search templates" value={query} onChange={(e) => setQuery(e.target.value)} />
             <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="">All</option>
               {CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2.5">
             <button type="button" onClick={seedDefaults} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs">Seed Defaults</button>
             <button type="button" onClick={saveTheme} className="px-3 py-2 rounded-lg border border-gray-300 text-xs">Save Theme</button>
           </div>
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Existing DB templates keep their content until you reset them.</p>
 
-          <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
+          <div className="space-y-3 max-h-[700px] overflow-auto pr-1">
             {filteredTemplates.length === 0 ? <EmptyState label="No templates found." /> : filteredTemplates.map((item) => (
-              <article key={item.id} className={`rounded-xl border p-3 ${item.id === selectedId ? "border-pink-300 bg-pink-50" : "border-gray-200 bg-white"}`}>
+              <article key={item.id} className={`rounded-xl border p-4 ${item.id === selectedId ? "border-pink-300 bg-pink-50" : "border-gray-200 bg-white"}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-pink-600 font-semibold">{item.category}</p>
-                    <h3 className="font-semibold text-gray-900">{item.name}</h3>
-                    <p className="text-xs text-gray-600 mt-1">{TEMPLATE_META[item.key]?.description ?? "Custom template"}</p>
-                    <p className="text-xs text-gray-500 mt-1">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
+                    <h3 className="font-semibold text-gray-900 mt-1">{item.name}</h3>
+                    <p className="text-xs text-gray-600 mt-2 leading-relaxed">{TEMPLATE_META[item.key]?.description ?? "Custom template"}</p>
+                    <p className="text-xs text-gray-500 mt-2">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
                   </div>
                   <span className={`text-[11px] px-2 py-1 rounded-full ${item.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>{item.isEnabled ? "Active" : "Disabled"}</span>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => setSelectedId(item.id)} className="px-2 py-1 rounded border border-gray-300 text-xs">Edit</button>
-                  <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-2 py-1 rounded border border-gray-300 text-xs">Preview</button>
-                  <button type="button" onClick={() => duplicateTemplate(item)} className="px-2 py-1 rounded border border-gray-300 text-xs">Duplicate</button>
-                  <button type="button" onClick={() => resetToDefault(item.id)} className="px-2 py-1 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setSelectedId(item.id)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs bg-white">Edit</button>
+                  <button type="button" onClick={() => { setSelectedId(item.id); void previewTemplate(); }} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Preview</button>
+                  <button type="button" onClick={() => duplicateTemplate(item)} className="px-2.5 py-1.5 rounded border border-gray-300 text-xs">Duplicate</button>
+                  <button type="button" onClick={() => resetToDefault(item.id)} className="px-2.5 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
                 </div>
               </article>
             ))}
           </div>
         </aside>
 
-        {!selectedTemplate ? <div className="xl:col-span-8"><EmptyState label="Select a template to begin." /></div> : (
-          <section className="xl:col-span-8 rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+        {!selectedTemplate ? <div className="xl:col-span-2"><EmptyState label="Select a template to begin." /></div> : (
+          <>
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="font-bold text-gray-900">{form.name}</h2>
@@ -503,32 +504,40 @@ export default function AdminEmailTemplates() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
-              <form onSubmit={saveTemplate} className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
+              <form onSubmit={saveTemplate} className="space-y-5">
+                <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-200 p-5">
+                  <h3 className="col-span-2 text-sm font-semibold text-gray-800">Basic info</h3>
                   <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Template name" required />
                   <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono" value={form.key} onChange={(e) => setForm((prev) => ({ ...prev, key: e.target.value }))} placeholder="template_key" required />
+                  <input className="col-span-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
+                  <input className="col-span-2 w-full rounded border border-gray-200 px-3 py-2 text-sm" value={simpleFields.preheader} onFocus={() => setActiveField("preheader")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, preheader: e.target.value }))} placeholder="Preheader" />
                 </div>
-                <input className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={form.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
 
                 {mode === "simple" ? (
-                  <div className="space-y-3 rounded-xl border border-gray-200 p-3">
-                    <h3 className="font-semibold text-sm">Simple content editor</h3>
-                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.preheader} onFocus={() => setActiveField("preheader")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, preheader: e.target.value }))} placeholder="Preheader" />
-                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.heading} onFocus={() => setActiveField("heading")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, heading: e.target.value }))} placeholder="Heading" />
-                    <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-sm min-h-28" value={simpleFields.intro} onFocus={() => setActiveField("intro")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, intro: e.target.value }))} placeholder="Body copy" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.ctaText} onFocus={() => setActiveField("ctaText")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaText: e.target.value }))} placeholder="CTA text" />
-                      <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.ctaUrl} onFocus={() => setActiveField("ctaUrl")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaUrl: e.target.value }))} placeholder="CTA URL" />
+                  <>
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-5">
+                    <h3 className="font-semibold text-sm">Content editor</h3>
+                    <input className="w-full rounded border border-gray-200 px-3 py-2 text-sm" value={simpleFields.heading} onFocus={() => setActiveField("heading")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, heading: e.target.value }))} placeholder="Heading" />
+                    <textarea className="w-full rounded border border-gray-200 px-3 py-2 text-sm min-h-32" value={simpleFields.intro} onFocus={() => setActiveField("intro")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, intro: e.target.value }))} placeholder="Body copy" />
+                  </div>
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-5">
+                    <h3 className="font-semibold text-sm">CTA section</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input className="rounded border border-gray-200 px-3 py-2 text-sm" value={simpleFields.ctaText} onFocus={() => setActiveField("ctaText")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaText: e.target.value }))} placeholder="CTA text" />
+                      <input className="rounded border border-gray-200 px-3 py-2 text-sm" value={simpleFields.ctaUrl} onFocus={() => setActiveField("ctaUrl")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, ctaUrl: e.target.value }))} placeholder="CTA URL" />
                     </div>
-                    <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={simpleFields.footerNote} onFocus={() => setActiveField("footerNote")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, footerNote: e.target.value }))} placeholder="Footer note" />
-                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                  </div>
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-5">
+                    <h3 className="font-semibold text-sm">Options</h3>
+                    <input className="w-full rounded border border-gray-200 px-3 py-2 text-sm" value={simpleFields.footerNote} onFocus={() => setActiveField("footerNote")} onChange={(e) => setSimpleFields((prev) => ({ ...prev, footerNote: e.target.value }))} placeholder="Footer note" />
+                    <div className="flex items-center gap-5 text-xs text-gray-600">
                       <label className="flex items-center gap-1.5"><input type="checkbox" checked={simpleFields.showCta} onChange={(e) => setSimpleFields((prev) => ({ ...prev, showCta: e.target.checked }))} />Show CTA</label>
                       <label className="flex items-center gap-1.5"><input type="checkbox" checked={simpleFields.showFooter} onChange={(e) => setSimpleFields((prev) => ({ ...prev, showFooter: e.target.checked }))} />Show footer</label>
                     </div>
                   </div>
+                  </>
                 ) : (
-                  <div className="space-y-2 rounded-xl border border-gray-200 p-3">
+                  <div className="space-y-2 rounded-xl border border-gray-200 p-5">
                     <h3 className="font-semibold text-sm">Advanced HTML editor</h3>
                     <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-64 font-mono" value={form.htmlBody} onFocus={() => setActiveField("htmlBody")} onChange={(e) => setForm((prev) => ({ ...prev, htmlBody: e.target.value }))} />
                     <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-24 font-mono" value={form.textBody} onChange={(e) => setForm((prev) => ({ ...prev, textBody: e.target.value }))} placeholder="Plain text fallback" />
@@ -536,9 +545,9 @@ export default function AdminEmailTemplates() {
                   </div>
                 )}
 
-                <details className="rounded-xl border border-gray-200 p-3" open={showAdvancedTools} onToggle={(e) => setShowAdvancedTools((e.currentTarget as HTMLDetailsElement).open)}>
+                <details className="rounded-xl border border-gray-200 p-5" open={showAdvancedTools} onToggle={(e) => setShowAdvancedTools((e.currentTarget as HTMLDetailsElement).open)}>
                   <summary className="cursor-pointer text-sm font-semibold">Theme editor</summary>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-3">
                     <input className="rounded border border-gray-200 px-2 py-1.5 text-sm col-span-2" value={theme.logoUrl} onChange={(e) => setTheme((prev) => ({ ...prev, logoUrl: e.target.value }))} placeholder="Logo URL (optional)" />
                     <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={theme.brandName} onChange={(e) => setTheme((prev) => ({ ...prev, brandName: e.target.value }))} placeholder="Brand name" />
                     <input className="rounded border border-gray-200 px-2 py-1.5 text-sm" value={theme.supportEmail} onChange={(e) => setTheme((prev) => ({ ...prev, supportEmail: e.target.value }))} placeholder="Support email" />
@@ -562,9 +571,9 @@ export default function AdminEmailTemplates() {
                   </div>
                 </details>
 
-                <details className="rounded-xl border border-gray-200 p-3">
+                <details className="rounded-xl border border-gray-200 p-5">
                   <summary className="cursor-pointer text-sm font-semibold">Insert variables</summary>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-4 space-y-3">
                     <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={variableSearch} onChange={(e) => setVariableSearch(e.target.value)} placeholder="Search variables" />
                     {groupedVariables.map((group) => (
                       <div key={group.label} className="space-y-1">
@@ -580,15 +589,16 @@ export default function AdminEmailTemplates() {
                   </div>
                 </details>
 
-                <div className="flex flex-wrap gap-2">
-                  <button type="submit" disabled={saving} className="px-3 py-1.5 rounded bg-gray-900 text-white text-xs">{saving ? "Saving..." : "Save template"}</button>
-                  <button type="button" onClick={previewTemplate} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Refresh preview</button>
-                  <button type="button" onClick={() => resetToDefault(form.id)} className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-xs">Reset</button>
+                <div className="flex flex-wrap gap-2.5">
+                  <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold shadow-sm">{saving ? "Saving..." : "Save template"}</button>
+                  <button type="button" onClick={previewTemplate} className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-xs">Refresh preview</button>
+                  <button type="button" onClick={() => resetToDefault(form.id)} className="px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs">Reset</button>
                 </div>
               </form>
+            </section>
 
-              <div className="space-y-3">
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <aside className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs text-gray-500">Preview</p>
                     <div className="flex gap-1">
@@ -600,22 +610,23 @@ export default function AdminEmailTemplates() {
                   <p className="text-xs text-gray-500 mt-1">Preheader: {preheaderPreview}</p>
                 </div>
 
-                <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[760px]"}`}>
-                  <div className="p-3" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                  <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[430px]"}`}>
+                    <div className="p-4" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
+                  </div>
                 </div>
 
-                <details className="rounded-xl border border-gray-200 p-3">
+                <details className="rounded-xl border border-gray-200 p-4">
                   <summary className="cursor-pointer text-sm font-semibold">Sample data + test send</summary>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-4 space-y-3">
                     <textarea className="w-full rounded border border-gray-200 px-2 py-2 text-xs min-h-36 font-mono" value={sampleDataJson} onChange={(e) => setSampleDataJson(e.target.value)} />
                     <input className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="recipient@example.com" />
                     <button type="button" onClick={testSend} className="px-3 py-1.5 rounded border border-gray-300 text-xs">Send test email</button>
                     {preview?.missingPlaceholders?.length ? <p className="text-xs text-amber-600">Missing values: {preview.missingPlaceholders.join(", ")}</p> : null}
                   </div>
                 </details>
-              </div>
-            </div>
-          </section>
+              </aside>
+          </>
         )}
       </section>
     </div>

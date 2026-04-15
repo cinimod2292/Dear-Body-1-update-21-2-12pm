@@ -43,6 +43,7 @@ type QuoteTotals = {
   freeShippingApplied?: boolean;
   shippingMethods: StoreShippingMethod[];
 };
+type PaymentGatewayOption = { id: "stitch" | "payfast"; label: string };
 
 function normalizeCountry(value: string | null | undefined): string {
   if (!value) return "";
@@ -101,6 +102,8 @@ export default function Checkout() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [shippingStepError, setShippingStepError] = useState<string | null>(null);
+  const [gatewayOptions, setGatewayOptions] = useState<PaymentGatewayOption[]>([]);
+  const [selectedGateway, setSelectedGateway] = useState<"stitch" | "payfast" | "">("");
 
   const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
 
@@ -162,6 +165,19 @@ export default function Checkout() {
         console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
         if (!methods.length) return;
         setShippingMethods(methods);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/payments/gateways`)
+      .then((r) => r.json())
+      .then((payload) => {
+        const options = (payload?.data?.enabledGateways || []) as PaymentGatewayOption[];
+        setGatewayOptions(options);
+        if (!options.length) return;
+        const preferred = payload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
+        setSelectedGateway((current) => current || preferred || options[0].id);
       })
       .catch(() => undefined);
   }, []);
@@ -400,7 +416,7 @@ export default function Checkout() {
             country: form.country,
           },
           payment: {
-            gateway: "stitch",
+            gateway: selectedGateway || undefined,
             returnUrl,
             cancelUrl: `${returnUrl}?cancelled=1`,
           },
@@ -435,11 +451,11 @@ export default function Checkout() {
         const retryRes = await fetch(`${API_BASE}/store/orders/${order.id}/payments/initiate`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ gateway: "stitch", returnUrl: finalReturnUrl, cancelUrl: `${window.location.origin}/checkout?orderId=${order.id}&cancelled=1` }),
+          body: JSON.stringify({ gateway: selectedGateway || undefined, returnUrl: finalReturnUrl, cancelUrl: `${window.location.origin}/checkout?orderId=${order.id}&cancelled=1` }),
         });
         const retryPayload = await retryRes.json().catch(() => null);
         if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
-          console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "retry-initiate" });
+          console.info("[checkout-timing] redirect to gateway started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "retry-initiate", gateway: selectedGateway || null });
           console.info("[checkout] retry redirect", {
             checkoutUrlFromBackend: retryPayload.data.checkoutUrl,
             redirectTarget: retryPayload.data.checkoutUrl,
@@ -460,7 +476,7 @@ export default function Checkout() {
       setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
-        console.info("[checkout-timing] redirect to Stitch started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "checkout-response" });
+        console.info("[checkout-timing] redirect to gateway started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "checkout-response", gateway: selectedGateway || null });
         console.info("[checkout] initial redirect", {
           checkoutUrlFromBackend: payment.checkoutUrl,
           redirectTarget: payment.checkoutUrl,
@@ -484,8 +500,8 @@ export default function Checkout() {
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
         <div className="max-w-md w-full text-center bg-white rounded-2xl p-8 shadow-sm">
           <h1 className="text-2xl font-black mb-3">Processing payment…</h1>
-          <p className="text-gray-500 text-sm">We are waiting for Stitch webhook confirmation. This may take a few seconds.</p>
-          {searchParams.get("cancelled") ? <p className="text-amber-600 text-sm mt-3">Payment was cancelled on Stitch. You can retry payment from your account.</p> : null}
+          <p className="text-gray-500 text-sm">We are waiting for payment confirmation. This may take a few seconds.</p>
+          {searchParams.get("cancelled") ? <p className="text-amber-600 text-sm mt-3">Payment was cancelled. You can retry payment from your account.</p> : null}
           <Link to="/account" className="inline-block mt-5 text-pink-600 text-sm">Go to My Account</Link>
         </div>
       </div>
@@ -730,13 +746,23 @@ export default function Checkout() {
             {/* PAYMENT */}
             {step === "payment" && (
               <form onSubmit={handlePlaceOrder} className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="font-black text-gray-900 text-xl mb-2">Pay with Stitch</h2>
+                <h2 className="font-black text-gray-900 text-xl mb-2">Payment Method</h2>
                 <p className="text-gray-400 text-sm mb-6 flex items-center gap-1.5">
-                  <Lock size={13} /> Card entry is handled securely on Stitch-hosted checkout.
+                  <Lock size={13} /> You will be redirected to your selected secure payment gateway.
                 </p>
+                {gatewayOptions.length > 1 ? (
+                  <div className="mb-4 space-y-2">
+                    {gatewayOptions.map((gateway) => (
+                      <label key={gateway.id} className="flex items-center gap-2 text-sm">
+                        <input type="radio" name="payment-gateway" checked={selectedGateway === gateway.id} onChange={() => setSelectedGateway(gateway.id)} />
+                        {gateway.label}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="rounded-xl border border-pink-100 bg-pink-50 p-4 text-sm text-gray-700">
-                  We do not collect raw card details on this site. After you click pay, you will be redirected to Stitch to complete payment.
+                  We do not collect raw card details on this site. After you click pay, you will be redirected to complete payment.
                 </div>
 
                 <div className="flex gap-3 mt-6">
@@ -754,7 +780,7 @@ export default function Checkout() {
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Lock size={16} />
-                    {submitting ? "Redirecting..." : `Pay with Stitch · ${formatRand(total)}`}
+                    {submitting ? "Redirecting..." : `Pay with ${(gatewayOptions.find((g) => g.id === selectedGateway)?.label || "Gateway")} · ${formatRand(total)}`}
                   </button>
                 </div>
                 {shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-red-500 text-sm mt-3">Please select a shipping method to continue.</p> : null}

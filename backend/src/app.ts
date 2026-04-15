@@ -57,6 +57,14 @@ export async function buildApp() {
   app.addContentTypeParser(/^image\/.*/i, { parseAs: "buffer" }, (_request, body, done) => {
     done(null, body);
   });
+  app.addContentTypeParser(/^application\/x-www-form-urlencoded(?:\s*;.*)?$/i, { parseAs: "string" }, (_request, body, done) => {
+    const params = new URLSearchParams(typeof body === "string" ? body : body.toString("utf8"));
+    const parsed: Record<string, string> = {};
+    for (const [key, value] of params.entries()) {
+      parsed[key] = value;
+    }
+    done(null, parsed);
+  });
 
   const localUploadRoot = path.resolve(process.cwd(), ".local-uploads");
   const resolveLocalUploadPath = (storageKey: string) => {

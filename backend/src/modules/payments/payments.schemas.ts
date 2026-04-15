@@ -11,15 +11,31 @@ export const stitchSettingsSchema = z.object({
   apiBaseUrl: z.string().url().optional(),
 });
 
+export const payfastSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["sandbox", "live"]).default("sandbox"),
+  sandboxMerchantId: z.string().min(1).optional(),
+  sandboxMerchantKey: z.string().min(8).optional(),
+  sandboxPassphrase: z.string().min(8).optional(),
+  liveMerchantId: z.string().min(1).optional(),
+  liveMerchantKey: z.string().min(8).optional(),
+  livePassphrase: z.string().min(8).optional(),
+  returnUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+  notifyUrl: z.string().url().optional(),
+});
+
+export const paymentGatewaySchema = z.enum(["stitch", "payfast"]);
+
 export const paymentInitiationSchema = z.object({
-  gateway: z.enum(["stitch"]).default("stitch"),
+  gateway: paymentGatewaySchema.optional(),
   returnUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   force: z.boolean().optional().default(false),
 });
 
 export const paymentVerifySchema = z.object({
-  gateway: z.enum(["stitch"]).default("stitch"),
+  gateway: paymentGatewaySchema.optional(),
   referenceId: z.string().min(2),
 });
 

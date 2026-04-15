@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { AppError } from "../../lib/errors.js";
-import { buildPayfastSignature } from "./payfast.gateway.js";
+import { buildPayfastSignature, buildPayfastSignatureSource } from "./payfast.gateway.js";
 import { PayfastGateway } from "./payfast.gateway.js";
 import { assertAtLeastOneGatewayEnabled, resolveGatewayForRequest } from "./payment-settings.js";
 
@@ -44,6 +44,40 @@ test("PayFast signatures are deterministic and mode-safe inputs can differ", () 
   assert.equal(liveSig.length, 32);
 });
 
+test("PayFast signature generation trims values and excludes empty fields", () => {
+  const source = buildPayfastSignatureSource({
+    merchant_id: " 10000100 ",
+    merchant_key: " key12345 ",
+    item_name: " Order 42 ",
+    email_address: "   ",
+  }, " passphrase ");
+  assert.equal(source, "merchant_id=10000100&merchant_key=key12345&item_name=Order+42&passphrase=passphrase");
+});
+
+test("PayFast signature generation preserves submitted field order", () => {
+  const source = buildPayfastSignatureSource({
+    merchant_id: "10000100",
+    merchant_key: "abc123",
+    return_url: "https://example.com/return",
+    m_payment_id: "payfast-1",
+  });
+  assert.equal(source, "merchant_id=10000100&merchant_key=abc123&return_url=https%3A%2F%2Fexample.com%2Freturn&m_payment_id=payfast-1");
+});
+
+test("PayFast passphrase changes signature only when present", () => {
+  const fields = {
+    merchant_id: "10000100",
+    merchant_key: "abc123",
+    amount: "129.99",
+  };
+  const noPass = buildPayfastSignature(fields);
+  const emptyPass = buildPayfastSignature(fields, "   ");
+  const withPass = buildPayfastSignature(fields, "secret");
+
+  assert.equal(noPass, emptyPass);
+  assert.notEqual(noPass, withPass);
+});
+
 test("PayFast gateway uses sandbox/live endpoint based on runtime mode", async () => {
   const gateway = new PayfastGateway();
   const sandbox = await gateway.initiatePayment({
@@ -71,4 +105,30 @@ test("PayFast gateway uses sandbox/live endpoint based on runtime mode", async (
     currency: "ZAR",
   });
   assert.ok(live.checkoutUrl?.startsWith("https://www.payfast.co.za/eng/process"));
+});
+
+test("PayFast redirect URL signature matches generated payload source", async () => {
+  const gateway = new PayfastGateway();
+  const initiated = await gateway.initiatePayment({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "passphrase",
+  }, {
+    orderId: "order_1",
+    orderNumber: "5001",
+    amount: 99.5,
+    currency: "ZAR",
+    returnUrl: "https://shop.example/checkout?order=1",
+    cancelUrl: "https://shop.example/checkout?cancelled=1",
+  });
+
+  const url = new URL(initiated.checkoutUrl!);
+  const payloadFields: Record<string, string> = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    if (key === "signature") continue;
+    payloadFields[key] = value;
+  }
+  const rebuilt = buildPayfastSignature(payloadFields, "passphrase");
+  assert.equal(url.searchParams.get("signature"), rebuilt);
 });

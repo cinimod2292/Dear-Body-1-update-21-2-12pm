@@ -22,18 +22,50 @@ function normalizePayfastStatus(status?: string): "PENDING" | "PAID" | "FAILED" 
   return "PENDING";
 }
 
-export function buildPayfastSignature(fields: Record<string, string | undefined>, passphrase?: string) {
-  const pairs = Object.entries(fields)
-    .filter(([key, value]) => key !== "signature" && value !== undefined && value !== "")
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`);
+function normalizePayfastValue(value: string | undefined) {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
-  if (passphrase) {
-    pairs.push(`passphrase=${encodeURIComponent(passphrase).replace(/%20/g, "+")}`);
+function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?: string) {
+  const pairs = Object.entries(fields)
+    .filter(([key]) => key !== "signature")
+    .map(([key, value]) => [key, normalizePayfastValue(value)] as const)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%20/g, "+")}`);
+
+  const normalizedPassphrase = normalizePayfastValue(passphrase);
+  if (normalizedPassphrase) {
+    pairs.push(`passphrase=${encodeURIComponent(normalizedPassphrase).replace(/%20/g, "+")}`);
   }
 
-  return crypto.createHash("md5").update(pairs.join("&")).digest("hex");
+  return pairs;
 }
+
+export function buildPayfastSignatureSource(fields: Record<string, string | undefined>, passphrase?: string) {
+  return toPayfastPairs(fields, passphrase).join("&");
+}
+
+export function buildPayfastSignature(fields: Record<string, string | undefined>, passphrase?: string) {
+  const source = buildPayfastSignatureSource(fields, passphrase);
+  return crypto.createHash("md5").update(source).digest("hex");
+}
+
+function sanitizeFieldMap(fields: Record<string, string | undefined>) {
+  const cleaned: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const normalized = normalizePayfastValue(value);
+    if (!normalized) continue;
+    cleaned[key] = normalized;
+  }
+  return cleaned;
+}
+
+function redactSignatureSource(source: string) {
+  return source.replace(/(merchant_key=)[^&]+/g, "$1[redacted]").replace(/(passphrase=)[^&]+/g, "$1[redacted]");
+}
+
 
 export class PayfastGateway implements PaymentGatewayProvider {
   readonly name = "payfast";
@@ -55,13 +87,18 @@ export class PayfastGateway implements PaymentGatewayProvider {
       custom_str1: input.orderId,
     };
 
-    const signature = buildPayfastSignature(fields, config.webhookSecret);
+    const normalizedFields = sanitizeFieldMap(fields);
+    const preHashSource = buildPayfastSignatureSource(normalizedFields, config.webhookSecret);
+    const signature = buildPayfastSignature(normalizedFields, config.webhookSecret);
     const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(fields)) {
-      if (!value) continue;
+    for (const [key, value] of Object.entries(normalizedFields)) {
       query.set(key, value);
     }
     query.set("signature", signature);
+    console.info("[payfast] redirect signature source", {
+      source: redactSignatureSource(preHashSource),
+      mode: config.mode,
+    });
 
     return {
       referenceId,
@@ -70,7 +107,8 @@ export class PayfastGateway implements PaymentGatewayProvider {
       raw: {
         mode: config.mode,
         amount,
-        fields: { ...fields, signature: "[redacted]" },
+        fields: { ...normalizedFields, signature: "[redacted]" },
+        preHashSource: redactSignatureSource(preHashSource),
       },
     };
   }
@@ -109,7 +147,8 @@ export class PayfastGateway implements PaymentGatewayProvider {
       }
     }
 
-    const expected = buildPayfastSignature(stringPayload, config.webhookSecret);
+    const normalizedPayload = sanitizeFieldMap(stringPayload);
+    const expected = buildPayfastSignature(normalizedPayload, config.webhookSecret);
     const isValid = expected.toLowerCase() === signature.toLowerCase();
 
     return {

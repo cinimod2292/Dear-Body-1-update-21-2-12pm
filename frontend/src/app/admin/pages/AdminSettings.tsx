@@ -24,6 +24,19 @@ interface StitchSettings {
   callbackUrl: string;
   apiBaseUrl: string;
 }
+interface PayfastSettings {
+  enabled: boolean;
+  mode: "sandbox" | "live";
+  sandboxMerchantId: string;
+  sandboxMerchantKeyConfigured: boolean;
+  sandboxPassphraseConfigured: boolean;
+  liveMerchantId: string;
+  liveMerchantKeyConfigured: boolean;
+  livePassphraseConfigured: boolean;
+  returnUrl: string;
+  cancelUrl: string;
+  notifyUrl: string;
+}
 
 interface XeroSettings {
   enabled: boolean;
@@ -99,6 +112,21 @@ export default function AdminSettings() {
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [webhookConfigured, setWebhookConfigured] = useState(false);
   const [paymentEvents, setPaymentEvents] = useState<PaymentEvent[]>([]);
+  const [payfastEnabled, setPayfastEnabled] = useState(false);
+  const [payfastMode, setPayfastMode] = useState<"sandbox" | "live">("sandbox");
+  const [sandboxMerchantId, setSandboxMerchantId] = useState("");
+  const [sandboxMerchantKey, setSandboxMerchantKey] = useState("");
+  const [sandboxPassphrase, setSandboxPassphrase] = useState("");
+  const [liveMerchantId, setLiveMerchantId] = useState("");
+  const [liveMerchantKey, setLiveMerchantKey] = useState("");
+  const [livePassphrase, setLivePassphrase] = useState("");
+  const [payfastReturnUrl, setPayfastReturnUrl] = useState("");
+  const [payfastCancelUrl, setPayfastCancelUrl] = useState("");
+  const [payfastNotifyUrl, setPayfastNotifyUrl] = useState("");
+  const [sandboxMerchantKeyConfigured, setSandboxMerchantKeyConfigured] = useState(false);
+  const [sandboxPassphraseConfigured, setSandboxPassphraseConfigured] = useState(false);
+  const [liveMerchantKeyConfigured, setLiveMerchantKeyConfigured] = useState(false);
+  const [livePassphraseConfigured, setLivePassphraseConfigured] = useState(false);
 
   const [xeroEnabled, setXeroEnabled] = useState(false);
   const [xeroClientId, setXeroClientId] = useState("");
@@ -160,9 +188,10 @@ export default function AdminSettings() {
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
+        apiRequest<{ data: PayfastSettings }>("/admin/payments/settings/payfast", {}, session.accessToken),
         apiRequest<{ data: { items: PaymentEvent[] } }>("/admin/payments/events?page=1&perPage=10", {}, session.accessToken),
         apiRequest<{ data: XeroSettings }>("/admin/integrations/xero/settings", {}, session.accessToken),
         apiRequest<{ data: { items: XeroSyncRecord[] } }>("/admin/integrations/xero/sync-records?page=1&perPage=10", {}, session.accessToken),
@@ -186,6 +215,19 @@ export default function AdminSettings() {
         setApiKeyConfigured(stitchRes.value.data.apiKeyConfigured);
         setWebhookConfigured(stitchRes.value.data.webhookSecretConfigured);
       }
+      if (payfastRes.status === "fulfilled") {
+        setPayfastEnabled(payfastRes.value.data.enabled);
+        setPayfastMode(payfastRes.value.data.mode);
+        setSandboxMerchantId(payfastRes.value.data.sandboxMerchantId || "");
+        setLiveMerchantId(payfastRes.value.data.liveMerchantId || "");
+        setPayfastReturnUrl(payfastRes.value.data.returnUrl || "");
+        setPayfastCancelUrl(payfastRes.value.data.cancelUrl || "");
+        setPayfastNotifyUrl(payfastRes.value.data.notifyUrl || "");
+        setSandboxMerchantKeyConfigured(payfastRes.value.data.sandboxMerchantKeyConfigured);
+        setSandboxPassphraseConfigured(payfastRes.value.data.sandboxPassphraseConfigured);
+        setLiveMerchantKeyConfigured(payfastRes.value.data.liveMerchantKeyConfigured);
+        setLivePassphraseConfigured(payfastRes.value.data.livePassphraseConfigured);
+      }
       if (paymentEventsRes.status === "fulfilled") setPaymentEvents(paymentEventsRes.value.data.items);
       if (xeroSettingsRes.status === "fulfilled") {
         setXeroEnabled(xeroSettingsRes.value.data.enabled);
@@ -202,7 +244,7 @@ export default function AdminSettings() {
       if (storageRes.status === "fulfilled") setStorageConfig(storageRes.value.data);
       if (sendgridRes.status === "fulfilled") setSendgridConfig(sendgridRes.value.data);
 
-      const failed = [settingsRes, stitchRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes].filter((r) => r.status === "rejected");
+      const failed = [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         toast.error(`Loaded with partial failures (${failed.length})`);
       }
@@ -285,6 +327,42 @@ export default function AdminSettings() {
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save Xero settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePayfast = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || saving) return;
+    try {
+      setSaving(true);
+      const payload = {
+        enabled: payfastEnabled,
+        mode: payfastMode,
+        sandboxMerchantId: sandboxMerchantId || undefined,
+        sandboxMerchantKey: sandboxMerchantKey || undefined,
+        sandboxPassphrase: sandboxPassphrase || undefined,
+        liveMerchantId: liveMerchantId || undefined,
+        liveMerchantKey: liveMerchantKey || undefined,
+        livePassphrase: livePassphrase || undefined,
+        returnUrl: payfastReturnUrl || undefined,
+        cancelUrl: payfastCancelUrl || undefined,
+        notifyUrl: payfastNotifyUrl || undefined,
+      };
+      const res = await apiRequest<{ data: PayfastSettings }>("/admin/payments/settings/payfast", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
+      setSandboxMerchantKey("");
+      setSandboxPassphrase("");
+      setLiveMerchantKey("");
+      setLivePassphrase("");
+      setSandboxMerchantKeyConfigured(res.data.sandboxMerchantKeyConfigured);
+      setSandboxPassphraseConfigured(res.data.sandboxPassphraseConfigured);
+      setLiveMerchantKeyConfigured(res.data.liveMerchantKeyConfigured);
+      setLivePassphraseConfigured(res.data.livePassphraseConfigured);
+      toast.success("PayFast settings saved");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save PayFast settings");
     } finally {
       setSaving(false);
     }
@@ -432,6 +510,25 @@ export default function AdminSettings() {
           <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
         </div>
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
+      </form>
+
+      <form onSubmit={savePayfast} className="space-y-4">
+        <h2 className="text-2xl font-black text-gray-900">PayFast Payments</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payfastEnabled} onChange={(e) => setPayfastEnabled(e.target.checked)} />Enable PayFast</label>
+          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live") }><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
+          <p className="text-xs text-gray-500">Keep sandbox and live credentials separate to avoid accidental cross-environment usage.</p>
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Sandbox Merchant ID" value={sandboxMerchantId} onChange={(e) => setSandboxMerchantId(e.target.value)} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Merchant Key ${sandboxMerchantKeyConfigured ? "(configured)" : ""}`} value={sandboxMerchantKey} onChange={(e) => setSandboxMerchantKey(e.target.value)} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Passphrase ${sandboxPassphraseConfigured ? "(configured)" : "(optional)"}`} value={sandboxPassphrase} onChange={(e) => setSandboxPassphrase(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Live Merchant ID" value={liveMerchantId} onChange={(e) => setLiveMerchantId(e.target.value)} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Merchant Key ${liveMerchantKeyConfigured ? "(configured)" : ""}`} value={liveMerchantKey} onChange={(e) => setLiveMerchantKey(e.target.value)} />
+          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Passphrase ${livePassphraseConfigured ? "(configured)" : "(optional)"}`} value={livePassphrase} onChange={(e) => setLivePassphrase(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Return URL" value={payfastReturnUrl} onChange={(e) => setPayfastReturnUrl(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancel URL" value={payfastCancelUrl} onChange={(e) => setPayfastCancelUrl(e.target.value)} />
+          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Notify URL (webhook)" value={payfastNotifyUrl} onChange={(e) => setPayfastNotifyUrl(e.target.value)} />
+        </div>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save PayFast Settings"}</button>
       </form>
 
       <form onSubmit={saveStorage} className="space-y-4">

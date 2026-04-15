@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 
 import { AppError } from "../../lib/errors.js";
 import { buildPayfastSignature, buildPayfastSignatureSource } from "./payfast.gateway.js";
@@ -124,11 +125,42 @@ test("PayFast redirect URL signature matches generated payload source", async ()
   });
 
   const url = new URL(initiated.checkoutUrl!);
-  const payloadFields: Record<string, string> = {};
-  for (const [key, value] of url.searchParams.entries()) {
-    if (key === "signature") continue;
-    payloadFields[key] = value;
-  }
-  const rebuilt = buildPayfastSignature(payloadFields, "passphrase");
+  const encodedSource = url.search.slice(1).replace(/&signature=.*$/, "");
+  const rebuilt = crypto.createHash("md5").update(`${encodedSource}&passphrase=passphrase`).digest("hex");
   assert.equal(url.searchParams.get("signature"), rebuilt);
+});
+
+test("PayFast redirect query string (excluding signature) exactly matches signed source order/encoding", async () => {
+  const gateway = new PayfastGateway();
+  const initiated = await gateway.initiatePayment({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+  }, {
+    orderId: "order_2",
+    orderNumber: "9001",
+    amount: 12,
+    currency: "ZAR",
+    returnUrl: "https://shop.example/r?x=1~2",
+    cancelUrl: "https://shop.example/c?x=hello world",
+    customerEmail: "alice+bob@example.com",
+  });
+
+  const url = new URL(initiated.checkoutUrl!);
+  const mPaymentId = url.searchParams.get("m_payment_id");
+  assert.ok(mPaymentId);
+
+  const expectedSource = buildPayfastSignatureSource({
+    merchant_id: "10000100",
+    merchant_key: "abc123",
+    return_url: "https://shop.example/r?x=1~2",
+    cancel_url: "https://shop.example/c?x=hello world",
+    m_payment_id: mPaymentId!,
+    amount: "12.00",
+    item_name: "Order 9001",
+    email_address: "alice+bob@example.com",
+    custom_str1: "order_2",
+  });
+  const actualSource = url.search.slice(1).replace(/&signature=.*$/, "");
+  assert.equal(actualSource, expectedSource);
 });

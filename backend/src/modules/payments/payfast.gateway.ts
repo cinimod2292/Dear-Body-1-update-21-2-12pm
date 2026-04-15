@@ -28,7 +28,7 @@ function normalizePayfastValue(value: string | undefined) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?: string) {
+function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?: string, includePassphrase = true) {
   const pairs = Object.entries(fields)
     .filter(([key]) => key !== "signature")
     .map(([key, value]) => [key, normalizePayfastValue(value)] as const)
@@ -36,7 +36,7 @@ function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?:
     .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%20/g, "+")}`);
 
   const normalizedPassphrase = normalizePayfastValue(passphrase);
-  if (normalizedPassphrase) {
+  if (includePassphrase && normalizedPassphrase) {
     pairs.push(`passphrase=${encodeURIComponent(normalizedPassphrase).replace(/%20/g, "+")}`);
   }
 
@@ -45,6 +45,10 @@ function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?:
 
 export function buildPayfastSignatureSource(fields: Record<string, string | undefined>, passphrase?: string) {
   return toPayfastPairs(fields, passphrase).join("&");
+}
+
+export function buildPayfastRedirectSource(fields: Record<string, string | undefined>) {
+  return toPayfastPairs(fields, undefined, false).join("&");
 }
 
 export function buildPayfastSignature(fields: Record<string, string | undefined>, passphrase?: string) {
@@ -89,26 +93,26 @@ export class PayfastGateway implements PaymentGatewayProvider {
 
     const normalizedFields = sanitizeFieldMap(fields);
     const preHashSource = buildPayfastSignatureSource(normalizedFields, config.webhookSecret);
+    const redirectSource = buildPayfastRedirectSource(normalizedFields);
     const signature = buildPayfastSignature(normalizedFields, config.webhookSecret);
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(normalizedFields)) {
-      query.set(key, value);
-    }
-    query.set("signature", signature);
+    const queryString = `${redirectSource}&signature=${signature}`;
+    const signedFieldOrder = preHashSource.split("&").map((pair) => pair.split("=")[0]);
     console.info("[payfast] redirect signature source", {
       source: redactSignatureSource(preHashSource),
+      signedFieldOrder,
       mode: config.mode,
     });
 
     return {
       referenceId,
-      checkoutUrl: `${payFastBaseCheckoutUrl(config.mode)}?${query.toString()}`,
+      checkoutUrl: `${payFastBaseCheckoutUrl(config.mode)}?${queryString}`,
       status: "PENDING",
       raw: {
         mode: config.mode,
         amount,
         fields: { ...normalizedFields, signature: "[redacted]" },
         preHashSource: redactSignatureSource(preHashSource),
+        signedFieldOrder,
       },
     };
   }

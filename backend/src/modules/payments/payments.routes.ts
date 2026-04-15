@@ -1,10 +1,14 @@
 import { FastifyInstance } from "fastify";
 import { PassThrough } from "node:stream";
 import {
+  getPayfastSettings,
+  getPaymentGatewayOptions,
   getStitchSettings,
+  handlePayfastWebhook,
   handleStitchWebhook,
   initiateOrderPayment,
   listPaymentEvents,
+  upsertPayfastSettings,
   upsertStitchSettings,
   verifyOrderPayment,
 } from "./payments.service.js";
@@ -21,6 +25,20 @@ export async function paymentsRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
     async (request, reply) => reply.send({ data: await upsertStitchSettings(request.body) }),
   );
+
+  app.get(
+    "/admin/payments/settings/payfast",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
+    async (_request, reply) => reply.send({ data: await getPayfastSettings() }),
+  );
+
+  app.put(
+    "/admin/payments/settings/payfast",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => reply.send({ data: await upsertPayfastSettings(request.body) }),
+  );
+
+  app.get("/store/payments/gateways", async (_request, reply) => reply.send({ data: await getPaymentGatewayOptions() }));
 
   app.get(
     "/admin/payments/events",
@@ -87,5 +105,16 @@ export async function paymentsRoutes(app: FastifyInstance) {
       request.log.warn({ err: error }, "Stitch webhook rejected");
       throw error;
     }
+  });
+
+  app.post("/payments/payfast/webhook", async (request, reply) => {
+    request.log.info({ route: "/payments/payfast/webhook" }, "PayFast webhook received");
+    const headers = Object.fromEntries(
+      Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value[0] : value?.toString()]),
+    );
+    const payload = (request.body ?? {}) as Record<string, unknown>;
+    const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
+    const result = await handlePayfastWebhook(headers, payload, rawBody);
+    return reply.send({ data: result });
   });
 }

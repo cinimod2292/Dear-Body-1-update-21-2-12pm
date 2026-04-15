@@ -7,18 +7,28 @@ import {
   paymentEventsQuerySchema,
   paymentInitiationSchema,
   paymentVerifySchema,
+  payfastSettingsSchema,
   stitchSettingsSchema,
 } from "./payments.schemas.js";
 import { GatewayConfig, PaymentGatewayProvider } from "./payment-gateway.js";
+import { PayfastGateway } from "./payfast.gateway.js";
 import { StitchGateway } from "./stitch.gateway.js";
+import {
+  assertAtLeastOneGatewayEnabled,
+  EnabledGatewayState,
+  resolveGatewayForRequest,
+  toStorefrontGatewayLabel,
+} from "./payment-settings.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 
-const STITCH_SETTING_SCOPE = "payments";
+const SETTING_SCOPE = "payments";
 const STITCH_SETTING_KEY = "stitch";
+const PAYFAST_SETTING_KEY = "payfast";
 
 const gateways: Record<string, PaymentGatewayProvider> = {
   stitch: new StitchGateway(),
+  payfast: new PayfastGateway(),
 };
 
 function isReusableStitchCheckoutUrl(url: string | undefined) {
@@ -37,6 +47,20 @@ interface StitchStoredConfig {
   apiBaseUrl?: string;
 }
 
+
+interface PayfastStoredConfig {
+  enabled: boolean;
+  mode: "sandbox" | "live";
+  sandboxMerchantId?: string;
+  encryptedSandboxMerchantKey?: string;
+  encryptedSandboxPassphrase?: string;
+  liveMerchantId?: string;
+  encryptedLiveMerchantKey?: string;
+  encryptedLivePassphrase?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
+  notifyUrl?: string;
+}
 function resolveStoredWebhookSecret(storedValue?: string) {
   if (!storedValue) return undefined;
   const decrypted = decryptSecret(storedValue);
@@ -49,6 +73,23 @@ function getGateway(name: string) {
   const gateway = gateways[name];
   if (!gateway) throw new AppError(400, `Unsupported gateway: ${name}`, "PAYMENT_GATEWAY_UNSUPPORTED");
   return gateway;
+}
+
+async function getRawGatewaySetting(key: string) {
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key } } });
+  return (setting?.value ?? {}) as Record<string, unknown>;
+}
+
+async function getGatewayEnabledState(): Promise<EnabledGatewayState> {
+  const [stitchRaw, payfastRaw] = await Promise.all([
+    getRawGatewaySetting(STITCH_SETTING_KEY),
+    getRawGatewaySetting(PAYFAST_SETTING_KEY),
+  ]);
+
+  return {
+    stitch: Boolean(stitchRaw.enabled),
+    payfast: Boolean(payfastRaw.enabled),
+  };
 }
 
 async function writePaymentEventLog(data: {
@@ -86,7 +127,7 @@ async function writePaymentEventLog(data: {
 }
 
 export async function getStitchSettings() {
-  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
   if (!setting) {
     return {
       enabled: false,
@@ -119,7 +160,7 @@ export async function upsertStitchSettings(rawBody: unknown) {
     hasWebhookSecretInPayload: Boolean(body.webhookSecret),
   });
 
-  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
+  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
   const existingValue = (existing?.value ?? {}) as unknown as StitchStoredConfig;
 
   const next: StitchStoredConfig = {
@@ -138,11 +179,13 @@ export async function upsertStitchSettings(rawBody: unknown) {
   if (!next.encryptedApiKey) {
     throw new AppError(400, "Stitch API key is required", "STITCH_API_KEY_REQUIRED");
   }
+  const currentState = await getGatewayEnabledState();
+  assertAtLeastOneGatewayEnabled({ ...currentState, stitch: next.enabled });
 
   const saved = await prisma.setting.upsert({
-    where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } },
+    where: { scope_key: { scope: SETTING_SCOPE, key: STITCH_SETTING_KEY } },
     update: { value: next as unknown as Prisma.InputJsonValue },
-    create: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
+    create: { scope: SETTING_SCOPE, key: STITCH_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
   console.info("[payments] stitch settings saved", {
     webhookSecretWriteAttempted: Boolean(body.webhookSecret),
@@ -163,8 +206,105 @@ export async function upsertStitchSettings(rawBody: unknown) {
   };
 }
 
+export async function getPayfastSettings() {
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: PAYFAST_SETTING_KEY } } });
+  if (!setting) {
+    return {
+      enabled: false,
+      mode: "sandbox" as const,
+      sandboxMerchantId: "",
+      sandboxMerchantKeyConfigured: false,
+      sandboxPassphraseConfigured: false,
+      liveMerchantId: "",
+      liveMerchantKeyConfigured: false,
+      livePassphraseConfigured: false,
+      returnUrl: "",
+      cancelUrl: "",
+      notifyUrl: "",
+    };
+  }
+
+  const value = setting.value as unknown as PayfastStoredConfig;
+  return {
+    enabled: Boolean(value.enabled),
+    mode: value.mode,
+    sandboxMerchantId: value.sandboxMerchantId ?? "",
+    sandboxMerchantKeyConfigured: Boolean(value.encryptedSandboxMerchantKey),
+    sandboxPassphraseConfigured: Boolean(value.encryptedSandboxPassphrase),
+    liveMerchantId: value.liveMerchantId ?? "",
+    liveMerchantKeyConfigured: Boolean(value.encryptedLiveMerchantKey),
+    livePassphraseConfigured: Boolean(value.encryptedLivePassphrase),
+    returnUrl: value.returnUrl ?? "",
+    cancelUrl: value.cancelUrl ?? "",
+    notifyUrl: value.notifyUrl ?? "",
+  };
+}
+
+export async function upsertPayfastSettings(rawBody: unknown) {
+  const body = payfastSettingsSchema.parse(rawBody);
+  const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: PAYFAST_SETTING_KEY } } });
+  const existingValue = (existing?.value ?? {}) as unknown as PayfastStoredConfig;
+
+  const next: PayfastStoredConfig = {
+    enabled: body.enabled,
+    mode: body.mode,
+    sandboxMerchantId: body.sandboxMerchantId ?? existingValue.sandboxMerchantId,
+    encryptedSandboxMerchantKey: body.sandboxMerchantKey ? encryptSecret(body.sandboxMerchantKey) : existingValue.encryptedSandboxMerchantKey,
+    encryptedSandboxPassphrase: body.sandboxPassphrase ? encryptSecret(body.sandboxPassphrase) : existingValue.encryptedSandboxPassphrase,
+    liveMerchantId: body.liveMerchantId ?? existingValue.liveMerchantId,
+    encryptedLiveMerchantKey: body.liveMerchantKey ? encryptSecret(body.liveMerchantKey) : existingValue.encryptedLiveMerchantKey,
+    encryptedLivePassphrase: body.livePassphrase ? encryptSecret(body.livePassphrase) : existingValue.encryptedLivePassphrase,
+    returnUrl: body.returnUrl,
+    cancelUrl: body.cancelUrl,
+    notifyUrl: body.notifyUrl,
+  };
+
+  if (next.mode === "sandbox") {
+    if (!next.sandboxMerchantId || !next.encryptedSandboxMerchantKey) {
+      throw new AppError(400, "PayFast sandbox merchant ID and key are required", "PAYFAST_SANDBOX_CREDENTIALS_REQUIRED");
+    }
+  } else if (!next.liveMerchantId || !next.encryptedLiveMerchantKey) {
+    throw new AppError(400, "PayFast live merchant ID and key are required", "PAYFAST_LIVE_CREDENTIALS_REQUIRED");
+  }
+
+  const currentState = await getGatewayEnabledState();
+  assertAtLeastOneGatewayEnabled({ ...currentState, payfast: next.enabled });
+
+  const saved = await prisma.setting.upsert({
+    where: { scope_key: { scope: SETTING_SCOPE, key: PAYFAST_SETTING_KEY } },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { scope: SETTING_SCOPE, key: PAYFAST_SETTING_KEY, value: next as unknown as Prisma.InputJsonValue },
+  });
+
+  return {
+    id: saved.id,
+    enabled: next.enabled,
+    mode: next.mode,
+    sandboxMerchantId: next.sandboxMerchantId ?? "",
+    sandboxMerchantKeyConfigured: Boolean(next.encryptedSandboxMerchantKey),
+    sandboxPassphraseConfigured: Boolean(next.encryptedSandboxPassphrase),
+    liveMerchantId: next.liveMerchantId ?? "",
+    liveMerchantKeyConfigured: Boolean(next.encryptedLiveMerchantKey),
+    livePassphraseConfigured: Boolean(next.encryptedLivePassphrase),
+    returnUrl: next.returnUrl ?? "",
+    cancelUrl: next.cancelUrl ?? "",
+    notifyUrl: next.notifyUrl ?? "",
+  };
+}
+
+export async function getPaymentGatewayOptions() {
+  const [stitch, payfast] = await Promise.all([getStitchSettings(), getPayfastSettings()]);
+  const state: EnabledGatewayState = { stitch: stitch.enabled, payfast: payfast.enabled };
+  const enabled = (Object.entries(state).filter(([, enabledValue]) => enabledValue).map(([name]) => name));
+  const preferred = resolveGatewayForRequest(state);
+  return {
+    preferredGateway: preferred,
+    enabledGateways: enabled.map((gateway) => ({ id: gateway, label: toStorefrontGatewayLabel(gateway as "stitch" | "payfast") })),
+  };
+}
+
 async function getStitchGatewayConfig(): Promise<GatewayConfig> {
-  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: STITCH_SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: STITCH_SETTING_KEY } } });
   if (!setting) throw new AppError(400, "Stitch is not configured", "STITCH_NOT_CONFIGURED");
 
   const value = setting.value as unknown as StitchStoredConfig;
@@ -187,6 +327,48 @@ async function getStitchGatewayConfig(): Promise<GatewayConfig> {
     callbackUrl: value.callbackUrl,
     apiBaseUrl: value.apiBaseUrl,
   };
+}
+
+async function getPayfastGatewayConfig(): Promise<GatewayConfig> {
+  const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: SETTING_SCOPE, key: PAYFAST_SETTING_KEY } } });
+  if (!setting) throw new AppError(400, "PayFast is not configured", "PAYFAST_NOT_CONFIGURED");
+
+  const value = setting.value as unknown as PayfastStoredConfig;
+  if (!value.enabled) throw new AppError(400, "PayFast is disabled", "PAYFAST_DISABLED");
+
+  if (value.mode === "sandbox") {
+    if (!value.sandboxMerchantId || !value.encryptedSandboxMerchantKey) {
+      throw new AppError(400, "PayFast sandbox credentials are incomplete", "PAYFAST_SANDBOX_CREDENTIALS_REQUIRED");
+    }
+
+    return {
+      mode: "sandbox",
+      merchantId: value.sandboxMerchantId,
+      apiKey: decryptSecret(value.encryptedSandboxMerchantKey),
+      webhookSecret: value.encryptedSandboxPassphrase ? decryptSecret(value.encryptedSandboxPassphrase) : undefined,
+      redirectUrl: value.returnUrl,
+      callbackUrl: value.notifyUrl,
+    };
+  }
+
+  if (!value.liveMerchantId || !value.encryptedLiveMerchantKey) {
+    throw new AppError(400, "PayFast live credentials are incomplete", "PAYFAST_LIVE_CREDENTIALS_REQUIRED");
+  }
+
+  return {
+    mode: "production",
+    merchantId: value.liveMerchantId,
+    apiKey: decryptSecret(value.encryptedLiveMerchantKey),
+    webhookSecret: value.encryptedLivePassphrase ? decryptSecret(value.encryptedLivePassphrase) : undefined,
+    redirectUrl: value.returnUrl,
+    callbackUrl: value.notifyUrl,
+  };
+}
+
+async function getGatewayRuntimeConfig(gatewayName: string): Promise<GatewayConfig> {
+  if (gatewayName === "stitch") return getStitchGatewayConfig();
+  if (gatewayName === "payfast") return getPayfastGatewayConfig();
+  throw new AppError(400, `Unsupported gateway: ${gatewayName}`, "PAYMENT_GATEWAY_UNSUPPORTED");
 }
 
 async function sendPaymentSuccessEmail(orderId: string) {
@@ -281,7 +463,9 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 export async function initiateOrderPayment(orderId: string, rawBody: unknown, actorId?: string) {
   const paymentInitStartedAt = Date.now();
   const body = paymentInitiationSchema.parse(rawBody);
-  const gateway = getGateway(body.gateway);
+  const enabledState = await getGatewayEnabledState();
+  const selectedGateway = resolveGatewayForRequest(enabledState, body.gateway);
+  const gateway = getGateway(selectedGateway);
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
   console.info("[checkout-timing] auth/user/cart lookup complete", {
@@ -289,7 +473,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     elapsedMs: Date.now() - paymentInitStartedAt,
   });
 
-  const config = await getStitchGatewayConfig();
+  const config = await getGatewayRuntimeConfig(selectedGateway);
   if (order.paymentStatus === "PAID") {
     throw new AppError(400, "Order is already paid", "ORDER_ALREADY_PAID");
   }
@@ -300,7 +484,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
   const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
   const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
   const latestCheckoutUrl = (latestAttempt?.metadata as { checkoutUrl?: string } | null)?.checkoutUrl;
-  const canReuseCheckoutUrl = isReusableStitchCheckoutUrl(latestCheckoutUrl);
+  const canReuseCheckoutUrl = gateway.name === "stitch" ? isReusableStitchCheckoutUrl(latestCheckoutUrl) : Boolean(latestCheckoutUrl);
   if (latestCheckoutUrl && !canReuseCheckoutUrl) {
     await writePaymentEventLog({
       gateway: gateway.name,
@@ -327,6 +511,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     return {
       transactionId: latestAttempt.id,
       status: latestAttempt.status,
+      provider: gateway.name,
       referenceId: latestAttempt.referenceId,
       checkoutUrl: latestCheckoutUrl,
       idempotencyKey,
@@ -380,9 +565,9 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
       orderId: order.id,
       idempotencyKey,
       payload: result.raw,
-      error: "Stitch response missing hosted checkout URL",
+      error: `${gateway.name} response missing hosted checkout URL`,
     });
-    throw new AppError(502, "Stitch did not return a hosted checkout URL", "STITCH_CHECKOUT_URL_MISSING");
+    throw new AppError(502, `${toStorefrontGatewayLabel(selectedGateway)} did not return a hosted checkout URL`, "PAYMENT_CHECKOUT_URL_MISSING");
   }
 
   let transaction;
@@ -408,7 +593,14 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     transaction = existingByKey;
   }
 
-  await prisma.order.update({ where: { id: order.id }, data: { stitchReference: result.referenceId, paymentStatus: "AWAITING_PAYMENT", status: "AWAITING_PAYMENT" } });
+  await prisma.order.update({
+    where: { id: order.id },
+    data: {
+      stitchReference: gateway.name === "stitch" ? result.referenceId : undefined,
+      paymentStatus: "AWAITING_PAYMENT",
+      status: "AWAITING_PAYMENT",
+    },
+  });
 
   await writePaymentEventLog({
     gateway: gateway.name,
@@ -448,8 +640,10 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
 
 export async function verifyOrderPayment(orderId: string, rawBody: unknown) {
   const body = paymentVerifySchema.parse(rawBody);
-  const gateway = getGateway(body.gateway);
-  const config = await getStitchGatewayConfig();
+  const enabledState = await getGatewayEnabledState();
+  const selectedGateway = resolveGatewayForRequest(enabledState, body.gateway);
+  const gateway = getGateway(selectedGateway);
+  const config = await getGatewayRuntimeConfig(selectedGateway);
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
 
@@ -728,6 +922,96 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
     transactionId: transaction.id,
     status: verification.status,
   });
+
+  return {
+    duplicate: false,
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    status: verification.status,
+  };
+}
+
+export async function handlePayfastWebhook(headers: Record<string, string | undefined>, body: Record<string, unknown>, rawBody: string) {
+  const gateway = getGateway("payfast");
+  const config = await getPayfastGatewayConfig();
+  const verification = await gateway.verifyWebhook(config, { headers, payload: body, rawBody });
+  const ref = verification.referenceId;
+
+  if (!verification.isValid || !ref) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.rejected",
+      status: "FAILED",
+      externalEventId: verification.externalEventId,
+      payload: body,
+      error: verification.reason ?? "Invalid webhook",
+    });
+    throw new AppError(401, verification.reason ?? "Invalid PayFast webhook", "PAYFAST_WEBHOOK_INVALID");
+  }
+
+  const transaction = await prisma.paymentTransaction.findFirst({
+    where: { referenceId: ref, provider: gateway.name },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!transaction) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.unmatched",
+      status: "FAILED",
+      externalEventId: verification.externalEventId,
+      payload: body,
+      error: "No payment transaction matched reference",
+    });
+    throw new AppError(404, "Payment transaction not found for webhook reference", "PAYMENT_TX_NOT_FOUND");
+  }
+
+  const log = await writePaymentEventLog({
+    gateway: gateway.name,
+    eventType: "payment.webhook.received",
+    status: verification.status,
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    externalEventId: verification.externalEventId,
+    idempotencyKey: `${gateway.name}:${verification.externalEventId ?? `${ref}:${verification.status}`}`,
+    payload: verification.raw,
+  });
+
+  if (!log) {
+    return {
+      duplicate: true,
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      status: transaction.status,
+    };
+  }
+
+  const applyResult = await applyPaymentStatus(transaction.orderId, transaction.id, verification.status, {
+    source: "webhook",
+    eventId: verification.externalEventId,
+    raw: verification.raw,
+  });
+
+  if (!applyResult.applied) {
+    await writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.webhook.noop",
+      status: "IGNORED",
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      externalEventId: verification.externalEventId,
+      idempotencyKey: `${gateway.name}:noop:${verification.externalEventId ?? `${ref}:${verification.status}`}:${applyResult.reason}`,
+      payload: verification.raw,
+      error: applyResult.reason,
+    });
+    return {
+      duplicate: false,
+      noOp: true,
+      reason: applyResult.reason,
+      orderId: transaction.orderId,
+      transactionId: transaction.id,
+      status: applyResult.currentStatus,
+    };
+  }
 
   return {
     duplicate: false,

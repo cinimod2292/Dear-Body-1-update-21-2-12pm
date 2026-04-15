@@ -90,7 +90,7 @@ export default function AdminOrderDetail() {
   const cancelOrder = async (e: FormEvent) => { e.preventDefault(); if (!cancelReason) return; try { await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason }); setCancelReason(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Cancel failed"); } };
   const createRefund = async (e: FormEvent) => { e.preventDefault(); const amount = Number(refundAmount); if (!amount) return; try { await post(`/admin/orders/${orderId}/refunds`, { amount, reason: "Manual refund" }); } catch (err) { toast.error(err instanceof Error ? err.message : "Refund failed"); } };
 
-  const initiateStitchPayment = async () => {
+  const initiateGatewayPayment = async () => {
     if (!session?.accessToken || !orderId) return;
     try {
       setActionLoading(true);
@@ -103,10 +103,10 @@ export default function AdminOrderDetail() {
       if (res.data.checkoutUrl) {
         window.open(res.data.checkoutUrl, "_blank", "noopener,noreferrer");
       }
-      toast.success(res.data.reused ? "Reused existing payment intent" : "Stitch payment initiated");
+      toast.success(res.data.reused ? "Reused existing payment intent" : "Payment initiated");
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to initiate Stitch payment");
+      toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
     } finally {
       setActionLoading(false);
     }
@@ -126,7 +126,7 @@ export default function AdminOrderDetail() {
     }
   };
 
-  const verifyStitchPayment = async (e: FormEvent) => {
+  const verifyGatewayPayment = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken || !orderId || !verificationReference) return;
 
@@ -195,10 +195,10 @@ export default function AdminOrderDetail() {
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <h3 className="font-bold">Payments</h3>
         <div className="flex gap-2">
-          <button type="button" onClick={initiateStitchPayment} disabled={actionLoading} className="px-3 py-2 bg-indigo-700 text-white rounded-lg text-sm disabled:opacity-60">Initiate Stitch Payment</button>
+          <button type="button" onClick={initiateGatewayPayment} disabled={actionLoading} className="px-3 py-2 bg-indigo-700 text-white rounded-lg text-sm disabled:opacity-60">Initiate Payment</button>
           <button type="button" onClick={syncOrderToXero} disabled={actionLoading} className="px-3 py-2 border border-emerald-300 text-emerald-700 rounded-lg text-sm disabled:opacity-60">Sync Invoice to Xero</button>
         </div>
-        <form onSubmit={verifyStitchPayment} className="flex gap-2">
+        <form onSubmit={verifyGatewayPayment} className="flex gap-2">
           <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" value={verificationReference} onChange={(e) => setVerificationReference(e.target.value)} placeholder={latestPaymentReference || "Payment reference"} />
           <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm" disabled={actionLoading}>Verify Payment</button>
         </form>

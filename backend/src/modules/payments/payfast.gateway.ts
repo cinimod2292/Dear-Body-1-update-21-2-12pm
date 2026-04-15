@@ -1,0 +1,124 @@
+import crypto from "node:crypto";
+import {
+  GatewayConfig,
+  InitiatePaymentInput,
+  InitiatePaymentResult,
+  PaymentGatewayProvider,
+  VerifyPaymentResult,
+  VerifyWebhookInput,
+  VerifyWebhookResult,
+} from "./payment-gateway.js";
+
+function payFastBaseCheckoutUrl(mode: GatewayConfig["mode"]) {
+  return mode === "production"
+    ? "https://www.payfast.co.za/eng/process"
+    : "https://sandbox.payfast.co.za/eng/process";
+}
+
+function normalizePayfastStatus(status?: string): "PENDING" | "PAID" | "FAILED" {
+  const normalized = String(status ?? "").toUpperCase();
+  if (normalized === "COMPLETE") return "PAID";
+  if (normalized === "FAILED" || normalized === "CANCELLED") return "FAILED";
+  return "PENDING";
+}
+
+export function buildPayfastSignature(fields: Record<string, string | undefined>, passphrase?: string) {
+  const pairs = Object.entries(fields)
+    .filter(([key, value]) => key !== "signature" && value !== undefined && value !== "")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`);
+
+  if (passphrase) {
+    pairs.push(`passphrase=${encodeURIComponent(passphrase).replace(/%20/g, "+")}`);
+  }
+
+  return crypto.createHash("md5").update(pairs.join("&")).digest("hex");
+}
+
+export class PayfastGateway implements PaymentGatewayProvider {
+  readonly name = "payfast";
+
+  async initiatePayment(config: GatewayConfig, input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+    const referenceId = `payfast-${input.orderId}-${Date.now()}`;
+    const amount = Number(input.amount).toFixed(2);
+
+    const fields: Record<string, string | undefined> = {
+      merchant_id: config.merchantId,
+      merchant_key: config.apiKey,
+      return_url: input.returnUrl ?? config.redirectUrl,
+      cancel_url: input.cancelUrl ?? config.redirectUrl,
+      notify_url: config.callbackUrl,
+      m_payment_id: referenceId,
+      amount,
+      item_name: `Order ${input.orderNumber}`,
+      email_address: input.customerEmail,
+      custom_str1: input.orderId,
+    };
+
+    const signature = buildPayfastSignature(fields, config.webhookSecret);
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields)) {
+      if (!value) continue;
+      query.set(key, value);
+    }
+    query.set("signature", signature);
+
+    return {
+      referenceId,
+      checkoutUrl: `${payFastBaseCheckoutUrl(config.mode)}?${query.toString()}`,
+      status: "PENDING",
+      raw: {
+        mode: config.mode,
+        amount,
+        fields: { ...fields, signature: "[redacted]" },
+      },
+    };
+  }
+
+  async verifyPayment(_config: GatewayConfig, referenceId: string): Promise<VerifyPaymentResult> {
+    return {
+      referenceId,
+      status: "PENDING",
+      raw: {
+        verification: "PayFast manual verification is pending webhook confirmation",
+      },
+    };
+  }
+
+  async verifyWebhook(config: GatewayConfig, input: VerifyWebhookInput): Promise<VerifyWebhookResult> {
+    const signature = typeof input.payload.signature === "string" ? input.payload.signature : undefined;
+    const paymentId = typeof input.payload.m_payment_id === "string" ? input.payload.m_payment_id : undefined;
+    const eventId = typeof input.payload.pf_payment_id === "string" ? input.payload.pf_payment_id : undefined;
+    const paymentStatus = typeof input.payload.payment_status === "string" ? input.payload.payment_status : undefined;
+
+    if (!signature || !paymentId) {
+      return {
+        isValid: false,
+        status: "FAILED",
+        raw: input.payload,
+        reason: "Missing PayFast signature or payment reference",
+      };
+    }
+
+    const stringPayload: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(input.payload)) {
+      if (Array.isArray(value)) {
+        stringPayload[key] = value[0] ? String(value[0]) : undefined;
+      } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        stringPayload[key] = String(value);
+      }
+    }
+
+    const expected = buildPayfastSignature(stringPayload, config.webhookSecret);
+    const isValid = expected.toLowerCase() === signature.toLowerCase();
+
+    return {
+      isValid,
+      referenceId: paymentId,
+      externalEventId: eventId,
+      status: normalizePayfastStatus(paymentStatus),
+      raw: input.payload,
+      reason: isValid ? undefined : "Invalid PayFast webhook signature",
+    };
+  }
+}

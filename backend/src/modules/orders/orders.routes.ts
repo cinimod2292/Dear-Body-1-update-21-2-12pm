@@ -79,18 +79,18 @@ export async function ordersRoutes(app: FastifyInstance) {
       orderId: order?.id,
       elapsedMs: Date.now() - checkoutRouteStartedAt,
     });
-    const body = (request.body ?? {}) as { payment?: { gateway?: "stitch"; returnUrl?: string; cancelUrl?: string; referenceId?: string } };
+    const body = (request.body ?? {}) as { payment?: { gateway?: "stitch" | "payfast"; returnUrl?: string; cancelUrl?: string; referenceId?: string } };
 
-    if (body.payment?.gateway === "stitch") {
+    if (body.payment) {
       const payment = await initiateOrderPayment(order!.id, {
-        gateway: "stitch",
+        gateway: body.payment.gateway,
         returnUrl: withOrderId(body.payment.returnUrl, order.id),
         cancelUrl: withOrderId(body.payment.cancelUrl, order.id),
       });
       console.info("[checkout-timing] response returned to frontend", {
         cartId,
         orderId: order.id,
-        paymentProvider: "stitch",
+        paymentProvider: payment.provider,
         elapsedMs: Date.now() - checkoutRouteStartedAt,
       });
 

@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
 import { AppError } from "../../lib/errors.js";
-import { buildPayfastRedirectSource, buildPayfastSignature, buildPayfastSignatureSource } from "./payfast.gateway.js";
+import {
+  buildPayfastRedirectSource,
+  buildPayfastSignature,
+  buildPayfastSignatureSource,
+  diagnosePayfastSignatureMismatch,
+} from "./payfast.gateway.js";
 import { PayfastGateway } from "./payfast.gateway.js";
 import { assertAtLeastOneGatewayEnabled, resolveGatewayForRequest } from "./payment-settings.js";
 
@@ -282,4 +287,60 @@ test("PayFast webhook verification handles encoded values and plus signs from re
 
   assert.equal(result.isValid, true);
   assert.equal(result.status, "PAID");
+});
+
+test("PayFast webhook verification keeps empty fields from raw ITN body", async () => {
+  const gateway = new PayfastGateway();
+  const rawBody = [
+    "payment_status=COMPLETE",
+    "m_payment_id=payfast-order-101",
+    "item_description=",
+    "merchant_id=10000100",
+    "merchant_key=abc123",
+  ].join("&");
+  const signature = crypto.createHash("md5").update(`${rawBody}&passphrase=real-pass`).digest("hex");
+
+  const result = await gateway.verifyWebhook({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "real-pass",
+  }, {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: {
+      payment_status: "COMPLETE",
+      m_payment_id: "payfast-order-101",
+      item_description: "",
+      merchant_id: "10000100",
+      merchant_key: "abc123",
+      signature,
+    },
+    rawBody: `${rawBody}&signature=${signature}`,
+  });
+
+  assert.equal(result.isValid, true);
+});
+
+test("PayFast mismatch diagnostics identifies passphrase mismatch", () => {
+  const rawBody = "payment_status=COMPLETE&m_payment_id=ref1&merchant_id=10000100&merchant_key=abc123";
+  const withoutPass = crypto.createHash("md5").update(rawBody).digest("hex");
+  const withWrongPass = crypto.createHash("md5").update(`${rawBody}&passphrase=wrong`).digest("hex");
+  const mismatch = diagnosePayfastSignatureMismatch({
+    rawBody: `${rawBody}&signature=${withoutPass}`,
+    providedSignature: withoutPass,
+    configPassphrase: "wrong",
+    payload: {
+      payment_status: "COMPLETE",
+      m_payment_id: "ref1",
+      merchant_id: "10000100",
+      merchant_key: "abc123",
+      signature: withoutPass,
+    },
+    expectedWithPassphrase: withWrongPass,
+    expectedWithoutPassphrase: withoutPass,
+    sourceWithPassphrase: `${rawBody}&passphrase=wrong`,
+    sourceWithoutPassphrase: rawBody,
+  });
+
+  assert.equal(mismatch.category, "passphrase mismatch");
 });

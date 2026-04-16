@@ -107,14 +107,36 @@ export async function paymentsRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/payments/payfast/webhook", async (request, reply) => {
+  app.post("/payments/payfast/webhook", {
+    preParsing: (request, _reply, payload, done) => {
+      const chunks: Buffer[] = [];
+      payload.on("data", (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      payload.on("end", () => {
+        (request as any).rawBody = Buffer.concat(chunks).toString("utf8");
+      });
+
+      const tee = new PassThrough();
+      payload.pipe(tee);
+      done(null, tee);
+    },
+  }, async (request, reply) => {
     request.log.info({ route: "/payments/payfast/webhook" }, "PayFast webhook received");
     const headers = Object.fromEntries(
       Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value[0] : value?.toString()]),
     );
     const payload = (request.body ?? {}) as Record<string, unknown>;
-    const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
-    const result = await handlePayfastWebhook(headers, payload, rawBody);
-    return reply.send({ data: result });
+    const rawBody = typeof (request as any).rawBody === "string"
+      ? (request as any).rawBody
+      : "";
+    try {
+      const result = await handlePayfastWebhook(headers, payload, rawBody);
+      request.log.info({ result }, "PayFast webhook processed");
+      return reply.send({ data: result });
+    } catch (error) {
+      request.log.warn({ err: error }, "PayFast webhook rejected");
+      throw error;
+    }
   });
 }

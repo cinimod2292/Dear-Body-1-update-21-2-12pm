@@ -9,6 +9,35 @@ import {
   VerifyWebhookResult,
 } from "./payment-gateway.js";
 
+const PAYFAST_CHECKOUT_FIELD_ORDER = [
+  "merchant_id",
+  "merchant_key",
+  "return_url",
+  "cancel_url",
+  "notify_url",
+  "name_first",
+  "name_last",
+  "email_address",
+  "cell_number",
+  "m_payment_id",
+  "amount",
+  "item_name",
+  "item_description",
+  "custom_int1",
+  "custom_int2",
+  "custom_int3",
+  "custom_int4",
+  "custom_int5",
+  "custom_str1",
+  "custom_str2",
+  "custom_str3",
+  "custom_str4",
+  "custom_str5",
+  "email_confirmation",
+  "confirmation_address",
+  "payment_method",
+] as const;
+
 function payFastBaseCheckoutUrl(mode: GatewayConfig["mode"]) {
   return mode === "production"
     ? "https://www.payfast.co.za/eng/process"
@@ -28,19 +57,68 @@ function normalizePayfastValue(value: string | undefined) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function payfastUrlEncode(value: string) {
+  return encodeURIComponent(value)
+    .replace(/[!'()*~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%20/g, "+");
+}
+
+function normalizeAndOrderFields(fields: Record<string, string | undefined>) {
+  const normalized: Record<string, string> = {};
+
+  for (const key of PAYFAST_CHECKOUT_FIELD_ORDER) {
+    const value = normalizePayfastValue(fields[key]);
+    if (value === undefined) continue;
+    normalized[key] = value;
+  }
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (key in normalized || key === "signature") continue;
+    const normalizedValue = normalizePayfastValue(value);
+    if (normalizedValue === undefined) continue;
+    normalized[key] = normalizedValue;
+  }
+
+  return normalized;
+}
+
 function toPayfastPairs(fields: Record<string, string | undefined>, passphrase?: string, includePassphrase = true) {
-  const pairs = Object.entries(fields)
-    .filter(([key]) => key !== "signature")
-    .map(([key, value]) => [key, normalizePayfastValue(value)] as const)
-    .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%20/g, "+")}`);
+  const ordered = normalizeAndOrderFields(fields);
+  const pairs = Object.entries(ordered)
+    .map(([key, value]) => `${key}=${payfastUrlEncode(value)}`);
 
   const normalizedPassphrase = normalizePayfastValue(passphrase);
   if (includePassphrase && normalizedPassphrase) {
-    pairs.push(`passphrase=${encodeURIComponent(normalizedPassphrase).replace(/%20/g, "+")}`);
+    pairs.push(`passphrase=${payfastUrlEncode(normalizedPassphrase)}`);
   }
 
   return pairs;
+}
+
+function parseRawPayfastBody(rawBody: string) {
+  const pairs: Array<{ key: string; value: string }> = [];
+  for (const part of rawBody.split("&")) {
+    if (!part) continue;
+    const idx = part.indexOf("=");
+    const rawKey = idx >= 0 ? part.slice(0, idx) : part;
+    const rawValue = idx >= 0 ? part.slice(idx + 1) : "";
+    const decodeForm = (v: string) => decodeURIComponent(v.replace(/\+/g, "%20"));
+    const key = decodeForm(rawKey);
+    if (key === "signature") continue;
+    const value = normalizePayfastValue(decodeForm(rawValue));
+    if (value === undefined) continue;
+    pairs.push({ key, value });
+  }
+  return pairs;
+}
+
+function buildPayfastSourceFromPairs(pairs: Array<{ key: string; value: string }>, passphrase?: string) {
+  const entries = pairs.map(({ key, value }) => `${key}=${payfastUrlEncode(value)}`);
+  const normalizedPassphrase = normalizePayfastValue(passphrase);
+  if (normalizedPassphrase) {
+    entries.push(`passphrase=${payfastUrlEncode(normalizedPassphrase)}`);
+  }
+  return entries.join("&");
 }
 
 export function buildPayfastSignatureSource(fields: Record<string, string | undefined>, passphrase?: string) {
@@ -63,11 +141,28 @@ function sanitizeFieldMap(fields: Record<string, string | undefined>) {
     if (!normalized) continue;
     cleaned[key] = normalized;
   }
-  return cleaned;
+  return normalizeAndOrderFields(cleaned);
 }
 
 function redactSignatureSource(source: string) {
-  return source.replace(/(merchant_key=)[^&]+/g, "$1[redacted]").replace(/(passphrase=)[^&]+/g, "$1[redacted]");
+  return source
+    .replace(/(merchant_key=)[^&]+/g, "$1[redacted]")
+    .replace(/(passphrase=)[^&]+/g, "$1[redacted]");
+}
+
+function redactPayfastUrl(url: string) {
+  return url
+    .replace(/([?&]merchant_key=)[^&]+/g, "$1[redacted]")
+    .replace(/([?&]signature=)[^&]+/g, "$1[redacted]");
+}
+
+function redactFieldMap(fields: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => {
+      if (key === "merchant_key") return [key, "[redacted]"];
+      return [key, value];
+    }),
+  );
 }
 
 
@@ -96,23 +191,31 @@ export class PayfastGateway implements PaymentGatewayProvider {
     const redirectSource = buildPayfastRedirectSource(normalizedFields);
     const signature = buildPayfastSignature(normalizedFields, config.webhookSecret);
     const queryString = `${redirectSource}&signature=${signature}`;
+    const checkoutUrl = `${payFastBaseCheckoutUrl(config.mode)}?${queryString}`;
     const signedFieldOrder = preHashSource.split("&").map((pair) => pair.split("=")[0]);
-    console.info("[payfast] redirect signature source", {
-      source: redactSignatureSource(preHashSource),
-      signedFieldOrder,
+
+    console.info("[payfast] redirect signing diagnostics", {
       mode: config.mode,
+      passphraseApplied: Boolean(normalizePayfastValue(config.webhookSecret)),
+      signedFieldOrder,
+      normalizedOutgoingFields: redactFieldMap(normalizedFields),
+      preSignCanonical: redactSignatureSource(preHashSource),
+      redirectCanonical: redactSignatureSource(redirectSource),
+      redirectUrl: redactPayfastUrl(checkoutUrl),
     });
 
     return {
       referenceId,
-      checkoutUrl: `${payFastBaseCheckoutUrl(config.mode)}?${queryString}`,
+      checkoutUrl,
       status: "PENDING",
       raw: {
         mode: config.mode,
         amount,
-        fields: { ...normalizedFields, signature: "[redacted]" },
+        fields: { ...redactFieldMap(normalizedFields), signature: "[redacted]" },
         preHashSource: redactSignatureSource(preHashSource),
+        redirectSource: redactSignatureSource(redirectSource),
         signedFieldOrder,
+        passphraseApplied: Boolean(normalizePayfastValue(config.webhookSecret)),
       },
     };
   }
@@ -142,18 +245,31 @@ export class PayfastGateway implements PaymentGatewayProvider {
       };
     }
 
-    const stringPayload: Record<string, string | undefined> = {};
-    for (const [key, value] of Object.entries(input.payload)) {
-      if (Array.isArray(value)) {
-        stringPayload[key] = value[0] ? String(value[0]) : undefined;
-      } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        stringPayload[key] = String(value);
-      }
-    }
-
-    const normalizedPayload = sanitizeFieldMap(stringPayload);
-    const expected = buildPayfastSignature(normalizedPayload, config.webhookSecret);
+    const rawPairs = parseRawPayfastBody(input.rawBody);
+    const source = rawPairs.length > 0
+      ? buildPayfastSourceFromPairs(rawPairs, config.webhookSecret)
+      : (() => {
+        const stringPayload: Record<string, string | undefined> = {};
+        for (const [key, value] of Object.entries(input.payload)) {
+          if (Array.isArray(value)) {
+            stringPayload[key] = value[0] ? String(value[0]) : undefined;
+          } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+            stringPayload[key] = String(value);
+          }
+        }
+        return buildPayfastSignatureSource(sanitizeFieldMap(stringPayload), config.webhookSecret);
+      })();
+    const expected = crypto.createHash("md5").update(source).digest("hex");
     const isValid = expected.toLowerCase() === signature.toLowerCase();
+
+    console.info("[payfast] webhook signature verification", {
+      passphraseApplied: Boolean(normalizePayfastValue(config.webhookSecret)),
+      verificationSource: redactSignatureSource(source),
+      signedFieldOrder: source.split("&").map((pair) => pair.split("=")[0]),
+      providedSignature: "[redacted]",
+      expectedSignature: "[redacted]",
+      isValid,
+    });
 
     return {
       isValid,

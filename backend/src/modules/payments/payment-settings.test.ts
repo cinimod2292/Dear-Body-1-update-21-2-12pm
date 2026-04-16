@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
 import { AppError } from "../../lib/errors.js";
-import { buildPayfastSignature, buildPayfastSignatureSource } from "./payfast.gateway.js";
+import { buildPayfastRedirectSource, buildPayfastSignature, buildPayfastSignatureSource } from "./payfast.gateway.js";
 import { PayfastGateway } from "./payfast.gateway.js";
 import { assertAtLeastOneGatewayEnabled, resolveGatewayForRequest } from "./payment-settings.js";
 
@@ -55,14 +55,24 @@ test("PayFast signature generation trims values and excludes empty fields", () =
   assert.equal(source, "merchant_id=10000100&merchant_key=key12345&item_name=Order+42&passphrase=passphrase");
 });
 
-test("PayFast signature generation preserves submitted field order", () => {
+test("PayFast signature generation follows canonical checkout field order", () => {
+  const source = buildPayfastSignatureSource({
+    m_payment_id: "payfast-1",
+    return_url: "https://example.com/return",
+    merchant_key: "abc123",
+    merchant_id: "10000100",
+  });
+  assert.equal(source, "merchant_id=10000100&merchant_key=abc123&return_url=https%3A%2F%2Fexample.com%2Freturn&m_payment_id=payfast-1");
+});
+
+test("PayFast signature generation uses PHP-compatible encoding", () => {
   const source = buildPayfastSignatureSource({
     merchant_id: "10000100",
     merchant_key: "abc123",
-    return_url: "https://example.com/return",
-    m_payment_id: "payfast-1",
+    return_url: "https://shop.example/r?x=1~2",
+    item_name: "A+B ~ C",
   });
-  assert.equal(source, "merchant_id=10000100&merchant_key=abc123&return_url=https%3A%2F%2Fexample.com%2Freturn&m_payment_id=payfast-1");
+  assert.equal(source, "merchant_id=10000100&merchant_key=abc123&return_url=https%3A%2F%2Fshop.example%2Fr%3Fx%3D1%7E2&item_name=A%2BB+%7E+C");
 });
 
 test("PayFast passphrase changes signature only when present", () => {
@@ -130,12 +140,14 @@ test("PayFast redirect URL signature matches generated payload source", async ()
   assert.equal(url.searchParams.get("signature"), rebuilt);
 });
 
-test("PayFast redirect query string (excluding signature) exactly matches signed source order/encoding", async () => {
+test("PayFast redirect query exactly matches signed fields (minus passphrase)", async () => {
   const gateway = new PayfastGateway();
   const initiated = await gateway.initiatePayment({
     mode: "sandbox",
     merchantId: "10000100",
     apiKey: "abc123",
+    webhookSecret: "sandbox-pass",
+    callbackUrl: "https://shop.example/payfast/itn",
   }, {
     orderId: "order_2",
     orderNumber: "9001",
@@ -147,20 +159,91 @@ test("PayFast redirect query string (excluding signature) exactly matches signed
   });
 
   const url = new URL(initiated.checkoutUrl!);
+  const redirectSource = url.search.slice(1).replace(/&signature=.*$/, "");
   const mPaymentId = url.searchParams.get("m_payment_id");
   assert.ok(mPaymentId);
 
-  const expectedSource = buildPayfastSignatureSource({
+  const expectedFields = {
     merchant_id: "10000100",
     merchant_key: "abc123",
     return_url: "https://shop.example/r?x=1~2",
     cancel_url: "https://shop.example/c?x=hello world",
+    notify_url: "https://shop.example/payfast/itn",
+    email_address: "alice+bob@example.com",
     m_payment_id: mPaymentId!,
     amount: "12.00",
     item_name: "Order 9001",
-    email_address: "alice+bob@example.com",
     custom_str1: "order_2",
+  };
+
+  assert.equal(redirectSource, buildPayfastRedirectSource(expectedFields));
+  assert.equal(url.searchParams.get("signature"), buildPayfastSignature(expectedFields, "sandbox-pass"));
+});
+
+test("PayFast webhook signature can be reconstructed from final redirect fields", async () => {
+  const gateway = new PayfastGateway();
+  const initiated = await gateway.initiatePayment({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "webhook-pass",
+  }, {
+    orderId: "order_3",
+    orderNumber: "2001",
+    amount: 49,
+    currency: "ZAR",
+    returnUrl: "https://shop.example/return",
+    cancelUrl: "https://shop.example/cancel",
   });
-  const actualSource = url.search.slice(1).replace(/&signature=.*$/, "");
-  assert.equal(actualSource, expectedSource);
+
+  const url = new URL(initiated.checkoutUrl!);
+  const payload = Object.fromEntries(url.searchParams.entries());
+  const rawBody = url.search.slice(1);
+
+  const result = await gateway.verifyWebhook({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "webhook-pass",
+  }, {
+    headers: {},
+    payload,
+    rawBody,
+  });
+
+  assert.equal(result.isValid, true);
+  assert.equal(result.referenceId, payload.m_payment_id);
+});
+
+test("PayFast webhook verification uses raw incoming pair order when available", async () => {
+  const gateway = new PayfastGateway();
+  const rawBody = [
+    "payment_status=COMPLETE",
+    "m_payment_id=payfast-order-99",
+    "merchant_id=10000100",
+    "merchant_key=abc123",
+    "amount_gross=49.00",
+  ].join("&");
+  const signature = crypto.createHash("md5").update(`${rawBody}&passphrase=webhook-pass`).digest("hex");
+
+  const result = await gateway.verifyWebhook({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "webhook-pass",
+  }, {
+    headers: {},
+    payload: {
+      payment_status: "COMPLETE",
+      m_payment_id: "payfast-order-99",
+      merchant_id: "10000100",
+      merchant_key: "abc123",
+      amount_gross: "49.00",
+      signature,
+    },
+    rawBody: `${rawBody}&signature=${signature}`,
+  });
+
+  assert.equal(result.isValid, true);
+  assert.equal(result.status, "PAID");
 });

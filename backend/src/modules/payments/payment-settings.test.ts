@@ -214,3 +214,36 @@ test("PayFast webhook signature can be reconstructed from final redirect fields"
   assert.equal(result.isValid, true);
   assert.equal(result.referenceId, payload.m_payment_id);
 });
+
+test("PayFast webhook verification uses raw incoming pair order when available", async () => {
+  const gateway = new PayfastGateway();
+  const rawBody = [
+    "payment_status=COMPLETE",
+    "m_payment_id=payfast-order-99",
+    "merchant_id=10000100",
+    "merchant_key=abc123",
+    "amount_gross=49.00",
+  ].join("&");
+  const signature = crypto.createHash("md5").update(`${rawBody}&passphrase=webhook-pass`).digest("hex");
+
+  const result = await gateway.verifyWebhook({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "webhook-pass",
+  }, {
+    headers: {},
+    payload: {
+      payment_status: "COMPLETE",
+      m_payment_id: "payfast-order-99",
+      merchant_id: "10000100",
+      merchant_key: "abc123",
+      amount_gross: "49.00",
+      signature,
+    },
+    rawBody: `${rawBody}&signature=${signature}`,
+  });
+
+  assert.equal(result.isValid, true);
+  assert.equal(result.status, "PAID");
+});

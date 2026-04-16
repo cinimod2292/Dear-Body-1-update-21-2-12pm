@@ -112,6 +112,15 @@ function parseRawPayfastBody(rawBody: string) {
   return pairs;
 }
 
+function buildPayfastSourceFromPairs(pairs: Array<{ key: string; value: string }>, passphrase?: string) {
+  const entries = pairs.map(({ key, value }) => `${key}=${payfastUrlEncode(value)}`);
+  const normalizedPassphrase = normalizePayfastValue(passphrase);
+  if (normalizedPassphrase) {
+    entries.push(`passphrase=${payfastUrlEncode(normalizedPassphrase)}`);
+  }
+  return entries.join("&");
+}
+
 export function buildPayfastSignatureSource(fields: Record<string, string | undefined>, passphrase?: string) {
   return toPayfastPairs(fields, passphrase).join("&");
 }
@@ -237,8 +246,8 @@ export class PayfastGateway implements PaymentGatewayProvider {
     }
 
     const rawPairs = parseRawPayfastBody(input.rawBody);
-    const sourceFields = rawPairs.length > 0
-      ? Object.fromEntries(rawPairs.map((pair) => [pair.key, pair.value])) as Record<string, string | undefined>
+    const source = rawPairs.length > 0
+      ? buildPayfastSourceFromPairs(rawPairs, config.webhookSecret)
       : (() => {
         const stringPayload: Record<string, string | undefined> = {};
         for (const [key, value] of Object.entries(input.payload)) {
@@ -248,16 +257,15 @@ export class PayfastGateway implements PaymentGatewayProvider {
             stringPayload[key] = String(value);
           }
         }
-        return sanitizeFieldMap(stringPayload);
+        return buildPayfastSignatureSource(sanitizeFieldMap(stringPayload), config.webhookSecret);
       })();
-
-    const expected = buildPayfastSignature(sourceFields, config.webhookSecret);
+    const expected = crypto.createHash("md5").update(source).digest("hex");
     const isValid = expected.toLowerCase() === signature.toLowerCase();
 
     console.info("[payfast] webhook signature verification", {
       passphraseApplied: Boolean(normalizePayfastValue(config.webhookSecret)),
-      verificationSource: redactSignatureSource(buildPayfastSignatureSource(sourceFields, config.webhookSecret)),
-      signedFieldOrder: buildPayfastSignatureSource(sourceFields, config.webhookSecret).split("&").map((pair) => pair.split("=")[0]),
+      verificationSource: redactSignatureSource(source),
+      signedFieldOrder: source.split("&").map((pair) => pair.split("=")[0]),
       providedSignature: "[redacted]",
       expectedSignature: "[redacted]",
       isValid,

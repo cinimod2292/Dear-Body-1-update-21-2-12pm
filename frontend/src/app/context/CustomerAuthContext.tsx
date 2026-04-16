@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE } from "../admin/api/client";
+import { API_BASE } from "../lib/api";
 
 interface Customer {
   id: string;
@@ -19,7 +19,9 @@ interface CustomerAuthContextValue {
 }
 
 const STORAGE_KEY = "storefront_customer_session";
+const STOREFRONT_INACTIVITY_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 const WARNING_LEAD_MS = 5 * 60 * 1000;
+const USER_ACTIVITY_EVENTS: Array<keyof WindowEventMap> = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
 const Ctx = createContext<CustomerAuthContextValue | undefined>(undefined);
 
 interface StoredCustomerSession {
@@ -76,6 +78,10 @@ function decodeJwtExpiryMs(token?: string | null) {
   }
 }
 
+function isStorefrontPath(pathname: string) {
+  return !pathname.startsWith("/admin");
+}
+
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<{
     token: string | null;
@@ -90,7 +96,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const [showExpiryWarning, setShowExpiryWarning] = useState(false);
   const warningTimerRef = useRef<number | null>(null);
-  const logoutTimerRef = useRef<number | null>(null);
+  const inactivityLogoutTimerRef = useRef<number | null>(null);
+  const tokenRefreshTimerRef = useRef<number | null>(null);
   const refreshPromiseRef = useRef<Promise<string | null> | null>(null);
 
   const clearTimers = useCallback(() => {
@@ -98,14 +105,21 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(warningTimerRef.current);
       warningTimerRef.current = null;
     }
-    if (logoutTimerRef.current) {
-      window.clearTimeout(logoutTimerRef.current);
-      logoutTimerRef.current = null;
+    if (inactivityLogoutTimerRef.current) {
+      window.clearTimeout(inactivityLogoutTimerRef.current);
+      inactivityLogoutTimerRef.current = null;
+    }
+    if (tokenRefreshTimerRef.current) {
+      window.clearTimeout(tokenRefreshTimerRef.current);
+      tokenRefreshTimerRef.current = null;
     }
   }, []);
 
   const buildLoginUrl = useCallback((preservePath: boolean) => {
     const path = `${window.location.pathname}${window.location.search}`;
+    const onStorefront = isStorefrontPath(window.location.pathname);
+    if (!onStorefront) return null;
+
     const shouldPreserve = preservePath
       && path !== "/account/login"
       && path !== "/account/register";
@@ -135,7 +149,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setShowExpiryWarning(false);
     persist(null);
     if (redirectToLogin) {
-      window.location.assign(buildLoginUrl(preservePath));
+      const redirectTarget = buildLoginUrl(preservePath);
+      if (redirectTarget) {
+        window.location.assign(redirectTarget);
+      }
     }
   }, [buildLoginUrl, clearTimers, persist]);
 
@@ -176,7 +193,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
           refreshTokenExpiresAt: payload.data.refreshTokenExpiresAt ?? null,
           customer: payload.data.customer,
         };
-        setShowExpiryWarning(false);
         persist(session);
         return session.token;
       } catch {
@@ -190,6 +206,30 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     refreshPromiseRef.current = pending;
     return pending;
   }, [clearSession, persist, state.refreshToken, state.refreshTokenExpiresAt]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (!state.token || !state.customer) return;
+
+    if (warningTimerRef.current) {
+      window.clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+
+    if (inactivityLogoutTimerRef.current) {
+      window.clearTimeout(inactivityLogoutTimerRef.current);
+      inactivityLogoutTimerRef.current = null;
+    }
+
+    setShowExpiryWarning(false);
+
+    warningTimerRef.current = window.setTimeout(() => {
+      setShowExpiryWarning(true);
+    }, STOREFRONT_INACTIVITY_TIMEOUT_MS - WARNING_LEAD_MS);
+
+    inactivityLogoutTimerRef.current = window.setTimeout(() => {
+      clearSession(true, true);
+    }, STOREFRONT_INACTIVITY_TIMEOUT_MS);
+  }, [clearSession, state.customer, state.token]);
 
   const login = async (email: string, password: string) => {
     const res = await fetch(`${API_BASE}/auth/customer/login`, {
@@ -236,6 +276,26 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    resetInactivityTimer();
+
+    const handleUserActivity = () => {
+      resetInactivityTimer();
+    };
+
+    for (const eventName of USER_ACTIVITY_EVENTS) {
+      window.addEventListener(eventName, handleUserActivity, { passive: true });
+    }
+
+    return () => {
+      for (const eventName of USER_ACTIVITY_EVENTS) {
+        window.removeEventListener(eventName, handleUserActivity);
+      }
+      clearTimers();
+    };
+  }, [clearTimers, resetInactivityTimer, state.customer, state.token]);
+
+  useEffect(() => {
+    if (!state.token || !state.customer) return;
     const accessExpiryMs = getAccessExpiryMs();
     if (!accessExpiryMs) return;
 
@@ -245,32 +305,17 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const warningAtMs = accessExpiryMs - WARNING_LEAD_MS;
-    const warningDelayMs = Math.max(warningAtMs - now, 0);
-    const logoutDelayMs = Math.max(accessExpiryMs - now, 0);
-
-    if (warningAtMs <= now) {
-      setShowExpiryWarning(true);
-    } else {
-      warningTimerRef.current = window.setTimeout(() => {
-        setShowExpiryWarning(true);
-      }, warningDelayMs);
-    }
-
-    logoutTimerRef.current = window.setTimeout(() => {
-      clearSession(true, true);
-    }, logoutDelayMs);
-
-    return clearTimers;
-  }, [clearSession, clearTimers, getAccessExpiryMs, refreshSession, state.customer, state.token]);
-
-  useEffect(() => {
-    if (!state.token || !state.customer) return;
-    const accessExpiryMs = getAccessExpiryMs();
-    if (!accessExpiryMs) return;
-    if (accessExpiryMs - Date.now() <= WARNING_LEAD_MS) {
+    const refreshInMs = Math.max(accessExpiryMs - now - WARNING_LEAD_MS, 0);
+    tokenRefreshTimerRef.current = window.setTimeout(() => {
       void refreshSession();
-    }
+    }, refreshInMs);
+
+    return () => {
+      if (tokenRefreshTimerRef.current) {
+        window.clearTimeout(tokenRefreshTimerRef.current);
+        tokenRefreshTimerRef.current = null;
+      }
+    };
   }, [getAccessExpiryMs, refreshSession, state.customer, state.token]);
 
   useEffect(() => {
@@ -292,12 +337,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      {showExpiryWarning && state.customer ? (
+      {showExpiryWarning && state.customer && isStorefrontPath(window.location.pathname) ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-black text-gray-900">Your session is about to expire</h3>
             <p className="mt-2 text-sm text-gray-600">
-              You will be logged out soon for security. Stay logged in to keep shopping and manage your account.
+              You've been inactive for a while. You will be logged out soon for security.
             </p>
             <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
@@ -305,7 +350,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
                 onClick={() => logout()}
               >
-                Logout
+                Log out
               </button>
               <button
                 type="button"
@@ -314,7 +359,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
                   const refreshed = await refreshSession();
                   if (!refreshed) {
                     clearSession(true, true);
+                    return;
                   }
+                  resetInactivityTimer();
                 }}
               >
                 Stay logged in

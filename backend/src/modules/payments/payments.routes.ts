@@ -83,6 +83,8 @@ export async function paymentsRoutes(app: FastifyInstance) {
     const headers = Object.fromEntries(
       Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value[0] : value?.toString()]),
     );
+    headers[":method"] = request.method;
+    headers[":path"] = request.url;
 
     const payload = (request.body ?? {}) as Record<string, unknown>;
     const rawBody = typeof (request as any).rawBody === "string"
@@ -122,14 +124,25 @@ export async function paymentsRoutes(app: FastifyInstance) {
       done(null, tee);
     },
   }, async (request, reply) => {
-    request.log.info({ route: "/payments/payfast/webhook" }, "PayFast webhook received");
+    request.log.info({
+      route: "/payments/payfast/webhook",
+      method: request.method,
+      path: request.url,
+      contentType: request.headers["content-type"],
+    }, "PayFast webhook received");
     const headers = Object.fromEntries(
       Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value[0] : value?.toString()]),
     );
+    headers[":method"] = request.method;
+    headers[":path"] = request.url;
     const payload = (request.body ?? {}) as Record<string, unknown>;
     const rawBody = typeof (request as any).rawBody === "string"
       ? (request as any).rawBody
       : "";
+    request.log.info({
+      rawBodyPreview: rawBody.length > 1000 ? `${rawBody.slice(0, 1000)}...[truncated]` : rawBody,
+      rawBodyLength: rawBody.length,
+    }, "PayFast webhook raw body captured");
     try {
       const result = await handlePayfastWebhook(headers, payload, rawBody);
       request.log.info({ result }, "PayFast webhook processed");

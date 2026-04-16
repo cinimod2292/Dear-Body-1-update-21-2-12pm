@@ -106,10 +106,26 @@ function parseRawPayfastBody(rawBody: string) {
     const key = decodeForm(rawKey);
     if (key === "signature") continue;
     const value = decodeForm(rawValue);
-    if (value === "") continue;
     pairs.push({ key, value });
   }
   return pairs;
+}
+
+function parseRawPayfastSegments(rawBody: string) {
+  const parts = rawBody.split("&").filter((part) => part.length > 0);
+  return parts.map((part) => {
+    const idx = part.indexOf("=");
+    const keyRaw = idx >= 0 ? part.slice(0, idx) : part;
+    const valueRaw = idx >= 0 ? part.slice(idx + 1) : "";
+    const decodeForm = (v: string) => decodeURIComponent(v.replace(/\+/g, "%20"));
+    return {
+      keyRaw,
+      valueRaw,
+      keyDecoded: decodeForm(keyRaw),
+      valueDecoded: decodeForm(valueRaw),
+      original: part,
+    };
+  });
 }
 
 function buildPayfastSourceFromPairs(pairs: Array<{ key: string; value: string }>, passphrase?: string) {
@@ -156,6 +172,10 @@ function redactSignatureSource(source: string) {
     .replace(/(passphrase=)[^&]+/g, "$1[redacted]");
 }
 
+function maskPassphraseInSource(source: string) {
+  return source.replace(/(passphrase=)[^&]*/g, "$1[redacted]");
+}
+
 function redactPayfastUrl(url: string) {
   return url
     .replace(/([?&]merchant_key=)[^&]+/g, "$1[redacted]")
@@ -169,6 +189,103 @@ function redactFieldMap(fields: Record<string, string>) {
       return [key, value];
     }),
   );
+}
+
+type PayfastMismatchReason =
+  | "different field order"
+  | "missing/extra field"
+  | "decoded-vs-raw encoding mismatch"
+  | "passphrase mismatch"
+  | "something else";
+
+interface PayfastMismatchAnalysis {
+  category: PayfastMismatchReason;
+  firstDivergence: string;
+  details: Record<string, unknown>;
+}
+
+export function diagnosePayfastSignatureMismatch(input: {
+  rawBody: string;
+  providedSignature: string;
+  configPassphrase?: string;
+  payload: Record<string, unknown>;
+  expectedWithPassphrase: string;
+  expectedWithoutPassphrase: string;
+  sourceWithPassphrase: string;
+  sourceWithoutPassphrase: string;
+}) {
+  const passphraseConfigured = Boolean(normalizePayfastValue(input.configPassphrase));
+  const signatureMatchesWithoutPassphrase = input.expectedWithoutPassphrase.toLowerCase() === input.providedSignature.toLowerCase();
+  const signatureMatchesWithPassphrase = input.expectedWithPassphrase.toLowerCase() === input.providedSignature.toLowerCase();
+  if (passphraseConfigured && signatureMatchesWithoutPassphrase && !signatureMatchesWithPassphrase) {
+    return {
+      category: "passphrase mismatch" as const,
+      firstDivergence: "Signature only matches canonical source without passphrase.",
+      details: {
+        passphraseConfigured,
+      },
+    };
+  }
+
+  const segments = parseRawPayfastSegments(input.rawBody);
+  const filteredSegments = segments.filter((segment) => segment.keyDecoded !== "signature");
+  const payloadKeys = Object.keys(input.payload).filter((key) => key !== "signature");
+  const rawKeys = filteredSegments.map((segment) => segment.keyDecoded);
+  if (rawKeys.join("\u0000") !== payloadKeys.join("\u0000")) {
+    const missingInPayload = rawKeys.filter((key) => !payloadKeys.includes(key));
+    const extraInPayload = payloadKeys.filter((key) => !rawKeys.includes(key));
+    return {
+      category: "missing/extra field" as const,
+      firstDivergence: `Key list differs between raw body and parsed payload at position ${Math.min(rawKeys.length, payloadKeys.length)}.`,
+      details: {
+        rawKeys,
+        payloadKeys,
+        missingInPayload,
+        extraInPayload,
+      },
+    };
+  }
+
+  const rawSourceWithoutSignature = filteredSegments.map((segment) => segment.original).join("&");
+  const canonicalWithoutPassphrase = filteredSegments.map((segment) => `${segment.keyDecoded}=${payfastUrlEncode(segment.valueDecoded)}`).join("&");
+  if (rawSourceWithoutSignature !== canonicalWithoutPassphrase) {
+    const firstIndex = [...rawSourceWithoutSignature].findIndex((char, index) => canonicalWithoutPassphrase[index] !== char);
+    return {
+      category: "decoded-vs-raw encoding mismatch" as const,
+      firstDivergence: firstIndex >= 0
+        ? `Canonicalized source diverges from raw source at character index ${firstIndex}.`
+        : "Canonicalized source and raw source differ in length.",
+      details: {
+        rawSourceWithoutSignature,
+        canonicalWithoutPassphrase,
+      },
+    };
+  }
+
+  const canonicalOrder = input.sourceWithoutPassphrase.split("&").map((pair) => pair.split("=")[0]);
+  if (rawKeys.join("\u0000") !== canonicalOrder.join("\u0000")) {
+    return {
+      category: "different field order" as const,
+      firstDivergence: "Field order changed between raw body and canonical source.",
+      details: {
+        rawKeys,
+        canonicalOrder,
+      },
+    };
+  }
+
+  return {
+    category: "something else" as const,
+    firstDivergence: "No deterministic mismatch category matched.",
+    details: {
+      rawSourceWithoutSignature,
+      sourceWithoutPassphrase: input.sourceWithoutPassphrase,
+      sourceWithPassphrase: maskPassphraseInSource(input.sourceWithPassphrase),
+      passphraseConfigured,
+      signatureMatchesWithoutPassphrase,
+      signatureMatchesWithPassphrase,
+    },
+  };
 }
 
 
@@ -263,22 +380,36 @@ export class PayfastGateway implements PaymentGatewayProvider {
       }
       return sanitizeFieldMap(stringPayload);
     })();
-    const baseSource = rawPairs.length > 0
+    const sourceWithoutPassphrase = rawPairs.length > 0
       ? buildPayfastSourceFromPairs(rawPairs)
       : buildPayfastRedirectSource(sourceFieldsFromPayload);
     const sourceWithPassphrase = rawPairs.length > 0
       ? buildPayfastSourceFromPairs(rawPairs, config.webhookSecret)
       : buildPayfastSignatureSource(sourceFieldsFromPayload, config.webhookSecret);
-    const expectedWithoutPassphrase = crypto.createHash("md5").update(baseSource).digest("hex");
+    const expectedWithoutPassphrase = crypto.createHash("md5").update(sourceWithoutPassphrase).digest("hex");
     const passphraseApplied = Boolean(normalizePayfastValue(config.webhookSecret));
-    const source = passphraseApplied ? sourceWithPassphrase : baseSource;
+    const source = passphraseApplied ? sourceWithPassphrase : sourceWithoutPassphrase;
     const expected = passphraseApplied
       ? crypto.createHash("md5").update(source).digest("hex")
       : expectedWithoutPassphrase;
     const noPassphraseMatches = expectedWithoutPassphrase.toLowerCase() === signature.toLowerCase();
     const isValid = expected.toLowerCase() === signature.toLowerCase();
+    const mismatchAnalysis: PayfastMismatchAnalysis | undefined = isValid
+      ? undefined
+      : diagnosePayfastSignatureMismatch({
+        rawBody: input.rawBody,
+        payload: input.payload,
+        configPassphrase: config.webhookSecret,
+        providedSignature: signature,
+        expectedWithPassphrase: crypto.createHash("md5").update(sourceWithPassphrase).digest("hex"),
+        expectedWithoutPassphrase,
+        sourceWithPassphrase,
+        sourceWithoutPassphrase,
+      });
 
     console.info("[payfast] webhook signature verification", {
+      method: input.headers[":method"] ?? input.headers["x-http-method-override"] ?? "POST",
+      path: input.headers[":path"] ?? input.headers["x-original-uri"] ?? "/payments/payfast/webhook",
       contentType: input.headers["content-type"],
       passphraseApplied,
       noPassphraseMatches,
@@ -287,11 +418,18 @@ export class PayfastGateway implements PaymentGatewayProvider {
         key,
         value: key === "merchant_key" ? "[redacted]" : value,
       })),
-      verificationSource: redactSignatureSource(source),
-      signedFieldOrder: source.split("&").map((pair) => pair.split("=")[0]),
-      providedSignaturePrefix: signature.slice(0, 8),
-      expectedSignaturePrefix: expected.slice(0, 8),
+      verificationSourceWithPassphrase: redactSignatureSource(sourceWithPassphrase),
+      verificationSourceWithoutPassphrase: redactSignatureSource(sourceWithoutPassphrase),
+      verificationSourceWithPassphraseMaskedOnly: maskPassphraseInSource(sourceWithPassphrase),
+      verificationSourceWithoutPassphraseMaskedOnly: sourceWithoutPassphrase,
+      signedFieldOrder: sourceWithoutPassphrase.split("&").map((pair) => pair.split("=")[0]),
+      providedSignature: signature,
+      expectedSignature: expected,
+      expectedSignatureWithPassphrase: crypto.createHash("md5").update(sourceWithPassphrase).digest("hex"),
+      expectedSignatureWithoutPassphrase: expectedWithoutPassphrase,
+      passphraseConfigured: passphraseApplied,
       isValid,
+      mismatchAnalysis,
     });
 
     return {
@@ -299,7 +437,18 @@ export class PayfastGateway implements PaymentGatewayProvider {
       referenceId: paymentId,
       externalEventId: eventId,
       status: normalizePayfastStatus(paymentStatus),
-      raw: input.payload,
+      raw: {
+        payload: input.payload,
+        verificationDiagnostics: {
+          passphraseConfigured: passphraseApplied,
+          sourceWithPassphrase: redactSignatureSource(sourceWithPassphrase),
+          sourceWithoutPassphrase: redactSignatureSource(sourceWithoutPassphrase),
+          expectedWithPassphrase: crypto.createHash("md5").update(sourceWithPassphrase).digest("hex"),
+          expectedWithoutPassphrase,
+          providedSignature: signature,
+          mismatchAnalysis,
+        },
+      },
       reason: isValid
         ? undefined
         : noPassphraseMatches && passphraseApplied

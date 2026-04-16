@@ -74,6 +74,16 @@ function shouldAttemptRefreshOnLoad(session: AdminSession) {
   return expiresAt - Date.now() <= WARNING_LEAD_MS;
 }
 
+
+function parseStoredAdminSession(raw: string | null): AdminSession | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AdminSession;
+  } catch {
+    return null;
+  }
+}
+
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,7 +215,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const parsed = JSON.parse(raw) as AdminSession;
+      const parsed = parseStoredAdminSession(raw);
+      if (!parsed) throw new Error("invalid_admin_session");
       setSession(parsed);
       authDebugLog("session_loaded", {
         hasAccessTokenExpiry: Boolean(parsed.accessTokenExpiresAt),
@@ -295,6 +306,26 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       void refreshSession();
     }
   }, [session, loading, refreshSession]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      clearTimers();
+      setShowExpiryWarning(false);
+      setWarningAcknowledgedForExpiry(null);
+
+      const next = parseStoredAdminSession(event.newValue);
+      if (!next) {
+        setSession(null);
+        return;
+      }
+
+      setSession(next);
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [clearTimers]);
 
   useEffect(() => {
     registerAdminApiAuthHandlers({

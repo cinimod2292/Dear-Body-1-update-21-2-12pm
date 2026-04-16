@@ -130,7 +130,13 @@ export async function paymentsRoutes(app: FastifyInstance) {
     const rawBody = typeof (request as any).rawBody === "string"
       ? (request as any).rawBody
       : "";
-    const result = await handlePayfastWebhook(headers, payload, rawBody);
-    return reply.send({ data: result });
+    try {
+      const result = await handlePayfastWebhook(headers, payload, rawBody);
+      request.log.info({ result }, "PayFast webhook processed");
+      return reply.send({ data: result });
+    } catch (error) {
+      request.log.warn({ err: error }, "PayFast webhook rejected");
+      throw error;
+    }
   });
 }

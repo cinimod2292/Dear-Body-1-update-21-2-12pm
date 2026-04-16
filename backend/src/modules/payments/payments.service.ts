@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
+import { env } from "../../config/env.js";
 import {
   paymentEventsQuerySchema,
   paymentInitiationSchema,
@@ -60,6 +61,29 @@ interface PayfastStoredConfig {
   returnUrl?: string;
   cancelUrl?: string;
   notifyUrl?: string;
+}
+
+const PAYFAST_ITN_PATH = "/payments/payfast/webhook";
+
+function isHttpsOrLocalhost(url: URL) {
+  if (url.protocol === "https:") return true;
+  if (url.protocol !== "http:") return false;
+  return ["localhost", "127.0.0.1"].includes(url.hostname);
+}
+
+function resolvePayfastNotifyUrl(storedNotifyUrl?: string) {
+  const fromSettings = storedNotifyUrl?.trim() ? storedNotifyUrl.trim() : undefined;
+  if (fromSettings) {
+    const parsed = new URL(fromSettings);
+    if (!isHttpsOrLocalhost(parsed)) {
+      throw new AppError(400, "PayFast notify URL must be HTTPS (or localhost HTTP in development)", "PAYFAST_NOTIFY_URL_INVALID");
+    }
+    return fromSettings;
+  }
+
+  if (!env.PUBLIC_BASE_URL) return undefined;
+  const base = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+  return `${base}${env.API_PREFIX}${PAYFAST_ITN_PATH}`;
 }
 function resolveStoredWebhookSecret(storedValue?: string) {
   if (!storedValue) return undefined;
@@ -254,9 +278,9 @@ export async function upsertPayfastSettings(rawBody: unknown) {
     liveMerchantId: body.liveMerchantId ?? existingValue.liveMerchantId,
     encryptedLiveMerchantKey: body.liveMerchantKey ? encryptSecret(body.liveMerchantKey) : existingValue.encryptedLiveMerchantKey,
     encryptedLivePassphrase: body.livePassphrase ? encryptSecret(body.livePassphrase) : existingValue.encryptedLivePassphrase,
-    returnUrl: body.returnUrl,
-    cancelUrl: body.cancelUrl,
-    notifyUrl: body.notifyUrl,
+    returnUrl: body.returnUrl ?? existingValue.returnUrl,
+    cancelUrl: body.cancelUrl ?? existingValue.cancelUrl,
+    notifyUrl: body.notifyUrl ?? existingValue.notifyUrl,
   };
 
   if (next.mode === "sandbox") {
@@ -335,6 +359,14 @@ async function getPayfastGatewayConfig(): Promise<GatewayConfig> {
 
   const value = setting.value as unknown as PayfastStoredConfig;
   if (!value.enabled) throw new AppError(400, "PayFast is disabled", "PAYFAST_DISABLED");
+  const notifyUrl = resolvePayfastNotifyUrl(value.notifyUrl);
+  if (!notifyUrl) {
+    throw new AppError(
+      400,
+      "PayFast notify URL is required. Configure notifyUrl in admin settings or set PUBLIC_BASE_URL.",
+      "PAYFAST_NOTIFY_URL_REQUIRED",
+    );
+  }
 
   if (value.mode === "sandbox") {
     if (!value.sandboxMerchantId || !value.encryptedSandboxMerchantKey) {
@@ -347,7 +379,7 @@ async function getPayfastGatewayConfig(): Promise<GatewayConfig> {
       apiKey: decryptSecret(value.encryptedSandboxMerchantKey),
       webhookSecret: value.encryptedSandboxPassphrase ? decryptSecret(value.encryptedSandboxPassphrase) : undefined,
       redirectUrl: value.returnUrl,
-      callbackUrl: value.notifyUrl,
+      callbackUrl: notifyUrl,
     };
   }
 
@@ -361,7 +393,7 @@ async function getPayfastGatewayConfig(): Promise<GatewayConfig> {
     apiKey: decryptSecret(value.encryptedLiveMerchantKey),
     webhookSecret: value.encryptedLivePassphrase ? decryptSecret(value.encryptedLivePassphrase) : undefined,
     redirectUrl: value.returnUrl,
-    callbackUrl: value.notifyUrl,
+    callbackUrl: notifyUrl,
   };
 }
 
@@ -555,6 +587,7 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     orderId: order.id,
     checkoutUrl: result.checkoutUrl,
     referenceId: result.referenceId,
+    notifyUrl: gateway.name === "payfast" ? config.callbackUrl : undefined,
   });
 
   if (!result.checkoutUrl) {
@@ -934,8 +967,21 @@ export async function handleStitchWebhook(headers: Record<string, string | undef
 export async function handlePayfastWebhook(headers: Record<string, string | undefined>, body: Record<string, unknown>, rawBody: string) {
   const gateway = getGateway("payfast");
   const config = await getPayfastGatewayConfig();
+  console.info("[payments] payfast webhook inbound", {
+    headerNames: Object.keys(headers),
+    payloadKeys: Object.keys(body).slice(0, 30),
+    hasRawBody: Boolean(rawBody),
+    notifyUrl: config.callbackUrl,
+  });
   const verification = await gateway.verifyWebhook(config, { headers, payload: body, rawBody });
   const ref = verification.referenceId;
+  console.info("[payments] payfast webhook verification", {
+    isValid: verification.isValid,
+    status: verification.status,
+    referenceId: verification.referenceId,
+    externalEventId: verification.externalEventId,
+    reason: verification.reason,
+  });
 
   if (!verification.isValid || !ref) {
     await writePaymentEventLog({
@@ -989,6 +1035,12 @@ export async function handlePayfastWebhook(headers: Record<string, string | unde
     source: "webhook",
     eventId: verification.externalEventId,
     raw: verification.raw,
+  });
+  console.info("[payments] payfast webhook status apply", {
+    orderId: transaction.orderId,
+    transactionId: transaction.id,
+    verificationStatus: verification.status,
+    applyResult,
   });
 
   if (!applyResult.applied) {

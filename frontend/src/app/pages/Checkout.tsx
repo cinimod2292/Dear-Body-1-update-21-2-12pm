@@ -116,6 +116,8 @@ export default function Checkout() {
   const stepIndex = steps.findIndex(s => s.key === step);
 
   const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
+  const returnOrderId = searchParams.get("orderId");
+  const returnCancelled = Boolean(searchParams.get("cancelled"));
   const finalizeSuccessfulCheckout = useCallback((orderId: string, source: "initial_load" | "poll") => {
     console.info("[checkout] successful payment/order completion detection", { orderId, source });
     setProcessingPayment(false);
@@ -152,10 +154,9 @@ export default function Checkout() {
   };
 
   useEffect(() => {
-    const orderId = searchParams.get("orderId");
-    if (!orderId) return;
-    loadExistingOrder(orderId).catch(() => undefined);
-  }, [searchParams, token, finalizeSuccessfulCheckout]);
+    if (!returnOrderId) return;
+    loadExistingOrder(returnOrderId).catch(() => undefined);
+  }, [returnOrderId, token, finalizeSuccessfulCheckout]);
 
   useEffect(() => {
     fetch(`${API_BASE}/store/shipping-methods`)
@@ -290,7 +291,7 @@ export default function Checkout() {
 
   useEffect(() => {
     if (!processingPayment) return;
-    const orderId = searchParams.get("orderId");
+    const orderId = returnOrderId;
     if (!orderId || !token) return;
 
     let attempts = 0;
@@ -315,7 +316,7 @@ export default function Checkout() {
         }
         if (status === "FAILED") {
           setProcessingPayment(false);
-          console.info("[checkout] abandoned cart restore trigger", { orderId, cancelled: Boolean(searchParams.get("cancelled")), paymentStatus: status });
+          console.info("[checkout] abandoned cart restore trigger", { orderId, cancelled: returnCancelled, paymentStatus: status });
         }
         if (attempts >= 20) {
           setProcessingTimedOut(true);
@@ -325,7 +326,7 @@ export default function Checkout() {
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [processingPayment, searchParams, token, finalizeSuccessfulCheckout]);
+  }, [processingPayment, returnOrderId, returnCancelled, token, finalizeSuccessfulCheckout]);
 
   const applySavedAddress = (addressId: string) => {
     setSelectedAddressId(addressId);

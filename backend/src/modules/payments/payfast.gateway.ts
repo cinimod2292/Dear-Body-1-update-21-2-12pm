@@ -105,8 +105,8 @@ function parseRawPayfastBody(rawBody: string) {
     const decodeForm = (v: string) => decodeURIComponent(v.replace(/\+/g, "%20"));
     const key = decodeForm(rawKey);
     if (key === "signature") continue;
-    const value = normalizePayfastValue(decodeForm(rawValue));
-    if (value === undefined) continue;
+    const value = decodeForm(rawValue);
+    if (value === "") continue;
     pairs.push({ key, value });
   }
   return pairs;
@@ -119,6 +119,12 @@ function buildPayfastSourceFromPairs(pairs: Array<{ key: string; value: string }
     entries.push(`passphrase=${payfastUrlEncode(normalizedPassphrase)}`);
   }
   return entries.join("&");
+}
+
+function redactRawBody(rawBody: string) {
+  return rawBody
+    .replace(/(^|&)merchant_key=[^&]*/g, "$1merchant_key=[redacted]")
+    .replace(/(^|&)signature=[^&]*/g, "$1signature=[redacted]");
 }
 
 export function buildPayfastSignatureSource(fields: Record<string, string | undefined>, passphrase?: string) {
@@ -246,28 +252,45 @@ export class PayfastGateway implements PaymentGatewayProvider {
     }
 
     const rawPairs = parseRawPayfastBody(input.rawBody);
-    const source = rawPairs.length > 0
-      ? buildPayfastSourceFromPairs(rawPairs, config.webhookSecret)
-      : (() => {
-        const stringPayload: Record<string, string | undefined> = {};
-        for (const [key, value] of Object.entries(input.payload)) {
-          if (Array.isArray(value)) {
-            stringPayload[key] = value[0] ? String(value[0]) : undefined;
-          } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-            stringPayload[key] = String(value);
-          }
+    const sourceFieldsFromPayload = (() => {
+      const stringPayload: Record<string, string | undefined> = {};
+      for (const [key, value] of Object.entries(input.payload)) {
+        if (Array.isArray(value)) {
+          stringPayload[key] = value[0] ? String(value[0]) : undefined;
+        } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          stringPayload[key] = String(value);
         }
-        return buildPayfastSignatureSource(sanitizeFieldMap(stringPayload), config.webhookSecret);
-      })();
-    const expected = crypto.createHash("md5").update(source).digest("hex");
+      }
+      return sanitizeFieldMap(stringPayload);
+    })();
+    const baseSource = rawPairs.length > 0
+      ? buildPayfastSourceFromPairs(rawPairs)
+      : buildPayfastRedirectSource(sourceFieldsFromPayload);
+    const sourceWithPassphrase = rawPairs.length > 0
+      ? buildPayfastSourceFromPairs(rawPairs, config.webhookSecret)
+      : buildPayfastSignatureSource(sourceFieldsFromPayload, config.webhookSecret);
+    const expectedWithoutPassphrase = crypto.createHash("md5").update(baseSource).digest("hex");
+    const passphraseApplied = Boolean(normalizePayfastValue(config.webhookSecret));
+    const source = passphraseApplied ? sourceWithPassphrase : baseSource;
+    const expected = passphraseApplied
+      ? crypto.createHash("md5").update(source).digest("hex")
+      : expectedWithoutPassphrase;
+    const noPassphraseMatches = expectedWithoutPassphrase.toLowerCase() === signature.toLowerCase();
     const isValid = expected.toLowerCase() === signature.toLowerCase();
 
     console.info("[payfast] webhook signature verification", {
-      passphraseApplied: Boolean(normalizePayfastValue(config.webhookSecret)),
+      contentType: input.headers["content-type"],
+      passphraseApplied,
+      noPassphraseMatches,
+      rawBody: redactRawBody(input.rawBody),
+      parsedPairs: rawPairs.map(({ key, value }) => ({
+        key,
+        value: key === "merchant_key" ? "[redacted]" : value,
+      })),
       verificationSource: redactSignatureSource(source),
       signedFieldOrder: source.split("&").map((pair) => pair.split("=")[0]),
-      providedSignature: "[redacted]",
-      expectedSignature: "[redacted]",
+      providedSignaturePrefix: signature.slice(0, 8),
+      expectedSignaturePrefix: expected.slice(0, 8),
       isValid,
     });
 
@@ -277,7 +300,11 @@ export class PayfastGateway implements PaymentGatewayProvider {
       externalEventId: eventId,
       status: normalizePayfastStatus(paymentStatus),
       raw: input.payload,
-      reason: isValid ? undefined : "Invalid PayFast webhook signature",
+      reason: isValid
+        ? undefined
+        : noPassphraseMatches && passphraseApplied
+          ? "Invalid PayFast webhook signature (passphrase mismatch likely)"
+          : "Invalid PayFast webhook signature",
     };
   }
 }

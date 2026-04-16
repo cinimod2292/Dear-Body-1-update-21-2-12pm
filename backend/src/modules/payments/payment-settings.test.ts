@@ -247,3 +247,39 @@ test("PayFast webhook verification uses raw incoming pair order when available",
   assert.equal(result.isValid, true);
   assert.equal(result.status, "PAID");
 });
+
+test("PayFast webhook verification handles encoded values and plus signs from realistic ITN raw body", async () => {
+  const gateway = new PayfastGateway();
+  const rawBody = [
+    "payment_status=COMPLETE",
+    "m_payment_id=payfast-order-100",
+    "item_name=Order+100",
+    "merchant_id=10000100",
+    "merchant_key=abc123",
+    "custom_str1=order%2B100",
+  ].join("&");
+  const withPassphrase = `${rawBody}&passphrase=real-pass`;
+  const signature = crypto.createHash("md5").update(withPassphrase).digest("hex");
+
+  const result = await gateway.verifyWebhook({
+    mode: "sandbox",
+    merchantId: "10000100",
+    apiKey: "abc123",
+    webhookSecret: "real-pass",
+  }, {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: {
+      payment_status: "COMPLETE",
+      m_payment_id: "payfast-order-100",
+      item_name: "Order 100",
+      merchant_id: "10000100",
+      merchant_key: "abc123",
+      custom_str1: "order+100",
+      signature,
+    },
+    rawBody: `${rawBody}&signature=${signature}`,
+  });
+
+  assert.equal(result.isValid, true);
+  assert.equal(result.status, "PAID");
+});

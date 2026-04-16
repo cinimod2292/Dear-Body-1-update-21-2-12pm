@@ -79,6 +79,16 @@ function parseStoredAdminSession(raw: string | null): AdminSession | null {
   }
 }
 
+
+function parseStoredAdminSession(raw: string | null): AdminSession | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AdminSession;
+  } catch {
+    return null;
+  }
+}
+
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);

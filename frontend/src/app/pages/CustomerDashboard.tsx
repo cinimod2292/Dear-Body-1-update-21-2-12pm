@@ -1,5 +1,4 @@
 import { Dispatch, FormEvent, SetStateAction, useEffect, useState } from "react";
-import { Link } from "react-router";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 
@@ -16,16 +15,6 @@ type Address = {
   deliveryNotes?: string | null;
   isDefaultShipping: boolean;
   isDefaultBilling: boolean;
-};
-
-type Order = {
-  id: string;
-  orderNumber: string;
-  createdAt: string;
-  status: string;
-  paymentStatus: string;
-  fulfillmentStatus: string;
-  trackingNumber?: string | null;
 };
 
 type AddressFormState = {
@@ -159,39 +148,8 @@ function AddressSection({
   );
 }
 
-function OrdersSection({
-  orders,
-  retryingId,
-  onRetryPayment,
-}: {
-  orders: Order[];
-  retryingId: string | null;
-  onRetryPayment: (orderId: string) => Promise<void>;
-}) {
-  return (
-    <section className="bg-white rounded-2xl border p-5" data-testid="account-orders-section">
-      <h2 className="font-bold mb-4">Orders</h2>
-      <div className="space-y-3">
-        {orders.map((o) => (
-          <div key={o.id} className="block border rounded-xl p-3">
-            <Link to={`/account/orders/${o.id}`} className="block hover:bg-gray-50">
-              <div className="flex justify-between"><p className="font-semibold">#{o.orderNumber}</p><p className="text-sm">{new Date(o.createdAt).toLocaleDateString()}</p></div>
-              <p className="text-sm">Order: {o.status} · Payment: {o.paymentStatus} · Fulfillment: {o.fulfillmentStatus}</p>
-              <p className="text-sm">Tracking: {o.trackingNumber || "—"}</p>
-            </Link>
-            {["AWAITING_PAYMENT", "PAYMENT_FAILED"].includes(o.status) ? <button disabled={retryingId === o.id} onClick={() => void onRetryPayment(o.id)} className="mt-2 px-3 py-1.5 rounded-lg text-xs bg-pink-600 text-white">{retryingId === o.id ? "Retrying..." : "Retry payment"}</button> : null}
-          </div>
-        ))}
-        {orders.length === 0 ? <p className="text-sm text-gray-500">No orders yet.</p> : null}
-      </div>
-    </section>
-  );
-}
-
 export default function CustomerDashboard() {
-  const [retryingId, setRetryingId] = useState<string | null>(null);
   const { customer, token, logout } = useCustomerAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
   const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", phone: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -201,13 +159,6 @@ export default function CustomerDashboard() {
   const [addressError, setAddressError] = useState<string | null>(null);
 
   const authHeaders = token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined;
-
-  const loadOrders = () => {
-    if (!token) return;
-    fetch(`${API_BASE}/store/account/orders`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((payload) => setOrders(payload.data || []));
-  };
 
   const loadProfile = () => {
     if (!token) return;
@@ -228,26 +179,9 @@ export default function CustomerDashboard() {
   };
 
   useEffect(() => {
-    loadOrders();
     loadProfile();
     loadAddresses();
   }, [token]);
-
-  const retryPayment = async (orderId: string) => {
-    if (!token) return;
-    setRetryingId(orderId);
-    try {
-      const res = await fetch(`${API_BASE}/store/orders/${orderId}/payments/initiate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ gateway: "stitch", force: true, returnUrl: `${window.location.origin}/checkout?orderId=${orderId}`, cancelUrl: `${window.location.origin}/checkout?orderId=${orderId}&cancelled=1` }),
-      });
-      const payload = await res.json();
-      if (res.ok && payload?.data?.checkoutUrl) window.location.href = payload.data.checkoutUrl;
-    } finally {
-      setRetryingId(null);
-    }
-  };
 
   const saveProfile = async (e: FormEvent) => {
     e.preventDefault();
@@ -357,12 +291,6 @@ export default function CustomerDashboard() {
           setEditingAddressId(null);
           setAddressForm(emptyAddress);
         }}
-      />
-
-      <OrdersSection
-        orders={orders}
-        retryingId={retryingId}
-        onRetryPayment={retryPayment}
       />
     </div>
   );

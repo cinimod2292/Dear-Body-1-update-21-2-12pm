@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { CartProvider } from "./context/CartContext";
@@ -10,7 +11,7 @@ export default function App() {
     <CartProvider>
       <AdminAuthProvider>
         <CustomerAuthProvider>
-          <RouterProvider router={router} />
+          <Suspense fallback={<div className="min-h-screen bg-white" aria-busy="true" />}><RouterProvider router={router} /></Suspense>
           <Toaster richColors position="top-right" />
         </CustomerAuthProvider>
       </AdminAuthProvider>

@@ -69,7 +69,7 @@ export default function Home() {
       return (
         <section key={section.id} className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
           <div className="absolute inset-0">
-            <img src={bg} alt={section.title || "Hero"} className="w-full h-full object-cover opacity-60" />
+            <img src={bg} alt={section.title || "Hero"} fetchPriority="high" loading="eager" decoding="async" className="w-full h-full object-cover opacity-60" />
             <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent" />
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
@@ -138,7 +138,7 @@ export default function Home() {
           <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
             <h3 className="text-3xl font-black text-gray-900 mb-3">{section.title}</h3>
             <p className="text-gray-600">{section.subtitle || String(section.content.body || "")}</p>
-            {section.type === "image_block" && section.content.imageUrl ? <img src={String(section.content.imageUrl)} alt={section.title || ""} className="mt-6 mx-auto rounded-xl max-h-96 object-cover" /> : null}
+            {section.type === "image_block" && section.content.imageUrl ? <img src={String(section.content.imageUrl)} alt={section.title || ""} loading="lazy" decoding="async" className="mt-6 mx-auto rounded-xl max-h-96 object-cover" /> : null}
           </div>
         </section>
       );

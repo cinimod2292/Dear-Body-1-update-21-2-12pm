@@ -1,33 +1,36 @@
+import { lazy } from "react";
 import { createBrowserRouter } from "react-router";
-import { Root } from "./components/Root";
-import Home from "./pages/Home";
-import Shop from "./pages/Shop";
-import ProductDetail from "./pages/ProductDetail";
-import Cart from "./pages/Cart";
-import Checkout from "./pages/Checkout";
-import CmsPage from "./pages/CmsPage";
-import CustomerLogin from "./pages/CustomerLogin";
-import CustomerRegister from "./pages/CustomerRegister";
-import CustomerDashboard from "./pages/CustomerDashboard";
-import CustomerOrderDetail from "./pages/CustomerOrderDetail";
-import { CustomerProtectedRoute } from "./components/CustomerProtectedRoute";
-import AdminLogin from "./admin/pages/AdminLogin";
-import AdminLayout from "./admin/components/AdminLayout";
-import { AdminProtectedRoute } from "./admin/components/AdminProtectedRoute";
-import AdminDashboard from "./admin/pages/AdminDashboard";
-import AdminProducts from "./admin/pages/AdminProducts";
-import AdminMedia from "./admin/pages/AdminMedia";
-import AdminSettings from "./admin/pages/AdminSettings";
-import AdminCatalogSetup from "./admin/pages/AdminCatalogSetup";
-import AdminProductEditor from "./admin/pages/AdminProductEditor";
-import AdminCustomers from "./admin/pages/AdminCustomers";
-import AdminCustomerDetail from "./admin/pages/AdminCustomerDetail";
-import AdminOrders from "./admin/pages/AdminOrders";
-import AdminOrderDetail from "./admin/pages/AdminOrderDetail";
-import AdminCmsEditor from "./admin/pages/AdminCmsEditor";
-import AdminOperations from "./admin/pages/AdminOperations";
-import AdminShippingMethods from "./admin/pages/AdminShippingMethods";
-import AdminEmailTemplates from "./admin/pages/AdminEmailTemplates";
+
+const Root = lazy(() => import("./components/Root").then((mod) => ({ default: mod.Root })));
+const Home = lazy(() => import("./pages/Home"));
+const Shop = lazy(() => import("./pages/Shop"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const Cart = lazy(() => import("./pages/Cart"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const CmsPage = lazy(() => import("./pages/CmsPage"));
+const CustomerLogin = lazy(() => import("./pages/CustomerLogin"));
+const CustomerRegister = lazy(() => import("./pages/CustomerRegister"));
+const CustomerDashboard = lazy(() => import("./pages/CustomerDashboard"));
+const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
+const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
+
+const AdminLogin = lazy(() => import("./admin/pages/AdminLogin"));
+const AdminLayout = lazy(() => import("./admin/components/AdminLayout"));
+const AdminProtectedRoute = lazy(() => import("./admin/components/AdminProtectedRoute").then((mod) => ({ default: mod.AdminProtectedRoute })));
+const AdminDashboard = lazy(() => import("./admin/pages/AdminDashboard"));
+const AdminProducts = lazy(() => import("./admin/pages/AdminProducts"));
+const AdminMedia = lazy(() => import("./admin/pages/AdminMedia"));
+const AdminSettings = lazy(() => import("./admin/pages/AdminSettings"));
+const AdminCatalogSetup = lazy(() => import("./admin/pages/AdminCatalogSetup"));
+const AdminProductEditor = lazy(() => import("./admin/pages/AdminProductEditor"));
+const AdminCustomers = lazy(() => import("./admin/pages/AdminCustomers"));
+const AdminCustomerDetail = lazy(() => import("./admin/pages/AdminCustomerDetail"));
+const AdminOrders = lazy(() => import("./admin/pages/AdminOrders"));
+const AdminOrderDetail = lazy(() => import("./admin/pages/AdminOrderDetail"));
+const AdminCmsEditor = lazy(() => import("./admin/pages/AdminCmsEditor"));
+const AdminOperations = lazy(() => import("./admin/pages/AdminOperations"));
+const AdminShippingMethods = lazy(() => import("./admin/pages/AdminShippingMethods"));
+const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates"));
 
 export const router = createBrowserRouter([
   {

@@ -56,6 +56,35 @@ function normalizePrice(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+
+const STORE_PRODUCTS_CACHE_KEY = "storefront_products_cache_v1";
+const STORE_PRODUCTS_CACHE_TTL_MS = 60 * 1000;
+let productsCache: { expiresAt: number; items: Product[] } | null = null;
+let inFlightProductsRequest: Promise<Product[]> | null = null;
+
+function readProductsCacheFromSession(): Product[] | null {
+  try {
+    const raw = sessionStorage.getItem(STORE_PRODUCTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { expiresAt?: number; items?: Product[] };
+    if (!parsed?.expiresAt || !Array.isArray(parsed.items)) return null;
+    if (Date.now() >= parsed.expiresAt) return null;
+    return parsed.items;
+  } catch {
+    return null;
+  }
+}
+
+function writeProductsCache(items: Product[]) {
+  const entry = { expiresAt: Date.now() + STORE_PRODUCTS_CACHE_TTL_MS, items };
+  productsCache = entry;
+  try {
+    sessionStorage.setItem(STORE_PRODUCTS_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 const palette = [
   { color: "#FF69B4", bgColor: "#FFF0F8", textColor: "#C71585" },
   { color: "#F97316", bgColor: "#FFF7ED", textColor: "#C2410C" },
@@ -107,16 +136,42 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   };
 }
 
-export async function fetchStoreProducts(): Promise<Product[]> {
-  const response = await fetch(`${API_BASE}/store/products?perPage=100&sortBy=createdAt&sortDir=desc`);
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || "Failed to load products");
+export async function fetchStoreProducts(forceRefresh = false): Promise<Product[]> {
+  if (!forceRefresh) {
+    if (productsCache && Date.now() < productsCache.expiresAt) {
+      return productsCache.items;
+    }
+
+    const sessionCached = readProductsCacheFromSession();
+    if (sessionCached) {
+      productsCache = { expiresAt: Date.now() + STORE_PRODUCTS_CACHE_TTL_MS, items: sessionCached };
+      return sessionCached;
+    }
+
+    if (inFlightProductsRequest) {
+      return inFlightProductsRequest;
+    }
   }
-  const items = (payload?.data?.items || []) as StorefrontProductApi[];
-  return items
-    .map((item, index) => toProduct(item, index))
-    .filter((product) => Boolean(product.variantId));
+
+  inFlightProductsRequest = (async () => {
+    const response = await fetch(`${API_BASE}/store/products?perPage=100&sortBy=createdAt&sortDir=desc`);
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error?.message || "Failed to load products");
+    }
+    const items = (payload?.data?.items || []) as StorefrontProductApi[];
+    const mapped = items
+      .map((item, index) => toProduct(item, index))
+      .filter((product) => Boolean(product.variantId));
+    writeProductsCache(mapped);
+    return mapped;
+  })();
+
+  try {
+    return await inFlightProductsRequest;
+  } finally {
+    inFlightProductsRequest = null;
+  }
 }
 
 export async function fetchStoreProductById(productId: string): Promise<Product | null> {

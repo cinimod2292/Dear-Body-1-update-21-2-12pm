@@ -86,7 +86,7 @@ export function Navbar() {
                     <Link to="/account">My Account</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/account">Orders</Link>
+                    <Link to="/account/orders">Orders</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>

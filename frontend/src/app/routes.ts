@@ -11,6 +11,7 @@ const CmsPage = lazy(() => import("./pages/CmsPage"));
 const CustomerLogin = lazy(() => import("./pages/CustomerLogin"));
 const CustomerRegister = lazy(() => import("./pages/CustomerRegister"));
 const CustomerDashboard = lazy(() => import("./pages/CustomerDashboard"));
+const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
 
@@ -44,7 +45,15 @@ export const router = createBrowserRouter([
       { path: "checkout", Component: Checkout },
       { path: "account/login", Component: CustomerLogin },
       { path: "account/register", Component: CustomerRegister },
-      { path: "account", Component: CustomerProtectedRoute, children: [{ index: true, Component: CustomerDashboard }, { path: "orders/:orderId", Component: CustomerOrderDetail }] },
+      {
+        path: "account",
+        Component: CustomerProtectedRoute,
+        children: [
+          { index: true, Component: CustomerDashboard },
+          { path: "orders", Component: CustomerOrders },
+          { path: "orders/:orderId", Component: CustomerOrderDetail },
+        ],
+      },
       { path: "about", Component: CmsPage },
       { path: "contact", Component: CmsPage },
       { path: "privacy-policy", Component: CmsPage },

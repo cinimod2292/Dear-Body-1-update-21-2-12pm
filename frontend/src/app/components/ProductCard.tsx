@@ -80,7 +80,9 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Info */}
         <div className="p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{product.category}</p>
-          <h3 className="font-bold text-gray-900 mb-1 truncate">{product.name}</h3>
+          <h3 className="font-semibold text-sm leading-snug text-gray-900 mb-1 line-clamp-2 min-h-[2.5rem]">
+            {product.name}
+          </h3>
           <p className="text-sm text-gray-500 mb-3 truncate">{product.tagline}</p>
 
           {/* Rating */}

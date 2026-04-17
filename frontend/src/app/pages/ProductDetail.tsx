@@ -4,19 +4,20 @@ import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, P
 import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
+import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
 
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToCart } = useCart();
+  const { isFavorited, toggleFavorite } = useFavorites();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [quantity, setQuantity] = useState(1);
-  const [wished, setWished] = useState(false);
   const [added, setAdded] = useState(false);
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
 
@@ -75,6 +76,8 @@ export default function ProductDetail() {
 
   const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
 
+  const wished = isFavorited(product.id);
+
   const badgeColors: Record<string, string> = {
     SALE: "bg-red-500",
     BESTSELLER: "bg-pink-500",
@@ -127,8 +130,14 @@ export default function ProductDetail() {
 
               {/* Wishlist */}
               <button
-                onClick={() => setWished(!wished)}
-                className={`absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${wished ? "bg-pink-500 text-white" : "bg-white text-gray-400 hover:text-pink-500"}`}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFavorite(product.id);
+                }}
+                aria-label={wished ? "Remove from favorites" : "Add to favorites"}
+                className={`absolute top-5 right-5 z-10 w-11 h-11 cursor-pointer rounded-full flex items-center justify-center shadow-lg transition-all ${wished ? "bg-pink-500 text-white" : "bg-white text-gray-400 hover:text-pink-500"}`}
               >
                 <Heart size={20} fill={wished ? "currentColor" : "none"} />
               </button>

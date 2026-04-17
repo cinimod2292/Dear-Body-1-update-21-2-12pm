@@ -53,13 +53,9 @@ export default function AdminCustomers() {
     try {
       setLoading(true);
       setError(null);
-      const [customersRes, tagsRes] = await Promise.all([
-        apiRequest<{ data: { items: CustomerListItem[]; totalPages: number } }>(`/admin/customers?${params}`, {}, session.accessToken),
-        apiRequest<{ data: { items: TagOption[] } }>("/admin/tags?page=1&perPage=200", {}, session.accessToken),
-      ]);
+      const customersRes = await apiRequest<{ data: { items: CustomerListItem[]; totalPages: number } }>(`/admin/customers?${params}`, {}, session.accessToken);
       setCustomers(customersRes.data.items);
       setTotalPages(customersRes.data.totalPages);
-      setTags(tagsRes.data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load customers");
     } finally {
@@ -68,6 +64,15 @@ export default function AdminCustomers() {
   };
 
   useEffect(() => { load(); }, [session?.accessToken, params]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    apiRequest<{ data: { items: TagOption[] } }>("/admin/tags?page=1&perPage=200", {}, session.accessToken)
+      .then((res) => setTags(res.data.items))
+      .catch(() => {
+        // Keep customer list usable even if tags fail.
+      });
+  }, [session?.accessToken]);
 
   const createCustomer = async (e: FormEvent) => {
     e.preventDefault();

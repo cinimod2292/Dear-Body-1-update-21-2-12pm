@@ -130,10 +130,14 @@ export default function ProductDetail() {
 
               {/* Wishlist */}
               <button
-                onClick={() => {
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   toggleFavorite(product.id);
                 }}
-                className={`absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${wished ? "bg-pink-500 text-white" : "bg-white text-gray-400 hover:text-pink-500"}`}
+                aria-label={wished ? "Remove from favorites" : "Add to favorites"}
+                className={`absolute top-5 right-5 z-10 w-11 h-11 cursor-pointer rounded-full flex items-center justify-center shadow-lg transition-all ${wished ? "bg-pink-500 text-white" : "bg-white text-gray-400 hover:text-pink-500"}`}
               >
                 <Heart size={20} fill={wished ? "currentColor" : "none"} />
               </button>

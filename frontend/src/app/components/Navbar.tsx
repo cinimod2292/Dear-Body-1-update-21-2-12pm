@@ -21,7 +21,7 @@ export function Navbar() {
   const { cartCount } = useCart();
   const { customer, logout } = useCustomerAuth();
   const navigate = useNavigate();
-  const accountHref = customer ? "/account" : "/account/login";
+  const favoritesHref = customer ? "/favorites" : `/account/login?next=${encodeURIComponent("/favorites")}`;
 
   useEffect(() => {
     fetchCmsBootstrap()
@@ -70,7 +70,13 @@ export function Navbar() {
 
           <div className="flex items-center gap-3">
             <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 text-gray-600 hover:text-pink-500 transition-colors" aria-label="Search"><Search size={20} /></button>
-            <button className="p-2 text-gray-600 hover:text-pink-500 transition-colors hidden sm:block" aria-label="Wishlist"><Heart size={20} /></button>
+            <Link
+              to={favoritesHref}
+              className="p-2 text-gray-600 hover:text-pink-500 focus-visible:text-pink-500 focus-visible:outline-none transition-colors hidden sm:block"
+              aria-label={customer ? "Wishlist" : "Login to view wishlist"}
+            >
+              <Heart size={20} />
+            </Link>
             {customer ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

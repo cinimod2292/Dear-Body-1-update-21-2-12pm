@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { ShoppingBag, Heart, Star } from "lucide-react";
 import { Product } from "../data/products";
 import { useCart } from "../context/CartContext";
+import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
 
 interface ProductCardProps {
@@ -11,12 +12,14 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
-  const [wished, setWished] = useState(false);
+  const { isFavorited, toggleFavorite } = useFavorites();
   const [added, setAdded] = useState(false);
+  const wished = isFavorited(product.id);
   const purchasable = Boolean(product.variantId) && product.inStock;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!purchasable) return;
     addToCart(product);
     setAdded(true);
@@ -54,14 +57,21 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {/* Wishlist */}
           <button
-            onClick={e => { e.preventDefault(); setWished(!wished); }}
-            className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center shadow-md transition-all duration-200 ${wished ? "bg-pink-500 text-white" : "bg-white/90 text-gray-400 hover:text-pink-500"}`}
+            type="button"
+            onClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleFavorite(product.id);
+            }}
+            aria-label={wished ? "Remove from favorites" : "Add to favorites"}
+            className={`absolute top-3 right-3 z-20 w-9 h-9 cursor-pointer rounded-full flex items-center justify-center shadow-md transition-all duration-200 ${wished ? "bg-pink-500 text-white" : "bg-white/90 text-gray-400 hover:text-pink-500"}`}
           >
             <Heart size={16} fill={wished ? "currentColor" : "none"} />
           </button>
 
           {/* Add to cart overlay */}
           <button
+            type="button"
             onClick={handleAddToCart}
             disabled={!purchasable}
             className={`absolute bottom-3 left-3 right-3 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all duration-300 ${

@@ -37,6 +37,7 @@ interface Product {
   seoMetadata?: { title?: string; description?: string; canonicalUrl?: string; ogTitle?: string; ogDescription?: string; ogImageUrl?: string } | null;
   tags?: Array<{ tagId: string }>;
   galleries?: Array<{ mediaAssetId: string }>;
+  hoverImageId?: string | null;
   variants?: Variant[];
 }
 
@@ -71,6 +72,7 @@ export default function AdminProductEditor() {
     seoMetadata: {},
     tags: [],
     galleries: [],
+    hoverImageId: null,
     variants: [],
   });
 
@@ -111,7 +113,7 @@ export default function AdminProductEditor() {
       if (!isNew && productId) {
         const productRes = await apiRequest<{ data: Product }>(`/admin/products/${productId}`, {}, session.accessToken);
         const found = productRes.data;
-        setProduct({ ...found, brandId: found.brandId ?? "", categoryId: found.categoryId ?? "", seoMetadata: found.seoMetadata ?? {}, tags: found.tags ?? [], galleries: found.galleries ?? [], variants: found.variants ?? [] });
+        setProduct({ ...found, brandId: found.brandId ?? "", categoryId: found.categoryId ?? "", seoMetadata: found.seoMetadata ?? {}, tags: found.tags ?? [], galleries: found.galleries ?? [], hoverImageId: found.hoverImageId ?? null, variants: found.variants ?? [] });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load product editor");
@@ -158,6 +160,7 @@ export default function AdminProductEditor() {
     setProduct((prev) => ({
       ...prev,
       galleries: (prev.galleries ?? []).filter((entry) => entry.mediaAssetId !== mediaAssetId),
+      hoverImageId: prev.hoverImageId === mediaAssetId ? null : prev.hoverImageId,
     }));
   };
 
@@ -166,8 +169,28 @@ export default function AdminProductEditor() {
     try {
       setUploadingMedia(true);
       const uploadedAssets: MediaAsset[] = [];
+      const readImageDimensions = async (file: File): Promise<{ width?: number; height?: number }> => {
+        if (!file.type.startsWith("image/")) return {};
+        return new Promise((resolve) => {
+          const objectUrl = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            const width = Number.isFinite(img.naturalWidth) && img.naturalWidth > 0 ? img.naturalWidth : undefined;
+            const height = Number.isFinite(img.naturalHeight) && img.naturalHeight > 0 ? img.naturalHeight : undefined;
+            URL.revokeObjectURL(objectUrl);
+            resolve({ width, height });
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve({});
+          };
+          img.src = objectUrl;
+        });
+      };
+
       for (const file of Array.from(files)) {
         const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
+        const imageDimensions = await readImageDimensions(file);
         const prep = await apiRequest<{ data: { uploadUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
           "/admin/media/uploads/prepare",
           {
@@ -203,7 +226,7 @@ export default function AdminProductEditor() {
             body: JSON.stringify({
               storageKey: prep.data.storageKey,
               kind,
-              metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+              metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream", ...imageDimensions },
               altText: file.name,
             }),
           },
@@ -269,6 +292,7 @@ export default function AdminProductEditor() {
       seo: seoPayload,
       tagIds: selectedTagIds,
       gallery: selectedMediaIds.map((id, idx) => ({ mediaAssetId: id, position: idx })),
+      hoverImageId: product.hoverImageId && selectedMediaIds.includes(product.hoverImageId) ? product.hoverImageId : null,
     };
 
     try {
@@ -487,6 +511,20 @@ export default function AdminProductEditor() {
                 ))}
               </div>
             )}
+          </div>
+          <div className="mb-5">
+            <label className="block text-sm font-semibold mb-2">Card Hover Image (optional)</label>
+            <select
+              className="w-full max-w-sm rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              value={product.hoverImageId ?? ""}
+              onChange={(e) => setProduct((prev) => ({ ...prev, hoverImageId: e.target.value || null }))}
+            >
+              <option value="">No hover image</option>
+              {selectedMediaAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>{asset.filename}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">Primary image remains the first linked image. Hover image only appears on product cards.</p>
           </div>
           {mediaAssets.length === 0 ? <EmptyState label="No media found. Upload files from Media page." /> : (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">

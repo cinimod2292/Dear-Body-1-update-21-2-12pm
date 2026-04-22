@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ShoppingBag, Heart, Star } from "lucide-react";
 import { Product } from "../data/products";
@@ -8,14 +8,40 @@ import { formatRand } from "../lib/currency";
 
 interface ProductCardProps {
   product: Product;
+  prioritizeImage?: boolean;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, prioritizeImage = false }: ProductCardProps) {
   const { addToCart } = useCart();
   const { isFavorited, toggleFavorite } = useFavorites();
   const [added, setAdded] = useState(false);
+  const [hoverImageFailed, setHoverImageFailed] = useState(false);
+  const [canHydrateHoverImage, setCanHydrateHoverImage] = useState(false);
+  const cardRef = useRef<HTMLAnchorElement | null>(null);
   const wished = isFavorited(product.id);
   const purchasable = Boolean(product.variantId) && product.inStock;
+  const hasValidHoverImage = Boolean(product.hoverImage && product.hoverImage !== product.image && !hoverImageFailed);
+  const showHoverImage = hasValidHoverImage && canHydrateHoverImage;
+
+  useEffect(() => {
+    if (!hasValidHoverImage) return;
+    const supportsHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!supportsHover) return;
+    const node = cardRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setCanHydrateHoverImage(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasValidHoverImage]);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -33,7 +59,13 @@ export function ProductCard({ product }: ProductCardProps) {
   };
 
   return (
-    <Link to={`/product/${product.id}`} className="group block">
+    <Link
+      ref={cardRef}
+      to={`/product/${product.id}`}
+      className="group block"
+      onPointerEnter={() => hasValidHoverImage && setCanHydrateHoverImage(true)}
+      onFocus={() => hasValidHoverImage && setCanHydrateHoverImage(true)}
+    >
       <div className="relative rounded-2xl overflow-hidden bg-white shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
         {/* Image Container */}
         <div
@@ -43,10 +75,33 @@ export function ProductCard({ product }: ProductCardProps) {
           <img
             src={product.image}
             alt={product.name}
-            loading="lazy"
+            loading={prioritizeImage ? "eager" : "lazy"}
             decoding="async"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            fetchPriority={prioritizeImage ? "high" : "auto"}
+            width={product.imageWidth}
+            height={product.imageHeight}
+            srcSet={product.image2x ? `${product.image} 1x, ${product.image2x} 2x` : undefined}
+            sizes="(min-width: 1280px) 23vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+            onError={(event) => {
+              event.currentTarget.style.opacity = "0";
+            }}
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 ${showHoverImage ? "group-hover:opacity-0" : "group-hover:scale-105"}`}
           />
+          {showHoverImage && (
+            <img
+              src={product.hoverImage}
+              alt={`${product.name} alternate view`}
+              loading="lazy"
+              decoding="async"
+              fetchPriority="low"
+              width={product.hoverImageWidth}
+              height={product.hoverImageHeight}
+              srcSet={product.hoverImage2x ? `${product.hoverImage} 1x, ${product.hoverImage2x} 2x` : undefined}
+              sizes="(min-width: 1280px) 23vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+              onError={() => setHoverImageFailed(true)}
+              className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+            />
+          )}
 
           {/* Badge */}
           {product.badge && (

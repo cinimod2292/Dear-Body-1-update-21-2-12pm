@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import crypto from "node:crypto";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { decryptStorageSecret } from "../../lib/secrets.js";
@@ -231,6 +232,34 @@ export async function createS3UploadUrl(storageKey: string, mimeType: string, cf
 
 export async function createS3DownloadUrl(storageKey: string, cfg: UploadConfig): Promise<string> {
   return createS3PresignedUrl("GET", storageKey, cfg.signedUrlTtlSeconds, cfg);
+}
+
+export async function readStorageObjectBuffer(storageKey: string, cfg: UploadConfig): Promise<Buffer> {
+  if (cfg.provider === "local") {
+    const pathOnDisk = resolveLocalUploadPath(storageKey);
+    return fs.readFile(pathOnDisk);
+  }
+  const signedDownload = await createS3DownloadUrl(storageKey, cfg);
+  const response = await fetch(signedDownload);
+  if (!response.ok) throw new Error(`Failed to read object ${storageKey} (${response.status})`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+export async function writeStorageObjectBuffer(storageKey: string, buffer: Buffer, mimeType: string, cfg: UploadConfig): Promise<void> {
+  if (cfg.provider === "local") {
+    const pathOnDisk = resolveLocalUploadPath(storageKey);
+    await fs.mkdir(path.dirname(pathOnDisk), { recursive: true });
+    await fs.writeFile(pathOnDisk, buffer);
+    return;
+  }
+
+  const signedUpload = await createS3UploadUrl(storageKey, mimeType, cfg);
+  const response = await fetch(signedUpload, {
+    method: "PUT",
+    headers: { "content-type": mimeType },
+    body: new Uint8Array(buffer),
+  });
+  if (!response.ok) throw new Error(`Failed to write object ${storageKey} (${response.status})`);
 }
 
 export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {

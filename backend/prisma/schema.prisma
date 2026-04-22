@@ -286,6 +286,7 @@ model Product {
   brandId          String?
   categoryId       String?
   seoMetadataId    String?
+  hoverImageId     String?
   defaultCurrency  String             @default("USD")
   publishedAt      DateTime?
   createdAt        DateTime           @default(now())
@@ -293,6 +294,7 @@ model Product {
   brand            Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
   category         Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   seoMetadata      SeoMetadata?       @relation(fields: [seoMetadataId], references: [id], onDelete: SetNull)
+  hoverImage       MediaAsset?        @relation("ProductHoverImage", fields: [hoverImageId], references: [id], onDelete: SetNull)
   variants         ProductVariant[]
   galleries        ProductGalleryImage[]
   tags             ProductTag[]
@@ -304,6 +306,7 @@ model Product {
   @@index([categoryId])
   @@index([status, visibility])
   @@index([featured])
+  @@index([hoverImageId])
 }
 
 model ProductTag {
@@ -858,6 +861,7 @@ model MediaAsset {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   galleries     ProductGalleryImage[]
+  hoverForProducts Product[]          @relation("ProductHoverImage")
 }
 
 model AuditLog {

@@ -26,6 +26,7 @@ export const createProductSchema = z.object({
   brandId: z.string().cuid().optional(),
   categoryId: z.string().cuid().optional(),
   defaultCurrency: z.string().length(3).default("USD"),
+  hoverImageId: z.string().cuid().nullable().optional(),
   seo: seoMetadataSchema.optional(),
   tagIds: z.array(z.string().cuid()).default([]),
   relatedProductIds: z.array(z.string().cuid()).default([]),

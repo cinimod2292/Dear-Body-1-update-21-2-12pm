@@ -14,8 +14,10 @@ export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
   const { isFavorited, toggleFavorite } = useFavorites();
   const [added, setAdded] = useState(false);
+  const [hoverImageFailed, setHoverImageFailed] = useState(false);
   const wished = isFavorited(product.id);
   const purchasable = Boolean(product.variantId) && product.inStock;
+  const showHoverImage = Boolean(product.hoverImage && product.hoverImage !== product.image && !hoverImageFailed);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -45,8 +47,18 @@ export function ProductCard({ product }: ProductCardProps) {
             alt={product.name}
             loading="lazy"
             decoding="async"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 ${showHoverImage ? "group-hover:opacity-0" : "group-hover:scale-105"}`}
           />
+          {showHoverImage && (
+            <img
+              src={product.hoverImage}
+              alt={`${product.name} alternate view`}
+              loading="lazy"
+              decoding="async"
+              onError={() => setHoverImageFailed(true)}
+              className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+            />
+          )}
 
           {/* Badge */}
           {product.badge && (

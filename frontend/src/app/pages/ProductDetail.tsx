@@ -6,6 +6,7 @@ import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
+import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -20,6 +21,8 @@ export default function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -28,6 +31,8 @@ export default function ProductDetail() {
     Promise.all([fetchStoreProductById(id), fetchStoreProducts()])
       .then(([foundProduct, allProducts]) => {
         setProduct(foundProduct);
+        setActiveImageIndex(0);
+        setLightboxOpen(false);
         if (foundProduct) {
           setRelated(allProducts.filter((item) => item.id !== foundProduct.id && item.category === foundProduct.category).slice(0, 4));
         } else {
@@ -77,6 +82,8 @@ export default function ProductDetail() {
   const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
 
   const wished = isFavorited(product.id);
+  const galleryImages = product.images.length ? product.images : [product.image].filter(Boolean);
+  const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? product.image;
 
   const badgeColors: Record<string, string> = {
     SALE: "bg-red-500",
@@ -116,9 +123,10 @@ export default function ProductDetail() {
               style={{ backgroundColor: product.bgColor }}
             >
               <img
-                src={product.image}
+                src={currentImage}
                 alt={product.name}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover cursor-zoom-in"
+                onClick={() => setLightboxOpen(Boolean(galleryImages.length))}
               />
 
               {/* Badge */}
@@ -142,6 +150,20 @@ export default function ProductDetail() {
                 <Heart size={20} fill={wished ? "currentColor" : "none"} />
               </button>
             </div>
+            {galleryImages.length > 1 && (
+              <div className="mt-4 grid grid-cols-5 gap-2">
+                {galleryImages.map((imageUrl, index) => (
+                  <button
+                    key={`${imageUrl}-${index}`}
+                    type="button"
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
+                  >
+                    <img src={imageUrl} alt={`${product.name} thumbnail ${index + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Scent tags */}
             <div className="flex flex-wrap gap-2 mt-5">
@@ -305,6 +327,35 @@ export default function ProductDetail() {
           </div>
         )}
       </div>
+
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-5xl p-4 bg-white">
+          <DialogTitle className="sr-only">{product.name} image gallery</DialogTitle>
+          <div className="relative">
+            <img src={currentImage} alt={product.name} className="w-full max-h-[80vh] object-contain rounded-lg bg-gray-50" />
+            {galleryImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveImageIndex((idx) => (idx === 0 ? galleryImages.length - 1 : idx - 1))}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2 shadow"
+                  aria-label="Previous image"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveImageIndex((idx) => (idx + 1) % galleryImages.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2 shadow"
+                  aria-label="Next image"
+                >
+                  <ArrowLeft size={20} className="rotate-180" />
+                </button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

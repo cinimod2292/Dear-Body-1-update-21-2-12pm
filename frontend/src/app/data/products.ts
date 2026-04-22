@@ -1,4 +1,5 @@
 import { API_BASE } from "../admin/api/client";
+import { normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
 
 export interface Product {
   id: string;
@@ -14,6 +15,8 @@ export interface Product {
   bgColor: string;
   textColor: string;
   image: string;
+  hoverImage?: string;
+  images: string[];
   description: string;
   ingredients: string;
   howToUse: string;
@@ -33,7 +36,8 @@ type StorefrontProductApi = {
   shortDescription?: string | null;
   category?: { name: string } | null;
   featured?: boolean;
-  galleries?: Array<{ mediaAsset?: { publicUrl?: string | null } | null }>;
+  hoverImageId?: string | null;
+  galleries?: Array<{ mediaAssetId: string; mediaAsset?: { publicUrl?: string | null } | null }>;
   variants?: Array<{
     id: string;
     isActive?: boolean;
@@ -104,7 +108,13 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const activeVariants = (api.variants ?? []).filter((variant) => variant.isActive !== false);
   const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
-  const image = api.galleries?.find((gallery) => gallery.mediaAsset?.publicUrl)?.mediaAsset?.publicUrl ?? "";
+  const galleryImages = normalizeProductImages(api.galleries);
+  const image = galleryImages[0]?.url ?? "";
+  const hoverImage = resolveHoverImageUrl({
+    primaryImageUrl: image,
+    hoverImageId: api.hoverImageId,
+    galleryImages,
+  });
   const tagDetails = parseJsonSafe<{ ingredients?: string; howToUse?: string; size?: string; scent?: string; tagline?: string }>(api.shortDescription ?? "");
   const basePrice = normalizePrice(primaryVariant?.price);
   const salePrice = primaryVariant?.salePrice === null || primaryVariant?.salePrice === undefined
@@ -124,6 +134,8 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     bgColor: colorSet.bgColor,
     textColor: colorSet.textColor,
     image,
+    hoverImage,
+    images: galleryImages.map((entry) => entry.url),
     description: api.description ?? "",
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",

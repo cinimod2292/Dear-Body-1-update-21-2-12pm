@@ -14,6 +14,7 @@ import {
 } from "./catalog.schemas.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
 import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
+import { normalizeHoverImageId, withResolvedProductMediaUrls } from "./product-images.js";
 
 const IMPORT_TEMPLATE_HEADERS = [
   "sku",
@@ -135,26 +136,6 @@ function parseCsvLine(line: string): string[] {
 
   result.push(current);
   return result;
-}
-
-function withResolvedMediaUrls<T extends { galleries?: Array<{ mediaAsset?: { storageKey?: string; publicUrl?: string | null } | null }>; }>(
-  product: T,
-  publicUrlForStorageKey: (storageKey: string) => string,
-): T {
-  if (!Array.isArray(product.galleries)) return product;
-  return {
-    ...product,
-    galleries: product.galleries.map((gallery) => {
-      if (!gallery?.mediaAsset?.storageKey) return gallery;
-      return {
-        ...gallery,
-        mediaAsset: {
-          ...gallery.mediaAsset,
-          publicUrl: publicUrlForStorageKey(gallery.mediaAsset.storageKey),
-        },
-      };
-    }),
-  };
 }
 
 function parseCsv(content: string): Array<Record<string, string>> {
@@ -936,13 +917,14 @@ export async function listProducts(rawQuery: unknown) {
         seoMetadata: true,
         tags: { include: { tag: true } },
         galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+        hoverImage: true,
         variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
       },
     }),
     prisma.product.count({ where }),
   ]);
 
-  return toPaginatedResponse(items.map((item) => withResolvedMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
+  return toPaginatedResponse(items.map((item) => withResolvedProductMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
 }
 
 export async function listStorefrontProducts(rawQuery: unknown) {
@@ -971,13 +953,14 @@ export async function listStorefrontProducts(rawQuery: unknown) {
       include: {
         category: true,
         galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+        hoverImage: true,
         variants: { where: { isActive: true }, include: { inventoryLevel: true } },
       },
     }),
     prisma.product.count({ where }),
   ]);
 
-  return toPaginatedResponse(items.map((item) => withResolvedMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
+  return toPaginatedResponse(items.map((item) => withResolvedProductMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
 }
 
 export async function getProductById(productId: string) {
@@ -990,12 +973,13 @@ export async function getProductById(productId: string) {
       seoMetadata: true,
       tags: { include: { tag: true } },
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      hoverImage: true,
       variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
     },
   });
 
   if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
-  return withResolvedMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
+  return withResolvedProductMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
 }
 
 export async function getStorefrontProductById(productId: string) {
@@ -1010,16 +994,21 @@ export async function getStorefrontProductById(productId: string) {
     include: {
       category: true,
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      hoverImage: true,
       variants: { where: { isActive: true }, include: { inventoryLevel: true } },
     },
   });
 
   if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
-  return withResolvedMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
+  return withResolvedProductMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
 }
 
 export async function createProduct(rawBody: unknown) {
   const body = createProductSchema.parse(rawBody);
+  const hoverImageId = normalizeHoverImageId({
+    hoverImageId: body.hoverImageId,
+    incomingGallery: body.gallery,
+  });
 
   const created = await prisma.product.create({
     data: {
@@ -1041,6 +1030,7 @@ export async function createProduct(rawBody: unknown) {
             create: body.gallery.map((image) => ({ mediaAssetId: image.mediaAssetId, position: image.position, altText: image.altText })),
           }
         : undefined,
+      hoverImageId,
       relatedSource: body.relatedProductIds.length
         ? {
             create: body.relatedProductIds.map((targetProductId, index) => ({ targetProductId, position: index })),
@@ -1051,6 +1041,7 @@ export async function createProduct(rawBody: unknown) {
       seoMetadata: true,
       tags: { include: { tag: true } },
       galleries: true,
+      hoverImage: true,
       relatedSource: true,
     },
   });
@@ -1068,7 +1059,10 @@ export async function createProduct(rawBody: unknown) {
 
 export async function updateProduct(productId: string, rawBody: unknown) {
   const body = updateProductSchema.parse(rawBody);
-  const existing = await prisma.product.findUnique({ where: { id: productId } });
+  const existing = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { galleries: { select: { mediaAssetId: true } } },
+  });
   if (!existing) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
 
   const seoMetadataUpdate = body.seo
@@ -1076,6 +1070,13 @@ export async function updateProduct(productId: string, rawBody: unknown) {
       ? { update: body.seo }
       : { create: body.seo }
     : undefined;
+
+  const hoverImageId = normalizeHoverImageId({
+    hoverImageId: body.hoverImageId,
+    incomingGallery: body.gallery,
+    existingGallery: existing.galleries,
+    existingHoverImageId: existing.hoverImageId,
+  });
 
   const updated = await prisma.product.update({
     where: { id: productId },
@@ -1090,6 +1091,7 @@ export async function updateProduct(productId: string, rawBody: unknown) {
       ...(body.brandId !== undefined ? { brandId: body.brandId } : {}),
       ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
       ...(body.defaultCurrency !== undefined ? { defaultCurrency: body.defaultCurrency } : {}),
+      ...(hoverImageId !== undefined ? { hoverImageId } : {}),
       ...(seoMetadataUpdate ? { seoMetadata: seoMetadataUpdate } : {}),
       ...(body.tagIds ? { tags: { deleteMany: {}, create: body.tagIds.map((tagId) => ({ tagId })) } } : {}),
       ...(body.relatedProductIds ? { relatedSource: { deleteMany: {}, create: body.relatedProductIds.map((targetProductId, index) => ({ targetProductId, position: index })) } } : {}),
@@ -1099,6 +1101,7 @@ export async function updateProduct(productId: string, rawBody: unknown) {
       seoMetadata: true,
       tags: { include: { tag: true } },
       galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
+      hoverImage: true,
       relatedSource: true,
     },
   });

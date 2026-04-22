@@ -1,5 +1,5 @@
 import { API_BASE } from "../admin/api/client";
-import { normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
+import { mapGallerySurfaceImages, normalizeProductImages, resolveCardImage, resolveHoverImageUrl } from "../lib/product-images";
 
 export interface Product {
   id: string;
@@ -134,8 +134,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const galleryImages = normalizeProductImages(api.galleries);
   const image = galleryImages[0]?.url ?? "";
   const primaryImage = galleryImages[0];
-  const primaryCardImage = primaryImage?.variants.card?.url ?? image;
-  const primaryCardImage2x = primaryImage?.variants.card_2x?.url;
+  const { image: primaryCardImage, image2x: primaryCardImage2x } = resolveCardImage(primaryImage);
   const hoverImage = resolveHoverImageUrl({
     primaryImageUrl: primaryCardImage,
     hoverImageId: api.hoverImageId,
@@ -170,16 +169,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     hoverImageWidth: hoverImageMeta?.width,
     hoverImageHeight: hoverImageMeta?.height,
     images: galleryImages.map((entry) => entry.url),
-    galleryImages: galleryImages.map((entry) => ({
-      url: entry.url,
-      width: entry.width,
-      height: entry.height,
-      thumbUrl: entry.variants.gallery_thumb?.url ?? entry.variants.thumb?.url ?? entry.url,
-      mainUrl: entry.variants.gallery_main?.url ?? entry.variants.card?.url ?? entry.url,
-      main2xUrl: entry.variants.gallery_main_2x?.url,
-      lightboxUrl: entry.variants.lightbox?.url ?? entry.variants.gallery_main_2x?.url ?? entry.url,
-      lightbox2xUrl: entry.variants.lightbox_2x?.url,
-    })),
+    galleryImages: galleryImages.map((entry) => mapGallerySurfaceImages(entry)),
     description: api.description ?? "",
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",
@@ -245,3 +235,4 @@ export async function fetchStoreProductById(productId: string): Promise<Product 
 export function getCategories(products: Product[]) {
   return ["All", ...new Set(products.map((product) => product.category))];
 }
+

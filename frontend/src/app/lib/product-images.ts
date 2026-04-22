@@ -63,3 +63,34 @@ export function resolveHoverImageUrl(params: {
   if (hoverUrl === primaryImageUrl) return undefined;
   return hoverUrl;
 }
+
+
+export function resolveCardImage(entry: ProductGalleryImage | undefined): { image: string; image2x?: string } {
+  if (!entry) return { image: "" };
+  return {
+    image: entry.variants.card?.url ?? entry.url,
+    image2x: entry.variants.card_2x?.url,
+  };
+}
+
+export function mapGallerySurfaceImages(entry: ProductGalleryImage): {
+  url: string;
+  width?: number;
+  height?: number;
+  thumbUrl: string;
+  mainUrl: string;
+  main2xUrl?: string;
+  lightboxUrl: string;
+  lightbox2xUrl?: string;
+} {
+  return {
+    url: entry.url,
+    width: entry.width,
+    height: entry.height,
+    thumbUrl: entry.variants.gallery_thumb?.url ?? entry.variants.thumb?.url ?? entry.url,
+    mainUrl: entry.variants.gallery_main?.url ?? entry.variants.card?.url ?? entry.url,
+    main2xUrl: entry.variants.gallery_main_2x?.url,
+    lightboxUrl: entry.variants.lightbox?.url ?? entry.variants.gallery_main_2x?.url ?? entry.url,
+    lightbox2xUrl: entry.variants.lightbox_2x?.url,
+  };
+}

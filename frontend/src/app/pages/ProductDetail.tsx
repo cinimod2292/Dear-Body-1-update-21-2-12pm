@@ -82,8 +82,27 @@ export default function ProductDetail() {
   const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
 
   const wished = isFavorited(product.id);
-  const galleryImages = product.images.length ? product.images : [product.image].filter(Boolean);
-  const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? product.image;
+  type GalleryImage = { url: string; width?: number; height?: number };
+  const galleryImages: GalleryImage[] = product.galleryImages?.length
+    ? product.galleryImages
+    : (product.images.length ? product.images.map((url): GalleryImage => ({ url })) : [{ url: product.image }]).filter((image) => Boolean(image.url));
+  const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? { url: product.image };
+
+  useEffect(() => {
+    if (!lightboxOpen || !galleryImages.length) return;
+    const neighborIndexes = [
+      activeImageIndex,
+      (activeImageIndex + 1) % galleryImages.length,
+      (activeImageIndex - 1 + galleryImages.length) % galleryImages.length,
+    ];
+    neighborIndexes.forEach((index) => {
+      const src = galleryImages[index]?.url;
+      if (!src) return;
+      const preload = new Image();
+      preload.decoding = "async";
+      preload.src = src;
+    });
+  }, [activeImageIndex, galleryImages, lightboxOpen]);
 
   const badgeColors: Record<string, string> = {
     SALE: "bg-red-500",
@@ -123,9 +142,15 @@ export default function ProductDetail() {
               style={{ backgroundColor: product.bgColor }}
             >
               <img
-                src={currentImage}
+                src={currentImage.url}
                 alt={product.name}
                 className="w-full h-full object-cover cursor-zoom-in"
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
+                width={currentImage.width ?? product.imageWidth}
+                height={currentImage.height ?? product.imageHeight}
+                sizes="(min-width: 1024px) 48vw, 95vw"
                 onClick={() => setLightboxOpen(Boolean(galleryImages.length))}
               />
 
@@ -152,14 +177,24 @@ export default function ProductDetail() {
             </div>
             {galleryImages.length > 1 && (
               <div className="mt-4 grid grid-cols-5 gap-2">
-                {galleryImages.map((imageUrl, index) => (
+                {galleryImages.map((image, index) => (
                   <button
-                    key={`${imageUrl}-${index}`}
+                    key={`${image.url}-${index}`}
                     type="button"
                     onClick={() => setActiveImageIndex(index)}
                     className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
                   >
-                    <img src={imageUrl} alt={`${product.name} thumbnail ${index + 1}`} className="w-full h-full object-cover" />
+                    <img
+                      src={image.url}
+                      alt={`${product.name} thumbnail ${index + 1}`}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                      width={image.width}
+                      height={image.height}
+                      sizes="96px"
+                    />
                   </button>
                 ))}
               </div>
@@ -332,7 +367,17 @@ export default function ProductDetail() {
         <DialogContent className="max-w-5xl p-4 bg-white">
           <DialogTitle className="sr-only">{product.name} image gallery</DialogTitle>
           <div className="relative">
-            <img src={currentImage} alt={product.name} className="w-full max-h-[80vh] object-contain rounded-lg bg-gray-50" />
+            <img
+              src={currentImage.url}
+              alt={product.name}
+              className="w-full max-h-[80vh] object-contain rounded-lg bg-gray-50"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+              width={currentImage.width ?? product.imageWidth}
+              height={currentImage.height ?? product.imageHeight}
+              sizes="100vw"
+            />
             {galleryImages.length > 1 && (
               <>
                 <button

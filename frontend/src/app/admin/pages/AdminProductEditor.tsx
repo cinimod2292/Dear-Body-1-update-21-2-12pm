@@ -169,8 +169,28 @@ export default function AdminProductEditor() {
     try {
       setUploadingMedia(true);
       const uploadedAssets: MediaAsset[] = [];
+      const readImageDimensions = async (file: File): Promise<{ width?: number; height?: number }> => {
+        if (!file.type.startsWith("image/")) return {};
+        return new Promise((resolve) => {
+          const objectUrl = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            const width = Number.isFinite(img.naturalWidth) && img.naturalWidth > 0 ? img.naturalWidth : undefined;
+            const height = Number.isFinite(img.naturalHeight) && img.naturalHeight > 0 ? img.naturalHeight : undefined;
+            URL.revokeObjectURL(objectUrl);
+            resolve({ width, height });
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve({});
+          };
+          img.src = objectUrl;
+        });
+      };
+
       for (const file of Array.from(files)) {
         const kind = file.type.startsWith("image") ? "IMAGE" : file.type.startsWith("video") ? "VIDEO" : "FILE";
+        const imageDimensions = await readImageDimensions(file);
         const prep = await apiRequest<{ data: { uploadUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
           "/admin/media/uploads/prepare",
           {
@@ -206,7 +226,7 @@ export default function AdminProductEditor() {
             body: JSON.stringify({
               storageKey: prep.data.storageKey,
               kind,
-              metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+              metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream", ...imageDimensions },
               altText: file.name,
             }),
           },

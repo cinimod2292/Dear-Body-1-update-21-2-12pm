@@ -82,11 +82,22 @@ export default function ProductDetail() {
   const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
 
   const wished = isFavorited(product.id);
-  type GalleryImage = { url: string; width?: number; height?: number };
+  type GalleryImage = {
+    url: string;
+    width?: number;
+    height?: number;
+    thumbUrl?: string;
+    mainUrl?: string;
+    main2xUrl?: string;
+    lightboxUrl?: string;
+    lightbox2xUrl?: string;
+  };
   const galleryImages: GalleryImage[] = product.galleryImages?.length
     ? product.galleryImages
     : (product.images.length ? product.images.map((url): GalleryImage => ({ url })) : [{ url: product.image }]).filter((image) => Boolean(image.url));
   const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? { url: product.image };
+  const currentMainSrc = currentImage.mainUrl ?? currentImage.url;
+  const currentLightboxSrc = currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
 
   useEffect(() => {
     if (!lightboxOpen || !galleryImages.length) return;
@@ -96,7 +107,7 @@ export default function ProductDetail() {
       (activeImageIndex - 1 + galleryImages.length) % galleryImages.length,
     ];
     neighborIndexes.forEach((index) => {
-      const src = galleryImages[index]?.url;
+      const src = galleryImages[index]?.lightboxUrl ?? galleryImages[index]?.main2xUrl ?? galleryImages[index]?.mainUrl ?? galleryImages[index]?.url;
       if (!src) return;
       const preload = new Image();
       preload.decoding = "async";
@@ -142,7 +153,7 @@ export default function ProductDetail() {
               style={{ backgroundColor: product.bgColor }}
             >
               <img
-                src={currentImage.url}
+                src={currentMainSrc}
                 alt={product.name}
                 className="w-full h-full object-cover cursor-zoom-in"
                 loading="eager"
@@ -151,6 +162,7 @@ export default function ProductDetail() {
                 width={currentImage.width ?? product.imageWidth}
                 height={currentImage.height ?? product.imageHeight}
                 sizes="(min-width: 1024px) 48vw, 95vw"
+                srcSet={currentImage.main2xUrl ? `${currentMainSrc} 1x, ${currentImage.main2xUrl} 2x` : undefined}
                 onClick={() => setLightboxOpen(Boolean(galleryImages.length))}
               />
 
@@ -185,7 +197,7 @@ export default function ProductDetail() {
                     className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
                   >
                     <img
-                      src={image.url}
+                      src={image.thumbUrl ?? image.url}
                       alt={`${product.name} thumbnail ${index + 1}`}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -368,7 +380,7 @@ export default function ProductDetail() {
           <DialogTitle className="sr-only">{product.name} image gallery</DialogTitle>
           <div className="relative">
             <img
-              src={currentImage.url}
+              src={currentLightboxSrc}
               alt={product.name}
               className="w-full max-h-[80vh] object-contain rounded-lg bg-gray-50"
               loading="eager"
@@ -377,6 +389,7 @@ export default function ProductDetail() {
               width={currentImage.width ?? product.imageWidth}
               height={currentImage.height ?? product.imageHeight}
               sizes="100vw"
+              srcSet={currentImage.lightbox2xUrl ? `${currentLightboxSrc} 1x, ${currentImage.lightbox2xUrl} 2x` : undefined}
             />
             {galleryImages.length > 1 && (
               <>

@@ -916,8 +916,8 @@ export async function listProducts(rawQuery: unknown) {
         category: true,
         seoMetadata: true,
         tags: { include: { tag: true } },
-        galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-        hoverImage: true,
+        galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
+        hoverImage: { include: { variants: true } },
         variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
       },
     }),
@@ -952,8 +952,8 @@ export async function listStorefrontProducts(rawQuery: unknown) {
       orderBy: { [query.sortBy]: query.sortDir },
       include: {
         category: true,
-        galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-        hoverImage: true,
+        galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
+        hoverImage: { include: { variants: true } },
         variants: { where: { isActive: true }, include: { inventoryLevel: true } },
       },
     }),
@@ -972,8 +972,8 @@ export async function getProductById(productId: string) {
       category: true,
       seoMetadata: true,
       tags: { include: { tag: true } },
-      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-      hoverImage: true,
+      galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
+      hoverImage: { include: { variants: true } },
       variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
     },
   });
@@ -993,8 +993,8 @@ export async function getStorefrontProductById(productId: string) {
     },
     include: {
       category: true,
-      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-      hoverImage: true,
+      galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
+      hoverImage: { include: { variants: true } },
       variants: { where: { isActive: true }, include: { inventoryLevel: true } },
     },
   });
@@ -1041,7 +1041,7 @@ export async function createProduct(rawBody: unknown) {
       seoMetadata: true,
       tags: { include: { tag: true } },
       galleries: true,
-      hoverImage: true,
+      hoverImage: { include: { variants: true } },
       relatedSource: true,
     },
   });
@@ -1100,8 +1100,8 @@ export async function updateProduct(productId: string, rawBody: unknown) {
     include: {
       seoMetadata: true,
       tags: { include: { tag: true } },
-      galleries: { include: { mediaAsset: true }, orderBy: { position: "asc" } },
-      hoverImage: true,
+      galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
+      hoverImage: { include: { variants: true } },
       relatedSource: true,
     },
   });

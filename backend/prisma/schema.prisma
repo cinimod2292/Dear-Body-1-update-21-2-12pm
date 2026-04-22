@@ -862,6 +862,25 @@ model MediaAsset {
   updatedAt     DateTime             @updatedAt
   galleries     ProductGalleryImage[]
   hoverForProducts Product[]          @relation("ProductHoverImage")
+  variants      MediaVariant[]
+}
+
+model MediaVariant {
+  id           String     @id @default(cuid())
+  mediaAssetId String
+  key          String
+  storageKey   String     @unique
+  publicUrl    String?
+  width        Int
+  height       Int
+  mimeType     String
+  byteSize     Int?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaAssetId, key])
+  @@index([mediaAssetId])
 }
 
 model AuditLog {

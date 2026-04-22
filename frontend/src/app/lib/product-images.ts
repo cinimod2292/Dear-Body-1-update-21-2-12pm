@@ -3,12 +3,17 @@ export type ProductGalleryImage = {
   url: string;
   width?: number;
   height?: number;
+  variants: Record<string, { url: string; width?: number; height?: number }>;
 };
 
 export function normalizeProductImages(
   galleries: Array<{
     mediaAssetId?: string;
-    mediaAsset?: { publicUrl?: string | null; metadata?: Record<string, unknown> | null } | null;
+    mediaAsset?: {
+      publicUrl?: string | null;
+      metadata?: Record<string, unknown> | null;
+      variants?: Array<{ key: string; publicUrl?: string | null; width?: number; height?: number }> | null;
+    } | null;
   }> | undefined,
 ): ProductGalleryImage[] {
   if (!Array.isArray(galleries)) return [];
@@ -28,6 +33,18 @@ export function normalizeProductImages(
       url: gallery.mediaAsset?.publicUrl?.trim() ?? "",
       width: parsePositiveNumber(gallery.mediaAsset?.metadata?.width),
       height: parsePositiveNumber(gallery.mediaAsset?.metadata?.height),
+      variants: Object.fromEntries(
+        (gallery.mediaAsset?.variants ?? [])
+          .filter((variant) => variant?.key && variant.publicUrl)
+          .map((variant) => [
+            variant.key,
+            {
+              url: String(variant.publicUrl),
+              width: parsePositiveNumber(variant.width),
+              height: parsePositiveNumber(variant.height),
+            },
+          ]),
+      ),
     }))
     .filter((entry) => entry.mediaAssetId && entry.url);
 }
@@ -41,6 +58,8 @@ export function resolveHoverImageUrl(params: {
   if (!hoverImageId) return undefined;
 
   const hoverImage = galleryImages.find((image) => image.mediaAssetId === hoverImageId);
-  if (!hoverImage?.url || hoverImage.url === primaryImageUrl) return undefined;
-  return hoverImage.url;
+  if (!hoverImage?.url) return undefined;
+  const hoverUrl = hoverImage.variants.card?.url ?? hoverImage.url;
+  if (hoverUrl === primaryImageUrl) return undefined;
+  return hoverUrl;
 }

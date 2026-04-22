@@ -17,11 +17,22 @@ export interface Product {
   image: string;
   imageWidth?: number;
   imageHeight?: number;
+  image2x?: string;
   hoverImage?: string;
+  hoverImage2x?: string;
   hoverImageWidth?: number;
   hoverImageHeight?: number;
   images: string[];
-  galleryImages?: Array<{ url: string; width?: number; height?: number }>;
+  galleryImages?: Array<{
+    url: string;
+    width?: number;
+    height?: number;
+    thumbUrl?: string;
+    mainUrl?: string;
+    main2xUrl?: string;
+    lightboxUrl?: string;
+    lightbox2xUrl?: string;
+  }>;
   description: string;
   ingredients: string;
   howToUse: string;
@@ -42,7 +53,14 @@ type StorefrontProductApi = {
   category?: { name: string } | null;
   featured?: boolean;
   hoverImageId?: string | null;
-  galleries?: Array<{ mediaAssetId: string; mediaAsset?: { publicUrl?: string | null; metadata?: Record<string, unknown> | null } | null }>;
+  galleries?: Array<{
+    mediaAssetId: string;
+    mediaAsset?: {
+      publicUrl?: string | null;
+      metadata?: Record<string, unknown> | null;
+      variants?: Array<{ key: string; publicUrl?: string | null; width?: number; height?: number }> | null;
+    } | null;
+  }>;
   variants?: Array<{
     id: string;
     isActive?: boolean;
@@ -116,8 +134,10 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const galleryImages = normalizeProductImages(api.galleries);
   const image = galleryImages[0]?.url ?? "";
   const primaryImage = galleryImages[0];
+  const primaryCardImage = primaryImage?.variants.card?.url ?? image;
+  const primaryCardImage2x = primaryImage?.variants.card_2x?.url;
   const hoverImage = resolveHoverImageUrl({
-    primaryImageUrl: image,
+    primaryImageUrl: primaryCardImage,
     hoverImageId: api.hoverImageId,
     galleryImages,
   });
@@ -127,7 +147,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     ? undefined
     : normalizePrice(primaryVariant.salePrice, basePrice);
 
-  const hoverImageMeta = hoverImage ? galleryImages.find((entry) => entry.url === hoverImage) : undefined;
+  const hoverImageMeta = api.hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === api.hoverImageId) : undefined;
 
   return {
     id: api.id,
@@ -141,14 +161,25 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     color: colorSet.color,
     bgColor: colorSet.bgColor,
     textColor: colorSet.textColor,
-    image,
+    image: primaryCardImage,
+    image2x: primaryCardImage2x,
     imageWidth: primaryImage?.width,
     imageHeight: primaryImage?.height,
     hoverImage,
+    hoverImage2x: hoverImageMeta?.variants.card_2x?.url,
     hoverImageWidth: hoverImageMeta?.width,
     hoverImageHeight: hoverImageMeta?.height,
     images: galleryImages.map((entry) => entry.url),
-    galleryImages: galleryImages.map((entry) => ({ url: entry.url, width: entry.width, height: entry.height })),
+    galleryImages: galleryImages.map((entry) => ({
+      url: entry.url,
+      width: entry.width,
+      height: entry.height,
+      thumbUrl: entry.variants.gallery_thumb?.url ?? entry.variants.thumb?.url ?? entry.url,
+      mainUrl: entry.variants.gallery_main?.url ?? entry.variants.card?.url ?? entry.url,
+      main2xUrl: entry.variants.gallery_main_2x?.url,
+      lightboxUrl: entry.variants.lightbox?.url ?? entry.variants.gallery_main_2x?.url ?? entry.url,
+      lightbox2xUrl: entry.variants.lightbox_2x?.url,
+    })),
     description: api.description ?? "",
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",

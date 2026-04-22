@@ -7,6 +7,7 @@ import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
 import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
+import { generateMediaVariantsForAsset } from "./media-variants.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
   app.get("/media/public/*", async (request, reply) => {
@@ -102,6 +103,12 @@ export async function mediaRoutes(app: FastifyInstance) {
         storageKey: asset.storageKey,
         publicUrl: asset.publicUrl,
       }, "Media upload finalized");
+
+      if (asset.kind === "IMAGE") {
+        generateMediaVariantsForAsset(asset.id).catch((error) => {
+          request.log.error({ err: error, mediaAssetId: asset.id }, "Failed to generate media variants");
+        });
+      }
       return reply.send({ data: asset });
     },
   );
@@ -180,13 +187,17 @@ export async function mediaRoutes(app: FastifyInstance) {
 
       const cfg = await resolveUploadConfig();
       const [items, total] = await Promise.all([
-        prisma.mediaAsset.findMany({ where, skip, take, orderBy }),
+        prisma.mediaAsset.findMany({ where, skip, take, orderBy, include: { variants: true } }),
         prisma.mediaAsset.count({ where }),
       ]);
 
       const normalizedItems = items.map((item) => ({
         ...item,
         publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
+        variants: item.variants.map((variant) => ({
+          ...variant,
+          publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
+        })),
       }));
       return reply.send({ data: toPaginatedResponse(normalizedItems, total, query) });
     },
@@ -216,6 +227,7 @@ export async function mediaRoutes(app: FastifyInstance) {
           _count: {
             select: { galleries: true },
           },
+          variants: true,
         },
       });
 
@@ -226,6 +238,10 @@ export async function mediaRoutes(app: FastifyInstance) {
         data: {
           ...asset,
           publicUrl: resolvePublicUrlForStorageKey(asset.storageKey, cfg),
+          variants: asset.variants.map((variant) => ({
+            ...variant,
+            publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
+          })),
           usage: {
             galleryCount: asset._count.galleries,
             products: asset.galleries.map((entry) => ({
@@ -236,6 +252,17 @@ export async function mediaRoutes(app: FastifyInstance) {
           },
         },
       });
+    },
+  );
+
+  app.post(
+    "/admin/media/:mediaId/regenerate-variants",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const query = request.query as { force?: string };
+      const result = await generateMediaVariantsForAsset(mediaId, { force: query.force === "true" });
+      return reply.send({ data: result });
     },
   );
 

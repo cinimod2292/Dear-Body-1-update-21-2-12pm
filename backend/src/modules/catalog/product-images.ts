@@ -40,6 +40,7 @@ type Media = {
   mimeType: string;
   storageKey?: string;
   publicUrl?: string | null;
+  variants?: Array<{ storageKey?: string; publicUrl?: string | null }>;
 };
 
 export function withResolvedProductMediaUrls<T extends {
@@ -51,7 +52,14 @@ export function withResolvedProductMediaUrls<T extends {
 ): T {
   const resolveMedia = (media?: Media | null) => {
     if (!media?.storageKey) return media;
-    return { ...media, publicUrl: publicUrlForStorageKey(media.storageKey) };
+    return {
+      ...media,
+      publicUrl: publicUrlForStorageKey(media.storageKey),
+      variants: media.variants?.map((variant) => ({
+        ...variant,
+        publicUrl: variant.storageKey ? publicUrlForStorageKey(variant.storageKey) : variant.publicUrl,
+      })),
+    };
   };
 
   return {

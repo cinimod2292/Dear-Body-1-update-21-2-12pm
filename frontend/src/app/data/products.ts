@@ -1,4 +1,5 @@
 import { API_BASE } from "../admin/api/client";
+import { normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
 
 export interface Product {
   id: string;
@@ -14,6 +15,13 @@ export interface Product {
   bgColor: string;
   textColor: string;
   image: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  hoverImage?: string;
+  hoverImageWidth?: number;
+  hoverImageHeight?: number;
+  images: string[];
+  galleryImages?: Array<{ url: string; width?: number; height?: number }>;
   description: string;
   ingredients: string;
   howToUse: string;
@@ -33,7 +41,8 @@ type StorefrontProductApi = {
   shortDescription?: string | null;
   category?: { name: string } | null;
   featured?: boolean;
-  galleries?: Array<{ mediaAsset?: { publicUrl?: string | null } | null }>;
+  hoverImageId?: string | null;
+  galleries?: Array<{ mediaAssetId: string; mediaAsset?: { publicUrl?: string | null; metadata?: Record<string, unknown> | null } | null }>;
   variants?: Array<{
     id: string;
     isActive?: boolean;
@@ -57,7 +66,7 @@ function normalizePrice(value: unknown, fallback = 0): number {
 }
 
 
-const STORE_PRODUCTS_CACHE_KEY = "storefront_products_cache_v1";
+const STORE_PRODUCTS_CACHE_KEY = "storefront_products_cache_v2";
 const STORE_PRODUCTS_CACHE_TTL_MS = 60 * 1000;
 let productsCache: { expiresAt: number; items: Product[] } | null = null;
 let inFlightProductsRequest: Promise<Product[]> | null = null;
@@ -104,12 +113,21 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const activeVariants = (api.variants ?? []).filter((variant) => variant.isActive !== false);
   const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
-  const image = api.galleries?.find((gallery) => gallery.mediaAsset?.publicUrl)?.mediaAsset?.publicUrl ?? "";
+  const galleryImages = normalizeProductImages(api.galleries);
+  const image = galleryImages[0]?.url ?? "";
+  const primaryImage = galleryImages[0];
+  const hoverImage = resolveHoverImageUrl({
+    primaryImageUrl: image,
+    hoverImageId: api.hoverImageId,
+    galleryImages,
+  });
   const tagDetails = parseJsonSafe<{ ingredients?: string; howToUse?: string; size?: string; scent?: string; tagline?: string }>(api.shortDescription ?? "");
   const basePrice = normalizePrice(primaryVariant?.price);
   const salePrice = primaryVariant?.salePrice === null || primaryVariant?.salePrice === undefined
     ? undefined
     : normalizePrice(primaryVariant.salePrice, basePrice);
+
+  const hoverImageMeta = hoverImage ? galleryImages.find((entry) => entry.url === hoverImage) : undefined;
 
   return {
     id: api.id,
@@ -124,6 +142,13 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     bgColor: colorSet.bgColor,
     textColor: colorSet.textColor,
     image,
+    imageWidth: primaryImage?.width,
+    imageHeight: primaryImage?.height,
+    hoverImage,
+    hoverImageWidth: hoverImageMeta?.width,
+    hoverImageHeight: hoverImageMeta?.height,
+    images: galleryImages.map((entry) => entry.url),
+    galleryImages: galleryImages.map((entry) => ({ url: entry.url, width: entry.width, height: entry.height })),
     description: api.description ?? "",
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",

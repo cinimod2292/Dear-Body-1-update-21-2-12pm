@@ -4,6 +4,7 @@ import { mapGallerySurfaceImages, normalizeProductImages, resolveCardImage, reso
 export interface Product {
   id: string;
   slug: string;
+  categoryId?: string;
   variantId: string | null;
   backendVariantId?: string | null;
   name: string;
@@ -50,7 +51,7 @@ type StorefrontProductApi = {
   name: string;
   description?: string | null;
   shortDescription?: string | null;
-  category?: { name: string } | null;
+  category?: { id: string; name: string } | null;
   featured?: boolean;
   hoverImageId?: string | null;
   galleries?: Array<{
@@ -151,6 +152,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   return {
     id: api.id,
     slug: api.slug,
+    categoryId: api.category?.id,
     variantId: primaryVariant?.id ?? null,
     name: api.name,
     tagline: tagDetails?.tagline ?? api.shortDescription ?? "",
@@ -180,6 +182,34 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     inStock: (primaryVariant?.inventoryLevel?.quantityOnHand ?? 0) > 0,
     scent: tagDetails?.scent,
   };
+}
+
+export async function fetchStoreProductsByQuery(query: {
+  q?: string;
+  categoryId?: string;
+  featured?: boolean;
+  perPage?: number;
+  sortBy?: "createdAt" | "updatedAt" | "name" | "publishedAt";
+  sortDir?: "asc" | "desc";
+}): Promise<Product[]> {
+  const params = new URLSearchParams({
+    perPage: String(query.perPage ?? 24),
+    sortBy: query.sortBy ?? "createdAt",
+    sortDir: query.sortDir ?? "desc",
+  });
+  if (query.q) params.set("q", query.q);
+  if (query.categoryId) params.set("categoryId", query.categoryId);
+  if (query.featured !== undefined) params.set("featured", String(query.featured));
+
+  const response = await fetch(`${API_BASE}/store/products?${params.toString()}`);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || "Failed to load products");
+  }
+  const items = (payload?.data?.items || []) as StorefrontProductApi[];
+  return items
+    .map((item, index) => toProduct(item, index))
+    .filter((product) => Boolean(product.variantId));
 }
 
 export async function fetchStoreProducts(forceRefresh = false): Promise<Product[]> {

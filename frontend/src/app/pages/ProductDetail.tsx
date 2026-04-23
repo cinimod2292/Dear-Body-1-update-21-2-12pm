@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
-import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
+import { fetchStoreProductById, fetchStoreProductsByQuery, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 import { useFavorites } from "../context/FavoritesContext";
@@ -27,24 +27,43 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (!id) return;
+    let isCancelled = false;
 
     setLoading(true);
-    Promise.all([fetchStoreProductById(id), fetchStoreProducts()])
-      .then(([foundProduct, allProducts]) => {
+    setRelated([]);
+    fetchStoreProductById(id)
+      .then((foundProduct) => {
+        if (isCancelled) return;
         setProduct(foundProduct);
         setActiveImageIndex(0);
         setLightboxOpen(false);
-        if (foundProduct) {
-          setRelated(allProducts.filter((item) => item.id !== foundProduct.id && item.category === foundProduct.category).slice(0, 4));
-        } else {
-          setRelated([]);
-        }
+        setLoading(false);
+
+        if (!foundProduct?.categoryId) return;
+        fetchStoreProductsByQuery({ categoryId: foundProduct.categoryId, perPage: 8, sortBy: "updatedAt", sortDir: "desc" })
+          .then((items) => {
+            if (isCancelled) return;
+            setRelated(items.filter((item) => item.id !== foundProduct.id).slice(0, 4));
+          })
+          .catch(() => {
+            if (isCancelled) return;
+            setRelated([]);
+          });
       })
       .catch(() => {
+        if (isCancelled) return;
         setProduct(null);
         setRelated([]);
+        setLoading(false);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isCancelled) return;
+        setLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [id]);
 
   const handleAddToCart = () => {

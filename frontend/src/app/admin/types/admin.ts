@@ -30,7 +30,11 @@ export interface AdminProduct {
   categoryId?: string | null;
   brand?: { id: string; name: string } | null;
   category?: { id: string; name: string } | null;
-  variants?: Array<{ id: string; sku: string; price: number; salePrice?: number | null; inventoryLevel?: { quantityOnHand: number; lowStockThreshold: number } | null }>;
+  price?: number | null;
+  salePrice?: number | null;
+  stockTotal?: number;
+  thumbnailUrl?: string | null;
+  thumbnail2xUrl?: string | null;
   updatedAt: string;
 }
 

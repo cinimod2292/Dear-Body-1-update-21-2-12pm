@@ -6,6 +6,20 @@ export type ProductGalleryImage = {
   variants: Record<string, { url: string; width?: number; height?: number }>;
 };
 
+type SurfaceImage = {
+  url: string;
+  width?: number;
+  height?: number;
+  variants?: Record<string, { url: string; width?: number; height?: number }>;
+};
+
+export type ImageSourceSet = {
+  src: string;
+  srcSet?: string;
+  width?: number;
+  height?: number;
+};
+
 export function normalizeProductImages(
   galleries: Array<{
     mediaAssetId?: string;
@@ -59,17 +73,17 @@ export function resolveHoverImageUrl(params: {
 
   const hoverImage = galleryImages.find((image) => image.mediaAssetId === hoverImageId);
   if (!hoverImage?.url) return undefined;
-  const hoverUrl = hoverImage.variants.card?.url ?? hoverImage.url;
+  const hoverUrl = getCardImageSources(hoverImage)?.src ?? hoverImage.url;
   if (hoverUrl === primaryImageUrl) return undefined;
   return hoverUrl;
 }
 
-
 export function resolveCardImage(entry: ProductGalleryImage | undefined): { image: string; image2x?: string } {
-  if (!entry) return { image: "" };
+  const card = getCardImageSources(entry);
+  if (!card) return { image: "" };
   return {
-    image: entry.variants.card?.url ?? entry.url,
-    image2x: entry.variants.card_2x?.url,
+    image: card.src,
+    image2x: card.srcSet ? card.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
   };
 }
 
@@ -83,14 +97,65 @@ export function mapGallerySurfaceImages(entry: ProductGalleryImage): {
   lightboxUrl: string;
   lightbox2xUrl?: string;
 } {
+  const thumb = getThumbImageSources(entry);
+  const main = getGalleryMainSources(entry);
+  const lightbox = getLightboxSources(entry);
   return {
     url: entry.url,
     width: entry.width,
     height: entry.height,
-    thumbUrl: entry.variants.gallery_thumb?.url ?? entry.variants.thumb?.url ?? entry.url,
-    mainUrl: entry.variants.gallery_main?.url ?? entry.variants.card?.url ?? entry.url,
-    main2xUrl: entry.variants.gallery_main_2x?.url,
-    lightboxUrl: entry.variants.lightbox?.url ?? entry.variants.gallery_main_2x?.url ?? entry.url,
-    lightbox2xUrl: entry.variants.lightbox_2x?.url,
+    thumbUrl: thumb?.src ?? entry.url,
+    mainUrl: main?.src ?? entry.url,
+    main2xUrl: main?.srcSet ? main.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
+    lightboxUrl: lightbox?.src ?? entry.url,
+    lightbox2xUrl: lightbox?.srcSet ? lightbox.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
+  };
+}
+
+export function getCardImageSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.card?.url
+    ?? entry.variants?.gallery_main?.url
+    ?? entry.variants?.thumb?.url
+    ?? entry.url;
+  const src2x = entry.variants?.card_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.card?.width ?? entry.variants?.gallery_main?.width ?? entry.variants?.thumb?.width ?? entry.width,
+    height: entry.variants?.card?.height ?? entry.variants?.gallery_main?.height ?? entry.variants?.thumb?.height ?? entry.height,
+  };
+}
+
+export function getThumbImageSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  return {
+    src: entry.variants?.gallery_thumb?.url ?? entry.variants?.thumb?.url ?? entry.url,
+    width: entry.variants?.gallery_thumb?.width ?? entry.variants?.thumb?.width ?? entry.width,
+    height: entry.variants?.gallery_thumb?.height ?? entry.variants?.thumb?.height ?? entry.height,
+  };
+}
+
+export function getGalleryMainSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.gallery_main?.url ?? entry.variants?.card?.url ?? entry.url;
+  const src2x = entry.variants?.gallery_main_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.gallery_main?.width ?? entry.variants?.card?.width ?? entry.width,
+    height: entry.variants?.gallery_main?.height ?? entry.variants?.card?.height ?? entry.height,
+  };
+}
+
+export function getLightboxSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.lightbox?.url ?? entry.variants?.gallery_main_2x?.url ?? entry.variants?.gallery_main?.url ?? entry.url;
+  const src2x = entry.variants?.lightbox_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.lightbox?.width ?? entry.variants?.gallery_main_2x?.width ?? entry.variants?.gallery_main?.width ?? entry.width,
+    height: entry.variants?.lightbox?.height ?? entry.variants?.gallery_main_2x?.height ?? entry.variants?.gallery_main?.height ?? entry.height,
   };
 }

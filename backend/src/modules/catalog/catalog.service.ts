@@ -961,11 +961,7 @@ export async function listProducts(rawQuery: unknown) {
       ? resolvePublicUrlForStorageKey(cardVariant.storageKey, cfg)
       : thumbVariant?.storageKey
         ? resolvePublicUrlForStorageKey(thumbVariant.storageKey, cfg)
-        : media?.storageKey
-          ? resolvePublicUrlForStorageKey(media.storageKey, cfg)
-          : media?.publicUrl
-            ? media.publicUrl
-            : null;
+        : cardVariant?.publicUrl ?? thumbVariant?.publicUrl ?? null;
     const thumbnail2xUrl = card2xVariant?.storageKey
       ? resolvePublicUrlForStorageKey(card2xVariant.storageKey, cfg)
       : card2xVariant?.publicUrl ?? null;
@@ -1033,7 +1029,7 @@ export async function listStorefrontProducts(rawQuery: unknown) {
                 storageKey: true,
                 metadata: true,
                 variants: {
-                  where: { key: { in: ["thumb", "card", "card_2x", "gallery_thumb"] } },
+                  where: { key: { in: ["thumb", "card", "card_2x", "gallery_thumb", "gallery_main"] } },
                   select: { key: true, publicUrl: true, storageKey: true, width: true, height: true },
                 },
               },

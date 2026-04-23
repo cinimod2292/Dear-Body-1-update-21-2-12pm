@@ -8,6 +8,7 @@ import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { deriveGalleryImages, type ProductDetailImage } from "../lib/product-detail-images";
+import { getGalleryMainSources, getLightboxSources, getThumbImageSources } from "../lib/product-images";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -92,8 +93,21 @@ export default function ProductDetail() {
   const currentImage = galleryImages[safeActiveImageIndex]
     ?? galleryImages[0]
     ?? { url: product?.image ?? "" };
-  const currentMainSrc = currentImage.mainUrl ?? currentImage.url;
-  const currentLightboxSrc = currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
+  const currentMainSources = getGalleryMainSources(currentImage);
+  const currentLightboxSources = getLightboxSources(currentImage);
+  const currentMainSrc = currentMainSources?.src ?? currentImage.mainUrl ?? currentImage.url;
+  const currentLightboxSrc = currentLightboxSources?.src ?? currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
+
+  useEffect(() => {
+    if (!galleryImages.length) {
+      if (activeImageIndex !== 0) setActiveImageIndex(0);
+      if (lightboxOpen) setLightboxOpen(false);
+      return;
+    }
+    if (activeImageIndex > galleryImages.length - 1) {
+      setActiveImageIndex(galleryImages.length - 1);
+    }
+  }, [activeImageIndex, galleryImages.length, lightboxOpen]);
 
   useEffect(() => {
     if (!galleryImages.length) {
@@ -114,7 +128,7 @@ export default function ProductDetail() {
       (activeImageIndex - 1 + galleryImages.length) % galleryImages.length,
     ];
     neighborIndexes.forEach((index) => {
-      const src = galleryImages[index]?.lightboxUrl ?? galleryImages[index]?.main2xUrl ?? galleryImages[index]?.mainUrl ?? galleryImages[index]?.url;
+      const src = getLightboxSources(galleryImages[index])?.src ?? galleryImages[index]?.lightboxUrl ?? galleryImages[index]?.main2xUrl ?? galleryImages[index]?.mainUrl ?? galleryImages[index]?.url;
       if (!src) return;
       const preload = new Image();
       preload.decoding = "async";
@@ -189,7 +203,7 @@ export default function ProductDetail() {
                 width={currentImage.width ?? product.imageWidth}
                 height={currentImage.height ?? product.imageHeight}
                 sizes="(min-width: 1024px) 48vw, 95vw"
-                srcSet={currentImage.main2xUrl ? `${currentMainSrc} 1x, ${currentImage.main2xUrl} 2x` : undefined}
+                srcSet={currentMainSources?.srcSet ?? (currentImage.main2xUrl ? `${currentMainSrc} 1x, ${currentImage.main2xUrl} 2x` : undefined)}
                 onClick={() => setLightboxOpen(Boolean(galleryImages.length))}
               />
 
@@ -216,26 +230,29 @@ export default function ProductDetail() {
             </div>
             {galleryImages.length > 1 && (
               <div className="mt-4 grid grid-cols-5 gap-2">
-                {galleryImages.map((image, index) => (
-                  <button
-                    key={`${image.url}-${index}`}
-                    type="button"
-                    onClick={() => setActiveImageIndex(index)}
-                    className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
-                  >
-                    <img
-                      src={image.thumbUrl ?? image.url}
-                      alt={`${product.name} thumbnail ${index + 1}`}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority="low"
-                      width={image.width}
-                      height={image.height}
-                      sizes="96px"
-                    />
-                  </button>
-                ))}
+                {galleryImages.map((image, index) => {
+                  const thumbSources = getThumbImageSources(image);
+                  return (
+                    <button
+                      key={`${image.url}-${index}`}
+                      type="button"
+                      onClick={() => setActiveImageIndex(index)}
+                      className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
+                    >
+                      <img
+                        src={thumbSources?.src ?? image.thumbUrl ?? image.url}
+                        alt={`${product.name} thumbnail ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                        width={thumbSources?.width ?? image.width}
+                        height={thumbSources?.height ?? image.height}
+                        sizes="96px"
+                      />
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -416,7 +433,7 @@ export default function ProductDetail() {
               width={currentImage.width ?? product.imageWidth}
               height={currentImage.height ?? product.imageHeight}
               sizes="100vw"
-              srcSet={currentImage.lightbox2xUrl ? `${currentLightboxSrc} 1x, ${currentImage.lightbox2xUrl} 2x` : undefined}
+              srcSet={currentLightboxSources?.srcSet ?? (currentImage.lightbox2xUrl ? `${currentLightboxSrc} 1x, ${currentImage.lightbox2xUrl} 2x` : undefined)}
             />
             {galleryImages.length > 1 && (
               <>

@@ -1,5 +1,5 @@
 import { API_BASE } from "../admin/api/client";
-import { mapGallerySurfaceImages, normalizeProductImages, resolveCardImage, resolveHoverImageUrl } from "../lib/product-images";
+import { getCardImageSources, mapGallerySurfaceImages, normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
 
 export interface Product {
   id: string;
@@ -135,7 +135,9 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const galleryImages = normalizeProductImages(api.galleries);
   const image = galleryImages[0]?.url ?? "";
   const primaryImage = galleryImages[0];
-  const { image: primaryCardImage, image2x: primaryCardImage2x } = resolveCardImage(primaryImage);
+  const primaryCardSources = getCardImageSources(primaryImage);
+  const primaryCardImage = primaryCardSources?.src ?? image;
+  const primaryCardImage2x = primaryCardSources?.srcSet ? primaryCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined;
   const hoverImage = resolveHoverImageUrl({
     primaryImageUrl: primaryCardImage,
     hoverImageId: api.hoverImageId,
@@ -148,6 +150,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     : normalizePrice(primaryVariant.salePrice, basePrice);
 
   const hoverImageMeta = api.hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === api.hoverImageId) : undefined;
+  const hoverCardSources = getCardImageSources(hoverImageMeta);
 
   return {
     id: api.id,
@@ -167,7 +170,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     imageWidth: primaryImage?.width,
     imageHeight: primaryImage?.height,
     hoverImage,
-    hoverImage2x: hoverImageMeta?.variants.card_2x?.url,
+    hoverImage2x: hoverCardSources?.srcSet ? hoverCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
     hoverImageWidth: hoverImageMeta?.width,
     hoverImageHeight: hoverImageMeta?.height,
     images: galleryImages.map((entry) => entry.url),

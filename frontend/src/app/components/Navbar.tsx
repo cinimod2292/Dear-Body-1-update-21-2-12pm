@@ -13,6 +13,7 @@ export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [announcement, setAnnouncement] = useState("🌈 FREE SHIPPING on orders over R50 · Use code DEARBODY20 for 20% off!");
   const [logoUrl, setLogoUrl] = useState("");
+  const [logo2xUrl, setLogo2xUrl] = useState("");
   const [navItems, setNavItems] = useState<Array<{ label: string; href: string }>>([
     { label: "Home", href: "/" },
     { label: "Shop", href: "/shop" },
@@ -28,6 +29,7 @@ export function Navbar() {
       .then((bootstrap) => {
         setAnnouncement(bootstrap.siteConfig.header.announcementText || announcement);
         setLogoUrl(bootstrap.siteConfig.branding.logoUrl || bootstrap.siteConfig.header.logoUrl || "");
+        setLogo2xUrl(bootstrap.siteConfig.branding.logo2xUrl || bootstrap.siteConfig.header.logo2xUrl || "");
         const items = bootstrap.siteConfig.navigation.items.filter((i) => i.enabled).map((i) => ({ label: i.label, href: i.href }));
         if (items.length > 0) setNavItems(items);
       })
@@ -57,7 +59,12 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
-            <img src={logoUrl || logoImage} alt="Dear Body" className="h-10 w-auto object-contain" />
+            <img
+              src={logoUrl || logoImage}
+              srcSet={logo2xUrl ? `${logoUrl || logoImage} 1x, ${logo2xUrl} 2x` : undefined}
+              alt="Dear Body"
+              className="h-10 w-auto object-contain"
+            />
           </Link>
 
           <div className="hidden md:flex items-center gap-8">

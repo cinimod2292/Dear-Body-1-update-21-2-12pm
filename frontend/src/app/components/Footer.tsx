@@ -13,6 +13,7 @@ const iconMap: Record<string, any> = {
 
 export function Footer() {
   const [logoUrl, setLogoUrl] = useState("");
+  const [logo2xUrl, setLogo2xUrl] = useState("");
   const [contactEmail, setContactEmail] = useState("hello@dearbody.com");
   const [contactPhone, setContactPhone] = useState("+1 (800) DEAR-BODY");
   const [address, setAddress] = useState("123 Bloom Avenue, Miami, FL 33101, USA");
@@ -26,6 +27,7 @@ export function Footer() {
     fetchCmsBootstrap()
       .then((bootstrap) => {
         setLogoUrl(bootstrap.siteConfig.branding.logoUrl || "");
+        setLogo2xUrl(bootstrap.siteConfig.branding.logo2xUrl || "");
         setContactEmail(bootstrap.siteConfig.footer.contactEmail || contactEmail);
         setContactPhone(bootstrap.siteConfig.footer.contactPhone || contactPhone);
         setAddress(bootstrap.siteConfig.footer.address || address);
@@ -45,7 +47,13 @@ export function Footer() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <img src={logoUrl || logoImage} alt="Dear Body" className="h-10 w-auto object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+              <img
+                src={logoUrl || logoImage}
+                srcSet={logo2xUrl ? `${logoUrl || logoImage} 1x, ${logo2xUrl} 2x` : undefined}
+                alt="Dear Body"
+                className="h-10 w-auto object-contain"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
             </div>
             <p className="text-gray-400 text-sm leading-relaxed mb-6">Vibrant fragrances and body care crafted for those who dare to be bold.</p>
             <div className="flex gap-3">

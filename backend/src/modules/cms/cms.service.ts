@@ -30,6 +30,7 @@ const defaultHomeSections = [
       ctaSecondaryLabel: "View Body Sprays",
       ctaSecondaryHref: "/shop?category=Body+Spray",
       backgroundImageUrl: "",
+      backgroundMediaAssetId: "",
     },
   },
   {
@@ -66,6 +67,8 @@ const defaultSiteConfig = {
   header: {
     announcementText: "FREE SHIPPING on orders over R50",
     logoUrl: "",
+    logo2xUrl: "",
+    logoMediaAssetId: "",
   },
   footer: {
     copyrightText: `© ${new Date().getFullYear()} My Dear Body. All rights reserved.`,
@@ -82,6 +85,9 @@ const defaultSiteConfig = {
     secondaryColor: "#f97316",
     fontFamily: "Inter, sans-serif",
     logoUrl: "",
+    logo2xUrl: "",
+    logoFooterUrl: "",
+    logoMediaAssetId: "",
     faviconUrl: "",
   },
   seoDefaults: {
@@ -118,6 +124,19 @@ async function writeSetting(key: string, value: unknown) {
   });
 }
 
+type MediaWithVariants = {
+  publicUrl: string | null;
+  variants: Array<{ key: string; publicUrl: string | null }>;
+};
+
+function pickVariantUrl(asset: MediaWithVariants, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = asset.variants.find((variant) => variant.key === key)?.publicUrl?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 export async function getCmsBootstrap() {
   const [siteConfig, homeSections, staticPages] = await Promise.all([
     readSetting(SITE_CONFIG_KEY, defaultSiteConfig),
@@ -125,9 +144,59 @@ export async function getCmsBootstrap() {
     readSetting(STATIC_PAGES_KEY, defaultStaticPages),
   ]);
 
+  const parsedSiteConfig = siteConfigSchema.parse(siteConfig);
+  const parsedHomeSections = upsertHomeSectionsSchema.parse({ sections: homeSections }).sections;
+  const mediaAssetIds = new Set<string>();
+  const logoAssetId = parsedSiteConfig.branding.logoMediaAssetId || parsedSiteConfig.header.logoMediaAssetId;
+  if (logoAssetId) mediaAssetIds.add(logoAssetId);
+  for (const section of parsedHomeSections) {
+    const maybeHeroAssetId = section.type === "hero" ? String(section.content.backgroundMediaAssetId ?? "").trim() : "";
+    if (maybeHeroAssetId) mediaAssetIds.add(maybeHeroAssetId);
+  }
+
+  const mediaAssets = mediaAssetIds.size > 0
+    ? await prisma.mediaAsset.findMany({
+      where: { id: { in: [...mediaAssetIds] } },
+      select: { id: true, publicUrl: true, variants: { select: { key: true, publicUrl: true } } },
+    })
+    : [];
+  const mediaById = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+
+  if (logoAssetId) {
+    const logoAsset = mediaById.get(logoAssetId);
+    if (logoAsset) {
+      parsedSiteConfig.header.logoUrl = pickVariantUrl(logoAsset, ["logo_header", "card", "thumb"]) ?? logoAsset.publicUrl ?? parsedSiteConfig.header.logoUrl;
+      parsedSiteConfig.header.logo2xUrl = pickVariantUrl(logoAsset, ["logo_2x", "card_2x", "gallery_main"]) ?? parsedSiteConfig.header.logo2xUrl;
+      parsedSiteConfig.branding.logoUrl = pickVariantUrl(logoAsset, ["logo_footer", "logo_header", "card"]) ?? logoAsset.publicUrl ?? parsedSiteConfig.branding.logoUrl;
+      parsedSiteConfig.branding.logo2xUrl = pickVariantUrl(logoAsset, ["logo_2x", "card_2x", "gallery_main"]) ?? parsedSiteConfig.branding.logo2xUrl;
+      parsedSiteConfig.branding.logoFooterUrl = pickVariantUrl(logoAsset, ["logo_footer", "logo_header", "card"]) ?? parsedSiteConfig.branding.logoFooterUrl;
+    }
+  }
+
+  const resolvedHomeSections = parsedHomeSections.map((section) => {
+    if (section.type !== "hero") return section;
+    const heroAssetId = String(section.content.backgroundMediaAssetId ?? "").trim();
+    if (!heroAssetId) return section;
+    const heroAsset = mediaById.get(heroAssetId);
+    if (!heroAsset) return section;
+    const desktop = pickVariantUrl(heroAsset, ["hero_desktop", "lightbox", "gallery_main_2x", "gallery_main"]) ?? heroAsset.publicUrl ?? "";
+    const desktop2x = pickVariantUrl(heroAsset, ["hero_desktop_2x", "lightbox_2x", "lightbox", "gallery_main_2x"]);
+    const mobile = pickVariantUrl(heroAsset, ["hero_mobile", "card_2x", "card", "gallery_main"]) ?? desktop;
+
+    return {
+      ...section,
+      content: {
+        ...section.content,
+        backgroundImageUrl: desktop || section.content.backgroundImageUrl,
+        backgroundImageMobileUrl: mobile || section.content.backgroundImageMobileUrl,
+        backgroundImageSrcSet: desktop2x ? `${desktop} 1x, ${desktop2x} 2x` : section.content.backgroundImageSrcSet,
+      },
+    };
+  });
+
   return {
-    siteConfig: siteConfigSchema.parse(siteConfig),
-    homeSections: upsertHomeSectionsSchema.parse({ sections: homeSections }).sections,
+    siteConfig: parsedSiteConfig,
+    homeSections: resolvedHomeSections,
     staticPages: (staticPages as unknown[]).map((page) => staticPageSchema.parse(page)),
   };
 }

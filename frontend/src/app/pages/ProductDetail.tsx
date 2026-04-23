@@ -110,17 +110,6 @@ export default function ProductDetail() {
   }, [activeImageIndex, galleryImages.length, lightboxOpen]);
 
   useEffect(() => {
-    if (!galleryImages.length) {
-      if (activeImageIndex !== 0) setActiveImageIndex(0);
-      if (lightboxOpen) setLightboxOpen(false);
-      return;
-    }
-    if (activeImageIndex > galleryImages.length - 1) {
-      setActiveImageIndex(galleryImages.length - 1);
-    }
-  }, [activeImageIndex, galleryImages.length, lightboxOpen]);
-
-  useEffect(() => {
     if (!lightboxOpen || !galleryImages.length) return;
     const neighborIndexes = [
       activeImageIndex,

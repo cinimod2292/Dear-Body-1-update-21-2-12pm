@@ -20,6 +20,24 @@ export type ImageSourceSet = {
   height?: number;
 };
 
+export type ProductCardImageFields = {
+  image: string;
+  image2x?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  hoverImage?: string;
+  hoverImage2x?: string;
+  hoverImageWidth?: number;
+  hoverImageHeight?: number;
+};
+
+export function extract2xUrl(srcSet?: string): string | undefined {
+  if (!srcSet) return undefined;
+  const second = srcSet.split(",")[1]?.trim();
+  if (!second) return undefined;
+  return second.split(" ")[0];
+}
+
 export function normalizeProductImages(
   galleries: Array<{
     mediaAssetId?: string;
@@ -83,7 +101,7 @@ export function resolveCardImage(entry: ProductGalleryImage | undefined): { imag
   if (!card) return { image: "" };
   return {
     image: card.src,
-    image2x: card.srcSet ? card.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
+    image2x: extract2xUrl(card.srcSet),
   };
 }
 
@@ -106,9 +124,9 @@ export function mapGallerySurfaceImages(entry: ProductGalleryImage): {
     height: entry.height,
     thumbUrl: thumb?.src ?? entry.url,
     mainUrl: main?.src ?? entry.url,
-    main2xUrl: main?.srcSet ? main.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
+    main2xUrl: extract2xUrl(main?.srcSet),
     lightboxUrl: lightbox?.src ?? entry.url,
-    lightbox2xUrl: lightbox?.srcSet ? lightbox.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
+    lightbox2xUrl: extract2xUrl(lightbox?.srcSet),
   };
 }
 
@@ -157,5 +175,33 @@ export function getLightboxSources(entry: SurfaceImage | undefined): ImageSource
     srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
     width: entry.variants?.lightbox?.width ?? entry.variants?.gallery_main_2x?.width ?? entry.variants?.gallery_main?.width ?? entry.width,
     height: entry.variants?.lightbox?.height ?? entry.variants?.gallery_main_2x?.height ?? entry.variants?.gallery_main?.height ?? entry.height,
+  };
+}
+
+export function mapProductCardImageFields(params: {
+  primaryImage?: ProductGalleryImage;
+  hoverImageId?: string | null;
+  galleryImages: ProductGalleryImage[];
+}): ProductCardImageFields {
+  const { primaryImage, hoverImageId, galleryImages } = params;
+  const fallbackImage = primaryImage?.url ?? "";
+  const primaryCardSources = getCardImageSources(primaryImage);
+  const hoverImageMeta = hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === hoverImageId) : undefined;
+  const hoverCardSources = getCardImageSources(hoverImageMeta);
+  const hoverImage = resolveHoverImageUrl({
+    primaryImageUrl: primaryCardSources?.src ?? fallbackImage,
+    hoverImageId,
+    galleryImages,
+  });
+
+  return {
+    image: primaryCardSources?.src ?? fallbackImage,
+    image2x: extract2xUrl(primaryCardSources?.srcSet),
+    imageWidth: primaryCardSources?.width ?? primaryImage?.width,
+    imageHeight: primaryCardSources?.height ?? primaryImage?.height,
+    hoverImage,
+    hoverImage2x: extract2xUrl(hoverCardSources?.srcSet),
+    hoverImageWidth: hoverCardSources?.width ?? hoverImageMeta?.width,
+    hoverImageHeight: hoverCardSources?.height ?? hoverImageMeta?.height,
   };
 }

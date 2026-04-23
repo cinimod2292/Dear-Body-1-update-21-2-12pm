@@ -1,5 +1,5 @@
 import { API_BASE } from "../admin/api/client";
-import { getCardImageSources, mapGallerySurfaceImages, normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
+import { mapGallerySurfaceImages, mapProductCardImageFields, normalizeProductImages } from "../lib/product-images";
 
 export interface Product {
   id: string;
@@ -133,13 +133,9 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
   const galleryImages = normalizeProductImages(api.galleries);
-  const image = galleryImages[0]?.url ?? "";
   const primaryImage = galleryImages[0];
-  const primaryCardSources = getCardImageSources(primaryImage);
-  const primaryCardImage = primaryCardSources?.src ?? image;
-  const primaryCardImage2x = primaryCardSources?.srcSet ? primaryCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined;
-  const hoverImage = resolveHoverImageUrl({
-    primaryImageUrl: primaryCardImage,
+  const cardFields = mapProductCardImageFields({
+    primaryImage,
     hoverImageId: api.hoverImageId,
     galleryImages,
   });
@@ -148,9 +144,6 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const salePrice = primaryVariant?.salePrice === null || primaryVariant?.salePrice === undefined
     ? undefined
     : normalizePrice(primaryVariant.salePrice, basePrice);
-
-  const hoverImageMeta = api.hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === api.hoverImageId) : undefined;
-  const hoverCardSources = getCardImageSources(hoverImageMeta);
 
   return {
     id: api.id,
@@ -165,14 +158,14 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     color: colorSet.color,
     bgColor: colorSet.bgColor,
     textColor: colorSet.textColor,
-    image: primaryCardImage,
-    image2x: primaryCardImage2x,
-    imageWidth: primaryImage?.width,
-    imageHeight: primaryImage?.height,
-    hoverImage,
-    hoverImage2x: hoverCardSources?.srcSet ? hoverCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
-    hoverImageWidth: hoverImageMeta?.width,
-    hoverImageHeight: hoverImageMeta?.height,
+    image: cardFields.image,
+    image2x: cardFields.image2x,
+    imageWidth: cardFields.imageWidth,
+    imageHeight: cardFields.imageHeight,
+    hoverImage: cardFields.hoverImage,
+    hoverImage2x: cardFields.hoverImage2x,
+    hoverImageWidth: cardFields.hoverImageWidth,
+    hoverImageHeight: cardFields.hoverImageHeight,
     images: galleryImages.map((entry) => entry.url),
     galleryImages: galleryImages.map((entry) => mapGallerySurfaceImages(entry)),
     description: api.description ?? "",

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   getCardImageSources,
+  mapProductCardImageFields,
   getGalleryMainSources,
   getLightboxSources,
   getThumbImageSources,
@@ -82,4 +83,27 @@ test("hover image uses card strategy and falls back only when variants are absen
     galleryImages: [{ ...baseImage, mediaAssetId: "img1", variants: {} }] as any,
   });
   assert.equal(noVariantsHover, "https://img/original.jpg");
+});
+
+test("ProductCard field mapping uses card-sized sources by default", () => {
+  const hoverImage = {
+    ...baseImage,
+    mediaAssetId: "img2",
+    url: "https://img/hover-original.jpg",
+    variants: {
+      ...baseImage.variants,
+      card: { url: "https://img/hover-card.jpg" },
+      card_2x: { url: "https://img/hover-card-2x.jpg" },
+    },
+  };
+  const mapped = mapProductCardImageFields({
+    primaryImage: baseImage as any,
+    hoverImageId: "img2",
+    galleryImages: [baseImage as any, hoverImage as any],
+  });
+
+  assert.equal(mapped.image, "https://img/card.jpg");
+  assert.equal(mapped.image2x, "https://img/card-2x.jpg");
+  assert.equal(mapped.hoverImage, "https://img/hover-card.jpg");
+  assert.equal(mapped.hoverImage2x, "https://img/hover-card-2x.jpg");
 });

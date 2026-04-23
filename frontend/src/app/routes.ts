@@ -5,6 +5,7 @@ const Root = lazy(() => import("./components/Root").then((mod) => ({ default: mo
 const Home = lazy(() => import("./pages/Home"));
 const Shop = lazy(() => import("./pages/Shop"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const ProductDetailErrorBoundary = lazy(() => import("./pages/ProductDetailErrorBoundary"));
 const Cart = lazy(() => import("./pages/Cart"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Checkout = lazy(() => import("./pages/Checkout"));
@@ -41,7 +42,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Home },
       { path: "shop", Component: Shop },
-      { path: "product/:id", Component: ProductDetail },
+      { path: "product/:id", Component: ProductDetail, ErrorBoundary: ProductDetailErrorBoundary },
       { path: "cart", Component: Cart },
       { path: "favorites", Component: Favorites },
       { path: "checkout", Component: Checkout },

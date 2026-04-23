@@ -4,15 +4,20 @@ import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
+import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
 import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { generateMediaVariantsForAsset } from "./media-variants.js";
+import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
+  let backfillInProgress = false;
+  let backfillRunId = 0;
+
   app.get("/media/public/*", async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
     if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
+    reply.header("Cache-Control", "public, max-age=31536000, immutable");
     const cfg = await resolveUploadConfig();
     if (cfg.provider === "local") {
       return reply.redirect(`${resolveLocalPublicBaseUrl()}/local-upload/${storageKey}`);
@@ -20,6 +25,80 @@ export async function mediaRoutes(app: FastifyInstance) {
     const downloadUrl = await createS3DownloadUrl(storageKey, cfg);
     return reply.redirect(downloadUrl);
   });
+
+  app.post(
+    "/admin/media/run-backfill",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const body = runMediaBackfillSchema.parse(request.body ?? {});
+      const token = request.headers["x-internal-token"];
+      const suppliedToken = Array.isArray(token) ? token[0] : token;
+      if (env.MEDIA_BACKFILL_TOKEN && suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
+        return reply.status(403).send({ error: { message: "Invalid internal token" } });
+      }
+
+      if (backfillInProgress) {
+        return reply.status(409).send({
+          status: "running",
+          message: "A media backfill run is already in progress",
+        });
+      }
+
+      backfillInProgress = true;
+      backfillRunId += 1;
+      const runId = backfillRunId;
+      const mode = body.assetId ? "asset" : body.productId ? "product" : "all";
+
+      request.log.info({
+        runId,
+        mode,
+        assetId: body.assetId ?? null,
+        productId: body.productId ?? null,
+        force: body.force,
+        actorUserId: request.user.sub,
+      }, "Media variant backfill started");
+
+      setImmediate(() => {
+        runMediaVariantsBackfill({
+          all: !body.assetId && !body.productId,
+          productId: body.productId,
+          assetId: body.assetId,
+          force: body.force,
+        }, (message, meta) => {
+          request.log.info({ runId, ...meta }, message);
+        })
+          .then((result) => {
+            request.log.info({
+              runId,
+              mode: result.mode,
+              assetsProcessed: result.assetsProcessed,
+              generated: result.generated,
+              skipped: result.skipped,
+              failed: result.failed,
+              sharpAvailable: result.sharpAvailable,
+              failureCount: result.failures.length,
+            }, "Media variant backfill completed");
+          })
+          .catch((error) => {
+            request.log.error({ runId, err: error }, "Media variant backfill failed");
+          })
+          .finally(() => {
+            backfillInProgress = false;
+          });
+      });
+
+      return reply.send({
+        status: "started",
+        mode,
+        details: {
+          runId,
+          force: body.force,
+          assetId: body.assetId ?? null,
+          productId: body.productId ?? null,
+        },
+      });
+    },
+  );
 
   app.post(
     "/admin/media/uploads/prepare",

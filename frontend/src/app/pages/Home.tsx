@@ -72,19 +72,25 @@ export default function Home() {
         pngFallbackUrl: heroImageFallback,
         optimizedFallbackUrl: HERO_IMAGE_OPTIMIZED_PATH,
       });
+      const heroMobileUrl = String(section.content.backgroundImageMobileUrl || "");
+      const heroSrcSet = String(section.content.backgroundImageSrcSet || "");
       return (
         <section key={section.id} className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
           <div className="absolute inset-0">
             {heroImage.useCmsImage ? (
-              <img
-                src={heroImage.imageUrl}
-                alt={section.title || "Hero"}
-                fetchPriority="high"
-                loading="eager"
-                decoding="async"
-                sizes="100vw"
-                className="w-full h-full object-cover opacity-60"
-              />
+              <picture>
+                {heroMobileUrl ? <source media="(max-width: 767px)" srcSet={heroMobileUrl} /> : null}
+                {heroSrcSet ? <source srcSet={heroSrcSet} /> : null}
+                <img
+                  src={heroImage.imageUrl}
+                  alt={section.title || "Hero"}
+                  fetchPriority="high"
+                  loading="eager"
+                  decoding="async"
+                  sizes="100vw"
+                  className="w-full h-full object-cover opacity-60"
+                />
+              </picture>
             ) : (
               <picture>
                 <source srcSet={heroImage.optimizedFallbackUrl} type="image/webp" />

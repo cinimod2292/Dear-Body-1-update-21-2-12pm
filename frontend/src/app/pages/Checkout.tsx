@@ -6,6 +6,7 @@ import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
+import { fetchCmsBootstrap } from "../lib/cms";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
@@ -104,6 +105,8 @@ export default function Checkout() {
   const [shippingStepError, setShippingStepError] = useState<string | null>(null);
   const [gatewayOptions, setGatewayOptions] = useState<PaymentGatewayOption[]>([]);
   const [selectedGateway, setSelectedGateway] = useState<"stitch" | "payfast" | "">("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logo2xUrl, setLogo2xUrl] = useState("");
 
   const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
 
@@ -118,6 +121,15 @@ export default function Checkout() {
   const returnUrl = useMemo(() => `${window.location.origin}/checkout`, []);
   const returnOrderId = searchParams.get("orderId");
   const returnCancelled = Boolean(searchParams.get("cancelled"));
+
+  useEffect(() => {
+    fetchCmsBootstrap()
+      .then((bootstrap) => {
+        setLogoUrl(bootstrap.siteConfig.branding.logoUrl || bootstrap.siteConfig.header.logoUrl || "");
+        setLogo2xUrl(bootstrap.siteConfig.branding.logo2xUrl || bootstrap.siteConfig.header.logo2xUrl || "");
+      })
+      .catch(() => undefined);
+  }, []);
   const finalizeSuccessfulCheckout = useCallback((orderId: string, source: "initial_load" | "poll") => {
     console.info("[checkout] successful payment/order completion detection", { orderId, source });
     setProcessingPayment(false);
@@ -580,7 +592,8 @@ export default function Checkout() {
           </Link>
           <div className="flex items-center gap-2">
             <img
-              src={logoImage}
+              src={logoUrl || logoImage}
+              srcSet={logo2xUrl ? `${logoUrl || logoImage} 1x, ${logo2xUrl} 2x` : undefined}
               alt="Dear Body"
               className="h-9 w-auto object-contain"
             />

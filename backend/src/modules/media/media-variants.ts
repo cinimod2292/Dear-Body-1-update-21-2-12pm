@@ -10,6 +10,12 @@ export const MEDIA_VARIANT_SPECS = [
   { key: "gallery_main_2x", maxWidth: 1440, maxHeight: 1440 },
   { key: "lightbox", maxWidth: 1600, maxHeight: 1600 },
   { key: "lightbox_2x", maxWidth: 2000, maxHeight: 2000 },
+  { key: "hero_mobile", maxWidth: 720, maxHeight: 960 },
+  { key: "hero_desktop", maxWidth: 1600, maxHeight: 900 },
+  { key: "hero_desktop_2x", maxWidth: 2400, maxHeight: 1350 },
+  { key: "logo_header", maxWidth: 220, maxHeight: 80 },
+  { key: "logo_footer", maxWidth: 260, maxHeight: 100 },
+  { key: "logo_2x", maxWidth: 520, maxHeight: 200 },
 ] as const;
 
 type VariantKey = typeof MEDIA_VARIANT_SPECS[number]["key"];
@@ -78,6 +84,12 @@ const WEBP_QUALITY_BY_VARIANT: Record<VariantKey, number> = {
   gallery_main_2x: 80,
   lightbox: 82,
   lightbox_2x: 84,
+  hero_mobile: 76,
+  hero_desktop: 80,
+  hero_desktop_2x: 82,
+  logo_header: 84,
+  logo_footer: 84,
+  logo_2x: 86,
 };
 const PNG_COMPRESSION_LEVEL_BY_VARIANT: Record<VariantKey, number> = {
   thumb: 9,
@@ -88,6 +100,12 @@ const PNG_COMPRESSION_LEVEL_BY_VARIANT: Record<VariantKey, number> = {
   gallery_main_2x: 9,
   lightbox: 9,
   lightbox_2x: 9,
+  hero_mobile: 9,
+  hero_desktop: 9,
+  hero_desktop_2x: 9,
+  logo_header: 9,
+  logo_footer: 9,
+  logo_2x: 9,
 };
 
 export function resolveVariantOutputMimeType(params: {

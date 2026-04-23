@@ -13,6 +13,7 @@ export async function mediaRoutes(app: FastifyInstance) {
   app.get("/media/public/*", async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
     if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
+    reply.header("Cache-Control", "public, max-age=31536000, immutable");
     const cfg = await resolveUploadConfig();
     if (cfg.provider === "local") {
       return reply.redirect(`${resolveLocalPublicBaseUrl()}/local-upload/${storageKey}`);

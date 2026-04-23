@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
@@ -12,6 +12,75 @@ import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
+  const executeBackfill = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const body = runMediaBackfillSchema.parse(request.body ?? {});
+    if (backfillInProgress) {
+      return reply.status(409).send({
+        status: "running",
+        message: "A media backfill run is already in progress",
+      });
+    }
+
+    backfillInProgress = true;
+    const mode = body.assetId ? "asset" : body.productId ? "product" : "all";
+
+    request.log.info({
+      mode,
+      assetId: body.assetId ?? null,
+      productId: body.productId ?? null,
+      force: body.force,
+      actorUserId: request.user.sub,
+    }, "Media variant backfill started");
+
+    try {
+      const result = await runMediaVariantsBackfill({
+        all: !body.assetId && !body.productId,
+        productId: body.productId,
+        assetId: body.assetId,
+        force: body.force,
+      }, (message, meta) => {
+        request.log.info({ ...meta }, message);
+      });
+
+      const succeeded = result.assetsProcessed - result.failures.length;
+      request.log.info({
+        mode: result.mode,
+        assetsProcessed: result.assetsProcessed,
+        succeededAssets: succeeded,
+        failedAssets: result.failures.length,
+        generated: result.generated,
+        skipped: result.skipped,
+        failed: result.failed,
+        sharpAvailable: result.sharpAvailable,
+        force: body.force,
+        assetId: body.assetId ?? null,
+        productId: body.productId ?? null,
+      }, "Media variant backfill completed");
+
+      return reply.send({
+        status: "ok",
+        mode: result.mode,
+        processed: result.assetsProcessed,
+        created: result.generated,
+        failed: result.failed,
+        message: "Media variant backfill completed",
+        succeededAssets: succeeded,
+        failedAssets: result.failures.length,
+        force: body.force,
+        assetId: body.assetId ?? null,
+        productId: body.productId ?? null,
+        sharpAvailable: result.sharpAvailable,
+      });
+    } catch (error) {
+      request.log.error({ err: error, mode, force: body.force, assetId: body.assetId ?? null, productId: body.productId ?? null }, "Media variant backfill failed");
+      throw error;
+    } finally {
+      backfillInProgress = false;
+    }
+  };
 
   app.get("/media/public/*", async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
@@ -29,7 +98,6 @@ export async function mediaRoutes(app: FastifyInstance) {
     "/admin/media/run-backfill",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
-      const body = runMediaBackfillSchema.parse(request.body ?? {});
       if (!env.MEDIA_BACKFILL_TOKEN) {
         request.log.error("MEDIA_BACKFILL_TOKEN is not configured; refusing to run media backfill endpoint");
         return reply.status(503).send({ error: { message: "Backfill endpoint is not configured" } });
@@ -41,68 +109,15 @@ export async function mediaRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: { message: "Invalid internal token" } });
       }
 
-      if (backfillInProgress) {
-        return reply.status(409).send({
-          status: "running",
-          message: "A media backfill run is already in progress",
-        });
-      }
+      return executeBackfill(request, reply);
+    },
+  );
 
-      backfillInProgress = true;
-      const mode = body.assetId ? "asset" : body.productId ? "product" : "all";
-
-      request.log.info({
-        mode,
-        assetId: body.assetId ?? null,
-        productId: body.productId ?? null,
-        force: body.force,
-        actorUserId: request.user.sub,
-      }, "Media variant backfill started");
-
-      try {
-        const result = await runMediaVariantsBackfill({
-          all: !body.assetId && !body.productId,
-          productId: body.productId,
-          assetId: body.assetId,
-          force: body.force,
-        }, (message, meta) => {
-          request.log.info({ ...meta }, message);
-        });
-
-        const succeeded = result.assetsProcessed - result.failures.length;
-        request.log.info({
-          mode: result.mode,
-          assetsProcessed: result.assetsProcessed,
-          succeededAssets: succeeded,
-          failedAssets: result.failures.length,
-          generated: result.generated,
-          skipped: result.skipped,
-          failed: result.failed,
-          sharpAvailable: result.sharpAvailable,
-          force: body.force,
-          assetId: body.assetId ?? null,
-          productId: body.productId ?? null,
-        }, "Media variant backfill completed");
-
-        return reply.send({
-          status: "ok",
-          mode: result.mode,
-          processed: result.assetsProcessed,
-          created: result.generated,
-          failed: result.failed,
-          succeededAssets: succeeded,
-          failedAssets: result.failures.length,
-          force: body.force,
-          assetId: body.assetId ?? null,
-          productId: body.productId ?? null,
-          sharpAvailable: result.sharpAvailable,
-        });
-      } catch (error) {
-        request.log.error({ err: error, mode, force: body.force, assetId: body.assetId ?? null, productId: body.productId ?? null }, "Media variant backfill failed");
-        throw error;
-      } finally {
-        backfillInProgress = false;
-      }
+  app.post(
+    "/admin/media/run-backfill-ui",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      return executeBackfill(request, reply);
     },
   );
 

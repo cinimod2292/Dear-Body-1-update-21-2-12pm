@@ -25,6 +25,17 @@ interface MediaUpdateResponse {
   data: MediaAsset;
 }
 
+type BackfillMode = "all" | "product" | "asset";
+
+interface MediaBackfillResponse {
+  status: "ok";
+  mode: BackfillMode;
+  processed: number;
+  created: number;
+  failed: number;
+  message: string;
+}
+
 interface ImageImportPreviewRow {
   rowNumber: number;
   sku: string;
@@ -58,6 +69,105 @@ interface ImageImportCommitResponse {
 }
 
 type ImportState = "idle" | "previewing" | "preview" | "importing" | "complete";
+
+function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
+  const [mode, setMode] = useState<BackfillMode>("all");
+  const [productId, setProductId] = useState("");
+  const [assetId, setAssetId] = useState("");
+  const [force, setForce] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<MediaBackfillResponse | null>(null);
+
+  const runBackfill = async () => {
+    if (!accessToken) return;
+    try {
+      setRunning(true);
+      setError(null);
+      setResult(null);
+
+      const payload: { productId?: string; assetId?: string; force: boolean } = { force };
+      if (mode === "product" && productId.trim()) payload.productId = productId.trim();
+      if (mode === "asset" && assetId.trim()) payload.assetId = assetId.trim();
+      const response = await apiRequest<MediaBackfillResponse>(
+        "/admin/media/run-backfill-ui",
+        { method: "POST", body: JSON.stringify(payload) },
+        accessToken,
+      );
+
+      setResult(response);
+      toast.success("Media variant backfill completed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run media variant backfill");
+      toast.error(err instanceof Error ? err.message : "Failed to run media variant backfill");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-amber-900">Internal Maintenance: Backfill Media Variants</h3>
+        <p className="text-xs text-amber-800">
+          Warning: this is an internal admin action that regenerates image variants for existing media.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <select
+          value={mode}
+          onChange={(event) => setMode(event.target.value as BackfillMode)}
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+          disabled={running}
+        >
+          <option value="all">All assets</option>
+          <option value="product">Product scoped</option>
+          <option value="asset">Asset scoped</option>
+        </select>
+
+        <input
+          value={productId}
+          onChange={(event) => setProductId(event.target.value)}
+          disabled={running || mode !== "product"}
+          placeholder="Product ID (cuid)"
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
+        />
+
+        <input
+          value={assetId}
+          onChange={(event) => setAssetId(event.target.value)}
+          disabled={running || mode !== "asset"}
+          placeholder="Asset ID (cuid)"
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
+        />
+
+        <button
+          onClick={runBackfill}
+          disabled={running || !accessToken || (mode === "product" && !productId.trim()) || (mode === "asset" && !assetId.trim())}
+          className="rounded-lg bg-amber-700 text-white px-3 py-2 text-sm disabled:opacity-50"
+        >
+          {running ? "Running backfill..." : "Generate Image Variants"}
+        </button>
+      </div>
+
+      <label className="inline-flex items-center gap-2 text-xs text-amber-900">
+        <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} disabled={running} />
+        Force regenerate existing variants
+      </label>
+
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
+      {result ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+          <p className="font-medium">{result.message}</p>
+          <p>
+            Mode: <strong>{result.mode}</strong> · Processed: <strong>{result.processed}</strong> · Created: <strong>{result.created}</strong> · Failed: <strong>{result.failed}</strong>
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function BulkImageImportModal({
   open,
@@ -788,6 +898,8 @@ export default function AdminMedia() {
           </label>
         </div>
       </div>
+
+      <MediaBackfillTool accessToken={session?.accessToken} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
         <input

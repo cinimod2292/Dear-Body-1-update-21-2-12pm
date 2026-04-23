@@ -220,6 +220,10 @@ export function resolveLocalPublicBaseUrl(): string {
 
 export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
   if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
+    const normalizedStorageKey = sanitizeStorageKey(storageKey);
+    if (cfg.publicBaseUrl && normalizedStorageKey.startsWith("variants/")) {
+      return `${normalizeBaseUrl(cfg.publicBaseUrl)}/${normalizedStorageKey}`;
+    }
     return `${resolveApiBaseUrl()}${env.API_PREFIX}/media/public/${sanitizeStorageKey(storageKey)}`;
   }
   return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;
@@ -231,6 +235,10 @@ export async function createS3UploadUrl(storageKey: string, mimeType: string, cf
 }
 
 export async function createS3DownloadUrl(storageKey: string, cfg: UploadConfig): Promise<string> {
+  const normalizedStorageKey = sanitizeStorageKey(storageKey);
+  if (cfg.publicBaseUrl) {
+    return `${normalizeBaseUrl(cfg.publicBaseUrl)}/${normalizedStorageKey}`;
+  }
   return createS3PresignedUrl("GET", storageKey, cfg.signedUrlTtlSeconds, cfg);
 }
 
@@ -254,12 +262,21 @@ export async function writeStorageObjectBuffer(storageKey: string, buffer: Buffe
   }
 
   const signedUpload = await createS3UploadUrl(storageKey, mimeType, cfg);
+  const headers: Record<string, string> = { "content-type": mimeType };
+  const cacheControl = resolveStorageObjectCacheControl(storageKey);
+  if (cacheControl) headers["cache-control"] = cacheControl;
   const response = await fetch(signedUpload, {
     method: "PUT",
-    headers: { "content-type": mimeType },
+    headers,
     body: new Uint8Array(buffer),
   });
   if (!response.ok) throw new Error(`Failed to write object ${storageKey} (${response.status})`);
+}
+
+export function resolveStorageObjectCacheControl(storageKey: string): string | null {
+  return sanitizeStorageKey(storageKey).startsWith("variants/")
+    ? "public, max-age=31536000, immutable"
+    : null;
 }
 
 export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {

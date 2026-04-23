@@ -3,9 +3,9 @@ import { API_BASE } from "../admin/api/client";
 export interface CmsBootstrap {
   siteConfig: {
     navigation: { items: Array<{ label: string; href: string; enabled: boolean }> };
-    header: { announcementText?: string; logoUrl?: string };
+    header: { announcementText?: string; logoUrl?: string; logo2xUrl?: string; logoMediaAssetId?: string };
     footer: { copyrightText?: string; contactEmail?: string; contactPhone?: string; address?: string; socialLinks: Array<{ platform: string; url: string }> };
-    branding: { primaryColor?: string; secondaryColor?: string; fontFamily?: string; logoUrl?: string; faviconUrl?: string };
+    branding: { primaryColor?: string; secondaryColor?: string; fontFamily?: string; logoUrl?: string; logo2xUrl?: string; logoFooterUrl?: string; logoMediaAssetId?: string; faviconUrl?: string };
     seoDefaults: { title?: string; description?: string; ogImageUrl?: string };
     contactInfo: { email?: string; phone?: string; address?: string };
   };

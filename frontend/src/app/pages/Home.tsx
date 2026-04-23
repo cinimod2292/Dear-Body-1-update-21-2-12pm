@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ArrowRight, Star } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
+import { resolveHeroImageConfig } from "../lib/hero-image-config";
 import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
+
+const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
 interface HomeSection {
   id: string;
@@ -15,6 +18,32 @@ interface HomeSection {
   enabled: boolean;
   order: number;
   status: "draft" | "published";
+}
+
+function DeferredSection({ children, minHeight = 280 }: { children: ReactNode; minHeight?: number }) {
+  const [visible, setVisible] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!anchor || visible) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "350px 0px" },
+    );
+    observer.observe(anchor);
+    return () => observer.disconnect();
+  }, [anchor, visible]);
+
+  return (
+    <div ref={setAnchor}>
+      {visible ? children : <div style={{ minHeight }} aria-hidden className="bg-transparent" />}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -65,11 +94,45 @@ export default function Home() {
 
   const renderSection = (section: HomeSection) => {
     if (section.type === "hero") {
-      const bg = String(section.content.backgroundImageUrl || heroImageFallback);
+      const heroImage = resolveHeroImageConfig(section.content, {
+        pngFallbackUrl: heroImageFallback,
+        optimizedFallbackUrl: HERO_IMAGE_OPTIMIZED_PATH,
+      });
+      const heroMobileUrl = String(section.content.backgroundImageMobileUrl || "");
+      const heroSrcSet = String(section.content.backgroundImageSrcSet || "");
       return (
         <section key={section.id} className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
           <div className="absolute inset-0">
-            <img src={bg} alt={section.title || "Hero"} fetchPriority="high" loading="eager" decoding="async" className="w-full h-full object-cover opacity-60" />
+            {heroImage.useCmsImage ? (
+              <picture>
+                {heroMobileUrl ? <source media="(max-width: 767px)" srcSet={heroMobileUrl} /> : null}
+                {heroSrcSet ? <source srcSet={heroSrcSet} /> : null}
+                <img
+                  src={heroImage.imageUrl}
+                  alt={section.title || "Hero"}
+                  fetchPriority="high"
+                  loading="eager"
+                  decoding="async"
+                  sizes="100vw"
+                  className="w-full h-full object-cover opacity-60"
+                />
+              </picture>
+            ) : (
+              <picture>
+                <source srcSet={heroImage.optimizedFallbackUrl} type="image/webp" />
+                <img
+                  src={heroImage.pngFallbackUrl}
+                  alt={section.title || "Hero"}
+                  fetchPriority="high"
+                  loading="eager"
+                  decoding="async"
+                  sizes="100vw"
+                  width={1217}
+                  height={797}
+                  className="w-full h-full object-cover opacity-60"
+                />
+              </picture>
+            )}
             <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent" />
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
@@ -149,14 +212,23 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      {sections.length > 0 ? sections.map(renderSection) : null}
-      <section className="py-14 bg-gray-900 text-white">
-        <div className="max-w-5xl mx-auto px-4 text-center">
-          <p className="text-sm uppercase tracking-wide text-white/70 mb-2">Reviews</p>
-          <div className="flex justify-center gap-1 mb-2">{Array.from({ length: 5 }).map((_, idx) => <Star key={idx} size={18} className="text-yellow-400 fill-yellow-400" />)}</div>
-          <p className="text-white/80">Loved by thousands of customers worldwide.</p>
-        </div>
-      </section>
+      {sections.length > 0
+        ? sections.map((section, index) => {
+          const rendered = renderSection(section);
+          if (!rendered) return null;
+          if (index < 2) return rendered;
+          return <DeferredSection key={`deferred-${section.id}`}>{rendered}</DeferredSection>;
+        })
+        : null}
+      <DeferredSection minHeight={160}>
+        <section className="py-14 bg-gray-900 text-white">
+          <div className="max-w-5xl mx-auto px-4 text-center">
+            <p className="text-sm uppercase tracking-wide text-white/70 mb-2">Reviews</p>
+            <div className="flex justify-center gap-1 mb-2">{Array.from({ length: 5 }).map((_, idx) => <Star key={idx} size={18} className="text-yellow-400 fill-yellow-400" />)}</div>
+            <p className="text-white/80">Loved by thousands of customers worldwide.</p>
+          </div>
+        </section>
+      </DeferredSection>
     </div>
   );
 }

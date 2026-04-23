@@ -37,3 +37,9 @@ export const assignMediaToProductSchema = z.object({
 export const unlinkMediaFromProductSchema = z.object({
   sku: z.string().trim().min(1),
 });
+
+export const runMediaBackfillSchema = z.object({
+  productId: z.string().cuid().optional(),
+  assetId: z.string().cuid().optional(),
+  force: z.boolean().optional().default(false),
+});

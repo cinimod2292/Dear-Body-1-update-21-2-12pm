@@ -12,7 +12,11 @@ import {
 } from "./cms.service.js";
 
 export async function cmsRoutes(app: FastifyInstance) {
-  app.get("/store/cms/bootstrap", async (_request, reply) => reply.send({ data: await getCmsBootstrap() }));
+  app.get("/store/cms/bootstrap", async (_request, reply) => {
+    reply.header("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600, stale-if-error=86400");
+    reply.header("Vary", "Accept-Encoding");
+    return reply.send({ data: await getCmsBootstrap() });
+  });
 
   app.get("/store/cms/pages/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };

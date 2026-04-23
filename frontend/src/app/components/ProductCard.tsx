@@ -5,6 +5,7 @@ import { Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
+import { PRODUCT_CARD_IMAGE_SIZES } from "../lib/product-images";
 
 interface ProductCardProps {
   product: Product;
@@ -81,7 +82,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
             width={product.imageWidth}
             height={product.imageHeight}
             srcSet={product.image2x ? `${product.image} 1x, ${product.image2x} 2x` : undefined}
-            sizes="(min-width: 1280px) 23vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+            sizes={PRODUCT_CARD_IMAGE_SIZES}
             onError={(event) => {
               event.currentTarget.style.opacity = "0";
             }}
@@ -97,7 +98,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
               width={product.hoverImageWidth}
               height={product.hoverImageHeight}
               srcSet={product.hoverImage2x ? `${product.hoverImage} 1x, ${product.hoverImage2x} 2x` : undefined}
-              sizes="(min-width: 1280px) 23vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+              sizes={PRODUCT_CARD_IMAGE_SIZES}
               onError={() => setHoverImageFailed(true)}
               className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
             />

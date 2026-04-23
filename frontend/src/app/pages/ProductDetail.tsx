@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
-import { fetchStoreProductById, fetchStoreProducts, Product } from "../data/products";
+import { fetchStoreProductById, fetchStoreProductsByQuery, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { deriveGalleryImages, type ProductDetailImage } from "../lib/product-detail-images";
+import { getGalleryMainSources, getLightboxSources, getThumbImageSources } from "../lib/product-images";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -23,28 +25,128 @@ export default function ProductDetail() {
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [renderRelatedSection, setRenderRelatedSection] = useState(false);
+  const [relatedAnchor, setRelatedAnchor] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!id) return;
+    let isCancelled = false;
 
     setLoading(true);
-    Promise.all([fetchStoreProductById(id), fetchStoreProducts()])
-      .then(([foundProduct, allProducts]) => {
+    setRelated([]);
+    fetchStoreProductById(id)
+      .then((foundProduct) => {
+        if (isCancelled) return;
         setProduct(foundProduct);
         setActiveImageIndex(0);
         setLightboxOpen(false);
-        if (foundProduct) {
-          setRelated(allProducts.filter((item) => item.id !== foundProduct.id && item.category === foundProduct.category).slice(0, 4));
-        } else {
-          setRelated([]);
-        }
+        setLoading(false);
+
+        if (!foundProduct?.categoryId) return;
+        fetchStoreProductsByQuery({ categoryId: foundProduct.categoryId, perPage: 8, sortBy: "updatedAt", sortDir: "desc" })
+          .then((items) => {
+            if (isCancelled) return;
+            setRelated(items.filter((item) => item.id !== foundProduct.id).slice(0, 4));
+          })
+          .catch(() => {
+            if (isCancelled) return;
+            setRelated([]);
+          });
       })
       .catch(() => {
+        if (isCancelled) return;
         setProduct(null);
         setRelated([]);
+        setLoading(false);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isCancelled) return;
+        setLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [id]);
+
+  const handleAddToCart = () => {
+    const currentProduct = product;
+    if (!currentProduct?.variantId || !currentProduct.inStock) return;
+    addToCart(currentProduct, quantity);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
+  };
+
+  const handleBuyNow = () => {
+    const currentProduct = product;
+    if (!currentProduct?.variantId || !currentProduct.inStock) return;
+    addToCart(currentProduct, quantity);
+    navigate("/cart");
+  };
+
+  const savings = product?.originalPrice ? (product.originalPrice - product.price) * quantity : null;
+  const wished = product ? isFavorited(product.id) : false;
+  const galleryImages: ProductDetailImage[] = deriveGalleryImages(product ? {
+    galleryImages: product.galleryImages,
+    images: product.images,
+    image: product.image,
+  } : null);
+  const safeActiveImageIndex = galleryImages.length ? Math.min(activeImageIndex, galleryImages.length - 1) : 0;
+  const currentImage = galleryImages[safeActiveImageIndex]
+    ?? galleryImages[0]
+    ?? { url: product?.image ?? "" };
+  const currentMainSources = getGalleryMainSources(currentImage);
+  const currentLightboxSources = getLightboxSources(currentImage);
+  const currentMainSrc = currentMainSources?.src ?? currentImage.mainUrl ?? currentImage.url;
+  const currentLightboxSrc = currentLightboxSources?.src ?? currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
+
+  useEffect(() => {
+    if (!galleryImages.length) {
+      if (activeImageIndex !== 0) setActiveImageIndex(0);
+      if (lightboxOpen) setLightboxOpen(false);
+      return;
+    }
+    if (activeImageIndex > galleryImages.length - 1) {
+      setActiveImageIndex(galleryImages.length - 1);
+    }
+  }, [activeImageIndex, galleryImages.length, lightboxOpen]);
+
+  useEffect(() => {
+    if (!lightboxOpen || !galleryImages.length) return;
+    const neighborIndexes = [
+      activeImageIndex,
+      (activeImageIndex + 1) % galleryImages.length,
+      (activeImageIndex - 1 + galleryImages.length) % galleryImages.length,
+    ];
+    neighborIndexes.forEach((index) => {
+      const src = getLightboxSources(galleryImages[index])?.src ?? galleryImages[index]?.lightboxUrl ?? galleryImages[index]?.main2xUrl ?? galleryImages[index]?.mainUrl ?? galleryImages[index]?.url;
+      if (!src) return;
+      const preload = new Image();
+      preload.decoding = "async";
+      preload.src = src;
+    });
+  }, [activeImageIndex, galleryImages, lightboxOpen]);
+
+  useEffect(() => {
+    if (!relatedAnchor || renderRelatedSection) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setRenderRelatedSection(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px 0px" },
+    );
+    observer.observe(relatedAnchor);
+    return () => observer.disconnect();
+  }, [relatedAnchor, renderRelatedSection]);
+
+  const badgeColors: Record<string, string> = {
+    SALE: "bg-red-500",
+    BESTSELLER: "bg-pink-500",
+    NEW: "bg-lime-500",
+  };
 
   if (loading) {
     return (
@@ -65,61 +167,6 @@ export default function ProductDetail() {
       </div>
     );
   }
-
-  const handleAddToCart = () => {
-    if (!product.variantId || !product.inStock) return;
-    addToCart(product, quantity);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
-  };
-
-  const handleBuyNow = () => {
-    if (!product.variantId || !product.inStock) return;
-    addToCart(product, quantity);
-    navigate("/cart");
-  };
-
-  const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
-
-  const wished = isFavorited(product.id);
-  type GalleryImage = {
-    url: string;
-    width?: number;
-    height?: number;
-    thumbUrl?: string;
-    mainUrl?: string;
-    main2xUrl?: string;
-    lightboxUrl?: string;
-    lightbox2xUrl?: string;
-  };
-  const galleryImages: GalleryImage[] = product.galleryImages?.length
-    ? product.galleryImages
-    : (product.images.length ? product.images.map((url): GalleryImage => ({ url })) : [{ url: product.image }]).filter((image) => Boolean(image.url));
-  const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? { url: product.image };
-  const currentMainSrc = currentImage.mainUrl ?? currentImage.url;
-  const currentLightboxSrc = currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
-
-  useEffect(() => {
-    if (!lightboxOpen || !galleryImages.length) return;
-    const neighborIndexes = [
-      activeImageIndex,
-      (activeImageIndex + 1) % galleryImages.length,
-      (activeImageIndex - 1 + galleryImages.length) % galleryImages.length,
-    ];
-    neighborIndexes.forEach((index) => {
-      const src = galleryImages[index]?.lightboxUrl ?? galleryImages[index]?.main2xUrl ?? galleryImages[index]?.mainUrl ?? galleryImages[index]?.url;
-      if (!src) return;
-      const preload = new Image();
-      preload.decoding = "async";
-      preload.src = src;
-    });
-  }, [activeImageIndex, galleryImages, lightboxOpen]);
-
-  const badgeColors: Record<string, string> = {
-    SALE: "bg-red-500",
-    BESTSELLER: "bg-pink-500",
-    NEW: "bg-lime-500",
-  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -162,7 +209,7 @@ export default function ProductDetail() {
                 width={currentImage.width ?? product.imageWidth}
                 height={currentImage.height ?? product.imageHeight}
                 sizes="(min-width: 1024px) 48vw, 95vw"
-                srcSet={currentImage.main2xUrl ? `${currentMainSrc} 1x, ${currentImage.main2xUrl} 2x` : undefined}
+                srcSet={currentMainSources?.srcSet ?? (currentImage.main2xUrl ? `${currentMainSrc} 1x, ${currentImage.main2xUrl} 2x` : undefined)}
                 onClick={() => setLightboxOpen(Boolean(galleryImages.length))}
               />
 
@@ -189,26 +236,29 @@ export default function ProductDetail() {
             </div>
             {galleryImages.length > 1 && (
               <div className="mt-4 grid grid-cols-5 gap-2">
-                {galleryImages.map((image, index) => (
-                  <button
-                    key={`${image.url}-${index}`}
-                    type="button"
-                    onClick={() => setActiveImageIndex(index)}
-                    className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
-                  >
-                    <img
-                      src={image.thumbUrl ?? image.url}
-                      alt={`${product.name} thumbnail ${index + 1}`}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority="low"
-                      width={image.width}
-                      height={image.height}
-                      sizes="96px"
-                    />
-                  </button>
-                ))}
+                {galleryImages.map((image, index) => {
+                  const thumbSources = getThumbImageSources(image);
+                  return (
+                    <button
+                      key={`${image.url}-${index}`}
+                      type="button"
+                      onClick={() => setActiveImageIndex(index)}
+                      className={`aspect-square overflow-hidden rounded-xl border-2 ${index === activeImageIndex ? "border-pink-500" : "border-transparent"}`}
+                    >
+                      <img
+                        src={thumbSources?.src ?? image.thumbUrl ?? image.url}
+                        alt={`${product.name} thumbnail ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                        width={thumbSources?.width ?? image.width}
+                        height={thumbSources?.height ?? image.height}
+                        sizes="96px"
+                      />
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -361,18 +411,20 @@ export default function ProductDetail() {
         </div>
 
         {/* ── Related Products ── */}
-        {related.length > 0 && (
-          <div className="mt-20">
-            <h2 className="text-gray-900 mb-8 text-center" style={{ fontSize: "2rem", fontWeight: 900 }}>
-              You Might Also Love 💕
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {related.map(p => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          </div>
-        )}
+        <div ref={setRelatedAnchor} className="mt-20">
+          {related.length > 0 && renderRelatedSection ? (
+            <>
+              <h2 className="text-gray-900 mb-8 text-center" style={{ fontSize: "2rem", fontWeight: 900 }}>
+                You Might Also Love 💕
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {related.map(p => (
+                  <ProductCard key={p.id} product={p} />
+                ))}
+              </div>
+            </>
+          ) : <div style={{ minHeight: 220 }} aria-hidden className="bg-transparent" />}
+        </div>
       </div>
 
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
@@ -389,7 +441,7 @@ export default function ProductDetail() {
               width={currentImage.width ?? product.imageWidth}
               height={currentImage.height ?? product.imageHeight}
               sizes="100vw"
-              srcSet={currentImage.lightbox2xUrl ? `${currentLightboxSrc} 1x, ${currentImage.lightbox2xUrl} 2x` : undefined}
+              srcSet={currentLightboxSources?.srcSet ?? (currentImage.lightbox2xUrl ? `${currentLightboxSrc} 1x, ${currentImage.lightbox2xUrl} 2x` : undefined)}
             />
             {galleryImages.length > 1 && (
               <>

@@ -25,6 +25,17 @@ interface MediaUpdateResponse {
   data: MediaAsset;
 }
 
+type BackfillMode = "all" | "product" | "asset";
+
+interface MediaBackfillResponse {
+  status: "ok";
+  mode: BackfillMode;
+  processed: number;
+  created: number;
+  failed: number;
+  message: string;
+}
+
 interface ImageImportPreviewRow {
   rowNumber: number;
   sku: string;
@@ -58,6 +69,105 @@ interface ImageImportCommitResponse {
 }
 
 type ImportState = "idle" | "previewing" | "preview" | "importing" | "complete";
+
+function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
+  const [mode, setMode] = useState<BackfillMode>("all");
+  const [productId, setProductId] = useState("");
+  const [assetId, setAssetId] = useState("");
+  const [force, setForce] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<MediaBackfillResponse | null>(null);
+
+  const runBackfill = async () => {
+    if (!accessToken) return;
+    try {
+      setRunning(true);
+      setError(null);
+      setResult(null);
+
+      const payload: { productId?: string; assetId?: string; force: boolean } = { force };
+      if (mode === "product" && productId.trim()) payload.productId = productId.trim();
+      if (mode === "asset" && assetId.trim()) payload.assetId = assetId.trim();
+      const response = await apiRequest<MediaBackfillResponse>(
+        "/admin/media/run-backfill-ui",
+        { method: "POST", body: JSON.stringify(payload) },
+        accessToken,
+      );
+
+      setResult(response);
+      toast.success("Media variant backfill completed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run media variant backfill");
+      toast.error(err instanceof Error ? err.message : "Failed to run media variant backfill");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-amber-900">Internal Maintenance: Backfill Media Variants</h3>
+        <p className="text-xs text-amber-800">
+          Warning: this is an internal admin action that regenerates image variants for existing media.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <select
+          value={mode}
+          onChange={(event) => setMode(event.target.value as BackfillMode)}
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+          disabled={running}
+        >
+          <option value="all">All assets</option>
+          <option value="product">Product scoped</option>
+          <option value="asset">Asset scoped</option>
+        </select>
+
+        <input
+          value={productId}
+          onChange={(event) => setProductId(event.target.value)}
+          disabled={running || mode !== "product"}
+          placeholder="Product ID (cuid)"
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
+        />
+
+        <input
+          value={assetId}
+          onChange={(event) => setAssetId(event.target.value)}
+          disabled={running || mode !== "asset"}
+          placeholder="Asset ID (cuid)"
+          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
+        />
+
+        <button
+          onClick={runBackfill}
+          disabled={running || !accessToken || (mode === "product" && !productId.trim()) || (mode === "asset" && !assetId.trim())}
+          className="rounded-lg bg-amber-700 text-white px-3 py-2 text-sm disabled:opacity-50"
+        >
+          {running ? "Running backfill..." : "Generate Image Variants"}
+        </button>
+      </div>
+
+      <label className="inline-flex items-center gap-2 text-xs text-amber-900">
+        <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} disabled={running} />
+        Force regenerate existing variants
+      </label>
+
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
+      {result ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+          <p className="font-medium">{result.message}</p>
+          <p>
+            Mode: <strong>{result.mode}</strong> · Processed: <strong>{result.processed}</strong> · Created: <strong>{result.created}</strong> · Failed: <strong>{result.failed}</strong>
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function BulkImageImportModal({
   open,
@@ -668,6 +778,7 @@ export default function AdminMedia() {
   const [uploading, setUploading] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+  const [configSaving, setConfigSaving] = useState(false);
 
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "18", sortBy: "createdAt", sortDir });
@@ -756,6 +867,65 @@ export default function AdminMedia() {
     }
   };
 
+  const assignSelectedAsHero = async () => {
+    if (!session?.accessToken || !selectedMediaId) return;
+    try {
+      setConfigSaving(true);
+      const sectionsRes = await apiRequest<{ data: Array<{ id: string; type: string; title?: string; subtitle?: string; content: Record<string, unknown>; enabled: boolean; order: number; status: "draft" | "published" }> }>(
+        "/admin/cms/home-sections",
+        {},
+        session.accessToken,
+      );
+      const nextSections = sectionsRes.data.map((section) => (
+        section.type === "hero"
+          ? {
+            ...section,
+            content: {
+              ...section.content,
+              backgroundMediaAssetId: selectedMediaId,
+            },
+          }
+          : section
+      ));
+      await apiRequest("/admin/cms/home-sections", {
+        method: "PUT",
+        body: JSON.stringify({ sections: nextSections }),
+      }, session.accessToken);
+      toast.success("Homepage hero image assigned to selected media asset");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const assignSelectedAsLogo = async () => {
+    if (!session?.accessToken || !selectedMediaId) return;
+    try {
+      setConfigSaving(true);
+      const siteConfigRes = await apiRequest<{ data: any }>("/admin/cms/site-config", {}, session.accessToken);
+      await apiRequest("/admin/cms/site-config", {
+        method: "PUT",
+        body: JSON.stringify({
+          ...siteConfigRes.data,
+          header: {
+            ...(siteConfigRes.data.header ?? {}),
+            logoMediaAssetId: selectedMediaId,
+          },
+          branding: {
+            ...(siteConfigRes.data.branding ?? {}),
+            logoMediaAssetId: selectedMediaId,
+          },
+        }),
+      }, session.accessToken);
+      toast.success("Site logo assigned to selected media asset");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to assign logo");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading media..." />;
   if (error) return <ErrorState message={error} onRetry={loadMedia} />;
   if (!payload) return null;
@@ -786,6 +956,34 @@ export default function AdminMedia() {
             {uploading ? "Uploading..." : "Upload File"}
             <input type="file" multiple className="hidden" onChange={onFileSelect} disabled={uploading} />
           </label>
+        </div>
+      </div>
+
+      <MediaBackfillTool accessToken={session?.accessToken} />
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-blue-900">Brand / Home Image Assignments</h3>
+        <p className="text-xs text-blue-800">
+          Select a media image, then assign it as the homepage hero or site logo. Variants are generated by the existing media pipeline.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={assignSelectedAsHero}
+            disabled={!selectedMediaId || configSaving}
+            className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {configSaving ? "Saving..." : "Use selected image as homepage hero"}
+          </button>
+          <button
+            onClick={assignSelectedAsLogo}
+            disabled={!selectedMediaId || configSaving}
+            className="rounded-lg border border-blue-300 bg-white text-blue-900 px-3 py-2 text-sm disabled:opacity-50"
+          >
+            Use selected image as site logo
+          </button>
+          <span className="text-xs text-blue-700">
+            Selected asset: {selectedMediaId ?? "none"}
+          </span>
         </div>
       </div>
 

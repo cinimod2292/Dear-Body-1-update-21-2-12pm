@@ -6,6 +6,40 @@ export type ProductGalleryImage = {
   variants: Record<string, { url: string; width?: number; height?: number }>;
 };
 
+type SurfaceImage = {
+  url: string;
+  width?: number;
+  height?: number;
+  variants?: Record<string, { url: string; width?: number; height?: number }>;
+};
+
+export type ImageSourceSet = {
+  src: string;
+  srcSet?: string;
+  width?: number;
+  height?: number;
+};
+
+export type ProductCardImageFields = {
+  image: string;
+  image2x?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  hoverImage?: string;
+  hoverImage2x?: string;
+  hoverImageWidth?: number;
+  hoverImageHeight?: number;
+};
+
+export const PRODUCT_CARD_IMAGE_SIZES = "(min-width: 1280px) 280px, (min-width: 1024px) 29vw, (min-width: 640px) 44vw, 92vw";
+
+export function extract2xUrl(srcSet?: string): string | undefined {
+  if (!srcSet) return undefined;
+  const second = srcSet.split(",")[1]?.trim();
+  if (!second) return undefined;
+  return second.split(" ")[0];
+}
+
 export function normalizeProductImages(
   galleries: Array<{
     mediaAssetId?: string;
@@ -59,7 +93,117 @@ export function resolveHoverImageUrl(params: {
 
   const hoverImage = galleryImages.find((image) => image.mediaAssetId === hoverImageId);
   if (!hoverImage?.url) return undefined;
-  const hoverUrl = hoverImage.variants.card?.url ?? hoverImage.url;
+  const hoverUrl = getCardImageSources(hoverImage)?.src ?? hoverImage.url;
   if (hoverUrl === primaryImageUrl) return undefined;
   return hoverUrl;
+}
+
+export function resolveCardImage(entry: ProductGalleryImage | undefined): { image: string; image2x?: string } {
+  const card = getCardImageSources(entry);
+  if (!card) return { image: "" };
+  return {
+    image: card.src,
+    image2x: extract2xUrl(card.srcSet),
+  };
+}
+
+export function mapGallerySurfaceImages(entry: ProductGalleryImage): {
+  url: string;
+  width?: number;
+  height?: number;
+  thumbUrl: string;
+  mainUrl: string;
+  main2xUrl?: string;
+  lightboxUrl: string;
+  lightbox2xUrl?: string;
+} {
+  const thumb = getThumbImageSources(entry);
+  const main = getGalleryMainSources(entry);
+  const lightbox = getLightboxSources(entry);
+  return {
+    url: entry.url,
+    width: entry.width,
+    height: entry.height,
+    thumbUrl: thumb?.src ?? entry.url,
+    mainUrl: main?.src ?? entry.url,
+    main2xUrl: extract2xUrl(main?.srcSet),
+    lightboxUrl: lightbox?.src ?? entry.url,
+    lightbox2xUrl: extract2xUrl(lightbox?.srcSet),
+  };
+}
+
+export function getCardImageSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.card?.url
+    ?? entry.variants?.gallery_main?.url
+    ?? entry.variants?.thumb?.url
+    ?? entry.url;
+  const src2x = entry.variants?.card_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.card?.width ?? entry.variants?.gallery_main?.width ?? entry.variants?.thumb?.width ?? entry.width,
+    height: entry.variants?.card?.height ?? entry.variants?.gallery_main?.height ?? entry.variants?.thumb?.height ?? entry.height,
+  };
+}
+
+export function getThumbImageSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  return {
+    src: entry.variants?.gallery_thumb?.url ?? entry.variants?.thumb?.url ?? entry.url,
+    width: entry.variants?.gallery_thumb?.width ?? entry.variants?.thumb?.width ?? entry.width,
+    height: entry.variants?.gallery_thumb?.height ?? entry.variants?.thumb?.height ?? entry.height,
+  };
+}
+
+export function getGalleryMainSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.gallery_main?.url ?? entry.variants?.card?.url ?? entry.url;
+  const src2x = entry.variants?.gallery_main_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.gallery_main?.width ?? entry.variants?.card?.width ?? entry.width,
+    height: entry.variants?.gallery_main?.height ?? entry.variants?.card?.height ?? entry.height,
+  };
+}
+
+export function getLightboxSources(entry: SurfaceImage | undefined): ImageSourceSet | undefined {
+  if (!entry?.url) return undefined;
+  const src = entry.variants?.lightbox?.url ?? entry.variants?.gallery_main_2x?.url ?? entry.variants?.gallery_main?.url ?? entry.url;
+  const src2x = entry.variants?.lightbox_2x?.url;
+  return {
+    src,
+    srcSet: src2x ? `${src} 1x, ${src2x} 2x` : undefined,
+    width: entry.variants?.lightbox?.width ?? entry.variants?.gallery_main_2x?.width ?? entry.variants?.gallery_main?.width ?? entry.width,
+    height: entry.variants?.lightbox?.height ?? entry.variants?.gallery_main_2x?.height ?? entry.variants?.gallery_main?.height ?? entry.height,
+  };
+}
+
+export function mapProductCardImageFields(params: {
+  primaryImage?: ProductGalleryImage;
+  hoverImageId?: string | null;
+  galleryImages: ProductGalleryImage[];
+}): ProductCardImageFields {
+  const { primaryImage, hoverImageId, galleryImages } = params;
+  const fallbackImage = primaryImage?.url ?? "";
+  const primaryCardSources = getCardImageSources(primaryImage);
+  const hoverImageMeta = hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === hoverImageId) : undefined;
+  const hoverCardSources = getCardImageSources(hoverImageMeta);
+  const hoverImage = resolveHoverImageUrl({
+    primaryImageUrl: primaryCardSources?.src ?? fallbackImage,
+    hoverImageId,
+    galleryImages,
+  });
+
+  return {
+    image: primaryCardSources?.src ?? fallbackImage,
+    image2x: extract2xUrl(primaryCardSources?.srcSet),
+    imageWidth: primaryCardSources?.width ?? primaryImage?.width,
+    imageHeight: primaryCardSources?.height ?? primaryImage?.height,
+    hoverImage,
+    hoverImage2x: extract2xUrl(hoverCardSources?.srcSet),
+    hoverImageWidth: hoverCardSources?.width ?? hoverImageMeta?.width,
+    hoverImageHeight: hoverCardSources?.height ?? hoverImageMeta?.height,
+  };
 }

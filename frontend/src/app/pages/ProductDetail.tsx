@@ -25,6 +25,8 @@ export default function ProductDetail() {
   const [activeTab, setActiveTab] = useState<"description" | "ingredients" | "howToUse">("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [renderRelatedSection, setRenderRelatedSection] = useState(false);
+  const [relatedAnchor, setRelatedAnchor] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -124,6 +126,21 @@ export default function ProductDetail() {
       preload.src = src;
     });
   }, [activeImageIndex, galleryImages, lightboxOpen]);
+
+  useEffect(() => {
+    if (!relatedAnchor || renderRelatedSection) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setRenderRelatedSection(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px 0px" },
+    );
+    observer.observe(relatedAnchor);
+    return () => observer.disconnect();
+  }, [relatedAnchor, renderRelatedSection]);
 
   const badgeColors: Record<string, string> = {
     SALE: "bg-red-500",
@@ -394,18 +411,20 @@ export default function ProductDetail() {
         </div>
 
         {/* ── Related Products ── */}
-        {related.length > 0 && (
-          <div className="mt-20">
-            <h2 className="text-gray-900 mb-8 text-center" style={{ fontSize: "2rem", fontWeight: 900 }}>
-              You Might Also Love 💕
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {related.map(p => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          </div>
-        )}
+        <div ref={setRelatedAnchor} className="mt-20">
+          {related.length > 0 && renderRelatedSection ? (
+            <>
+              <h2 className="text-gray-900 mb-8 text-center" style={{ fontSize: "2rem", fontWeight: 900 }}>
+                You Might Also Love 💕
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {related.map(p => (
+                  <ProductCard key={p.id} product={p} />
+                ))}
+              </div>
+            </>
+          ) : <div style={{ minHeight: 220 }} aria-hidden className="bg-transparent" />}
+        </div>
       </div>
 
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>

@@ -220,6 +220,10 @@ export function resolveLocalPublicBaseUrl(): string {
 
 export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
   if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
+    const normalizedStorageKey = sanitizeStorageKey(storageKey);
+    if (cfg.publicBaseUrl && normalizedStorageKey.startsWith("variants/")) {
+      return `${normalizeBaseUrl(cfg.publicBaseUrl)}/${normalizedStorageKey}`;
+    }
     return `${resolveApiBaseUrl()}${env.API_PREFIX}/media/public/${sanitizeStorageKey(storageKey)}`;
   }
   return `${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`;

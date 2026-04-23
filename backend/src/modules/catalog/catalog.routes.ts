@@ -27,16 +27,20 @@ async function readCsvFromRequest(request: any) {
 }
 
 export async function catalogRoutes(app: FastifyInstance) {
+  const storefrontCacheHeader = "public, max-age=60, s-maxage=300, stale-while-revalidate=600, stale-if-error=86400";
+
   app.get("/store/products", async (request, reply) => {
     const result = await listStorefrontProducts(request.query);
-    reply.header("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300");
+    reply.header("Cache-Control", storefrontCacheHeader);
+    reply.header("Vary", "Accept-Encoding");
     return reply.send({ data: result });
   });
 
   app.get("/store/products/:productId", async (request, reply) => {
     const { productId } = request.params as { productId: string };
     const product = await getStorefrontProductById(productId);
-    reply.header("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300");
+    reply.header("Cache-Control", storefrontCacheHeader);
+    reply.header("Vary", "Accept-Encoding");
     return reply.send({ data: product });
   });
 

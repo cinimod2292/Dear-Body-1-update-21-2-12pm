@@ -118,6 +118,15 @@ async function transformImageWithSharp(params: {
   };
 }
 
+export async function isSharpTransformerAvailable(): Promise<boolean> {
+  try {
+    await import("sharp");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let transformImage: TransformImageFn = transformImageWithSharp;
 
 let mediaVariantDeps: MediaVariantDeps = {

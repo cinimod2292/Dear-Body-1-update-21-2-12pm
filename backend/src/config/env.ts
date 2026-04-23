@@ -33,6 +33,7 @@ const envSchema = z.object({
   PAYMENTS_ENCRYPTION_SECRET: z.string().min(16).optional(),
   STORAGE_ENCRYPTION_SECRET: z.string().min(16).optional(),
   SETUP_TOKEN: z.string().min(16).optional(),
+  MEDIA_BACKFILL_TOKEN: z.string().min(16).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

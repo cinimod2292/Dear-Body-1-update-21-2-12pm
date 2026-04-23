@@ -268,3 +268,4 @@ export async function fetchStoreProductById(productId: string): Promise<Product 
 export function getCategories(products: Product[]) {
   return ["All", ...new Set(products.map((product) => product.category))];
 }
+

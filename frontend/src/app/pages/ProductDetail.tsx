@@ -7,6 +7,7 @@ import { ProductCard } from "../components/ProductCard";
 import { useFavorites } from "../context/FavoritesContext";
 import { formatRand } from "../lib/currency";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { deriveGalleryImages, type ProductDetailImage } from "../lib/product-detail-images";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -46,58 +47,45 @@ export default function ProductDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Loading product…</h2>
-      </div>
-    );
-  }
-
-  if (!product) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-6xl">🌈</p>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Product not found</h2>
-        <Link to="/shop" className="px-6 py-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold">
-          Back to Shop
-        </Link>
-      </div>
-    );
-  }
-
   const handleAddToCart = () => {
-    if (!product.variantId || !product.inStock) return;
-    addToCart(product, quantity);
+    const currentProduct = product;
+    if (!currentProduct?.variantId || !currentProduct.inStock) return;
+    addToCart(currentProduct, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
-    if (!product.variantId || !product.inStock) return;
-    addToCart(product, quantity);
+    const currentProduct = product;
+    if (!currentProduct?.variantId || !currentProduct.inStock) return;
+    addToCart(currentProduct, quantity);
     navigate("/cart");
   };
 
-  const savings = product.originalPrice ? (product.originalPrice - product.price) * quantity : null;
-
-  const wished = isFavorited(product.id);
-  type GalleryImage = {
-    url: string;
-    width?: number;
-    height?: number;
-    thumbUrl?: string;
-    mainUrl?: string;
-    main2xUrl?: string;
-    lightboxUrl?: string;
-    lightbox2xUrl?: string;
-  };
-  const galleryImages: GalleryImage[] = product.galleryImages?.length
-    ? product.galleryImages
-    : (product.images.length ? product.images.map((url): GalleryImage => ({ url })) : [{ url: product.image }]).filter((image) => Boolean(image.url));
-  const currentImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? { url: product.image };
+  const savings = product?.originalPrice ? (product.originalPrice - product.price) * quantity : null;
+  const wished = product ? isFavorited(product.id) : false;
+  const galleryImages: ProductDetailImage[] = deriveGalleryImages(product ? {
+    galleryImages: product.galleryImages,
+    images: product.images,
+    image: product.image,
+  } : null);
+  const safeActiveImageIndex = galleryImages.length ? Math.min(activeImageIndex, galleryImages.length - 1) : 0;
+  const currentImage = galleryImages[safeActiveImageIndex]
+    ?? galleryImages[0]
+    ?? { url: product?.image ?? "" };
   const currentMainSrc = currentImage.mainUrl ?? currentImage.url;
   const currentLightboxSrc = currentImage.lightboxUrl ?? currentImage.main2xUrl ?? currentImage.mainUrl ?? currentImage.url;
+
+  useEffect(() => {
+    if (!galleryImages.length) {
+      if (activeImageIndex !== 0) setActiveImageIndex(0);
+      if (lightboxOpen) setLightboxOpen(false);
+      return;
+    }
+    if (activeImageIndex > galleryImages.length - 1) {
+      setActiveImageIndex(galleryImages.length - 1);
+    }
+  }, [activeImageIndex, galleryImages.length, lightboxOpen]);
 
   useEffect(() => {
     if (!lightboxOpen || !galleryImages.length) return;
@@ -120,6 +108,26 @@ export default function ProductDetail() {
     BESTSELLER: "bg-pink-500",
     NEW: "bg-lime-500",
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Loading product…</h2>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-6xl">🌈</p>
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }} className="text-gray-800">Product not found</h2>
+        <Link to="/shop" className="px-6 py-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold">
+          Back to Shop
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">

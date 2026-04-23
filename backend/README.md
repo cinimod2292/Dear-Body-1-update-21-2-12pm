@@ -69,3 +69,57 @@ This service provides the production backend foundation for admin APIs and comme
 - `UPLOAD_PUBLIC_BASE_URL` (public-read base URL if different from `UPLOAD_ENDPOINT`)
 - `UPLOAD_SIGNED_URL_TTL_SECONDS` (default `900`)
 - `UPLOAD_FORCE_PATH_STYLE` (`true` for many S3-compatible providers)
+
+## Media variant transformation pipeline
+
+The media variant pipeline now performs real byte-level transformation for image variants when `sharp` is available.
+
+### Transformer
+- Backend: `sharp` (optional dependency; install in runtime/build environment for active transforms).
+- If `sharp` is not available, variant generation fails safely per-variant and does not mutate/degrade existing good variants.
+
+### Variant generation behavior
+- Source bytes are read from object storage.
+- Every configured key (`thumb`, `card`, `card_2x`, `gallery_thumb`, `gallery_main`, `gallery_main_2x`, `lightbox`, `lightbox_2x`) is resized with:
+  - `fit=inside`
+  - `withoutEnlargement=true` (no upscaling)
+- Each variant is stored as a real transformed object and upserted in `MediaVariant`.
+- Metadata persisted per variant row is the transformed output metadata:
+  - `width`
+  - `height`
+  - `mimeType`
+  - `byteSize`
+
+### Format policy
+- `image/jpeg` input => variants encoded as `image/webp`.
+- `image/png` input:
+  - alpha/transparency detected => encode as `image/png`.
+  - no alpha => encode as `image/webp`.
+- `image/webp` input:
+  - alpha/transparency detected => encode as `image/png`.
+  - no alpha => encode as `image/webp`.
+- Original upload is preserved and remains source of truth in all cases.
+
+### Quality/compression settings
+- WebP quality: `82`
+- PNG compression level: `9`
+
+### Backfill/regenerate commands
+- All image assets:
+  ```bash
+  npm run media:variants -- --all
+  ```
+- One product:
+  ```bash
+  npm run media:variants -- --product <productId>
+  ```
+- One asset:
+  ```bash
+  npm run media:variants -- --asset <mediaAssetId>
+  ```
+- Force overwrite existing variants:
+  ```bash
+  npm run media:variants -- --asset <mediaAssetId> --force
+  ```
+
+Backfill/regeneration is resumable and idempotent (`upsert` + skip-existing unless `--force`).

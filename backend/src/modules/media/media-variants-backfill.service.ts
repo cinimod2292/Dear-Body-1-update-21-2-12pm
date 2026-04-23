@@ -49,12 +49,13 @@ export async function runMediaVariantsBackfill(
   log: (message: string, meta?: Record<string, unknown>) => void = () => {},
 ): Promise<MediaVariantsBackfillResult> {
   const mode = resolveBackfillMode(options);
-  const assetIds = await resolveBackfillAssetIds(options);
   const sharpAvailable = await isSharpTransformerAvailable();
 
   if (!sharpAvailable) {
-    log("media variant transformer unavailable", { sharpAvailable: false });
+    log("media variant transformer unavailable", { sharpAvailable: false, mode });
+    throw new Error("Media variant transformer unavailable: sharp dependency is not available in this runtime.");
   }
+  const assetIds = await resolveBackfillAssetIds(options);
 
   let generated = 0;
   let skipped = 0;

@@ -12,7 +12,6 @@ import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
-  let backfillRunId = 0;
 
   app.get("/media/public/*", async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
@@ -31,9 +30,14 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = runMediaBackfillSchema.parse(request.body ?? {});
+      if (!env.MEDIA_BACKFILL_TOKEN) {
+        request.log.error("MEDIA_BACKFILL_TOKEN is not configured; refusing to run media backfill endpoint");
+        return reply.status(503).send({ error: { message: "Backfill endpoint is not configured" } });
+      }
+
       const token = request.headers["x-internal-token"];
       const suppliedToken = Array.isArray(token) ? token[0] : token;
-      if (env.MEDIA_BACKFILL_TOKEN && suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
+      if (suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
         return reply.status(403).send({ error: { message: "Invalid internal token" } });
       }
 
@@ -45,12 +49,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       }
 
       backfillInProgress = true;
-      backfillRunId += 1;
-      const runId = backfillRunId;
       const mode = body.assetId ? "asset" : body.productId ? "product" : "all";
 
       request.log.info({
-        runId,
         mode,
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
@@ -58,45 +59,50 @@ export async function mediaRoutes(app: FastifyInstance) {
         actorUserId: request.user.sub,
       }, "Media variant backfill started");
 
-      setImmediate(() => {
-        runMediaVariantsBackfill({
+      try {
+        const result = await runMediaVariantsBackfill({
           all: !body.assetId && !body.productId,
           productId: body.productId,
           assetId: body.assetId,
           force: body.force,
         }, (message, meta) => {
-          request.log.info({ runId, ...meta }, message);
-        })
-          .then((result) => {
-            request.log.info({
-              runId,
-              mode: result.mode,
-              assetsProcessed: result.assetsProcessed,
-              generated: result.generated,
-              skipped: result.skipped,
-              failed: result.failed,
-              sharpAvailable: result.sharpAvailable,
-              failureCount: result.failures.length,
-            }, "Media variant backfill completed");
-          })
-          .catch((error) => {
-            request.log.error({ runId, err: error }, "Media variant backfill failed");
-          })
-          .finally(() => {
-            backfillInProgress = false;
-          });
-      });
+          request.log.info({ ...meta }, message);
+        });
 
-      return reply.send({
-        status: "started",
-        mode,
-        details: {
-          runId,
+        const succeeded = result.assetsProcessed - result.failures.length;
+        request.log.info({
+          mode: result.mode,
+          assetsProcessed: result.assetsProcessed,
+          succeededAssets: succeeded,
+          failedAssets: result.failures.length,
+          generated: result.generated,
+          skipped: result.skipped,
+          failed: result.failed,
+          sharpAvailable: result.sharpAvailable,
           force: body.force,
           assetId: body.assetId ?? null,
           productId: body.productId ?? null,
-        },
-      });
+        }, "Media variant backfill completed");
+
+        return reply.send({
+          status: "ok",
+          mode: result.mode,
+          processed: result.assetsProcessed,
+          created: result.generated,
+          failed: result.failed,
+          succeededAssets: succeeded,
+          failedAssets: result.failures.length,
+          force: body.force,
+          assetId: body.assetId ?? null,
+          productId: body.productId ?? null,
+          sharpAvailable: result.sharpAvailable,
+        });
+      } catch (error) {
+        request.log.error({ err: error, mode, force: body.force, assetId: body.assetId ?? null, productId: body.productId ?? null }, "Media variant backfill failed");
+        throw error;
+      } finally {
+        backfillInProgress = false;
+      }
     },
   );
 

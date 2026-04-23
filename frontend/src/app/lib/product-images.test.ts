@@ -7,6 +7,7 @@ import {
   getLightboxSources,
   getThumbImageSources,
   mapGallerySurfaceImages,
+  PRODUCT_CARD_IMAGE_SIZES,
   resolveCardImage,
   resolveHoverImageUrl,
 } from "./product-images";
@@ -106,4 +107,11 @@ test("ProductCard field mapping uses card-sized sources by default", () => {
   assert.equal(mapped.image2x, "https://img/card-2x.jpg");
   assert.equal(mapped.hoverImage, "https://img/hover-card.jpg");
   assert.equal(mapped.hoverImage2x, "https://img/hover-card-2x.jpg");
+});
+
+test("Product card responsive sizes favor realistic rendered card widths", () => {
+  assert.equal(
+    PRODUCT_CARD_IMAGE_SIZES,
+    "(min-width: 1280px) 280px, (min-width: 1024px) 29vw, (min-width: 640px) 44vw, 92vw",
+  );
 });

@@ -2,6 +2,7 @@ import test, { beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   MEDIA_VARIANT_SPECS,
+  resolveVariantOutputMimeType,
   __resetMediaVariantDepsForTests,
   __resetMediaVariantTransformerForTests,
   __setMediaVariantDepsForTests,
@@ -114,13 +115,13 @@ test("generateMediaVariantsForAsset supports forced regeneration and partial fai
     },
   });
 
-  __setMediaVariantTransformerForTests(async ({ targetMaxWidth }) => {
-    if (targetMaxWidth === 640) {
+  __setMediaVariantTransformerForTests(async ({ variantKey }) => {
+    if (variantKey === "card") {
       throw new Error("corrupt");
     }
     return {
       buffer: Buffer.from("ok"),
-      width: Math.min(targetMaxWidth, 900),
+      width: 900,
       height: 600,
       mimeType: "image/webp",
     };
@@ -130,4 +131,12 @@ test("generateMediaVariantsForAsset supports forced regeneration and partial fai
   assert.equal(result.failed, 1);
   assert.equal(result.generated, MEDIA_VARIANT_SPECS.length - 1);
   assert.equal(writes, MEDIA_VARIANT_SPECS.length - 1);
+});
+
+test("resolveVariantOutputMimeType preserves transparency only when truly needed", () => {
+  assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/jpeg", hasTransparentPixels: false }), "image/webp");
+  assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/png", hasTransparentPixels: false }), "image/webp");
+  assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/png", hasTransparentPixels: true }), "image/png");
+  assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: false }), "image/webp");
+  assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: true }), "image/webp");
 });

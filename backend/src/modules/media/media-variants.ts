@@ -3,13 +3,13 @@ import { resolvePublicUrlForStorageKey, resolveUploadConfig, readStorageObjectBu
 
 export const MEDIA_VARIANT_SPECS = [
   { key: "thumb", maxWidth: 160, maxHeight: 160 },
-  { key: "card", maxWidth: 640, maxHeight: 640 },
-  { key: "card_2x", maxWidth: 960, maxHeight: 960 },
+  { key: "card", maxWidth: 480, maxHeight: 480 },
+  { key: "card_2x", maxWidth: 720, maxHeight: 720 },
   { key: "gallery_thumb", maxWidth: 200, maxHeight: 200 },
   { key: "gallery_main", maxWidth: 960, maxHeight: 960 },
   { key: "gallery_main_2x", maxWidth: 1440, maxHeight: 1440 },
   { key: "lightbox", maxWidth: 1600, maxHeight: 1600 },
-  { key: "lightbox_2x", maxWidth: 2400, maxHeight: 2400 },
+  { key: "lightbox_2x", maxWidth: 2000, maxHeight: 2000 },
 ] as const;
 
 type VariantKey = typeof MEDIA_VARIANT_SPECS[number]["key"];
@@ -24,6 +24,7 @@ type TransformOutput = {
 type TransformImageFn = (params: {
   input: Buffer;
   sourceMimeType: string;
+  variantKey: VariantKey;
   targetMaxWidth: number;
   targetMaxHeight: number;
 }) => Promise<TransformOutput>;
@@ -68,17 +69,41 @@ type MediaVariantDeps = {
   writeStorageObjectBuffer: typeof writeStorageObjectBuffer;
   resolvePublicUrlForStorageKey: typeof resolvePublicUrlForStorageKey;
 };
-const DEFAULT_JPEG_QUALITY = 82;
-const DEFAULT_WEBP_QUALITY = 82;
-const DEFAULT_PNG_COMPRESSION_LEVEL = 9;
+const WEBP_QUALITY_BY_VARIANT: Record<VariantKey, number> = {
+  thumb: 68,
+  card: 72,
+  card_2x: 74,
+  gallery_thumb: 70,
+  gallery_main: 78,
+  gallery_main_2x: 80,
+  lightbox: 82,
+  lightbox_2x: 84,
+};
+const PNG_COMPRESSION_LEVEL_BY_VARIANT: Record<VariantKey, number> = {
+  thumb: 9,
+  card: 9,
+  card_2x: 9,
+  gallery_thumb: 9,
+  gallery_main: 9,
+  gallery_main_2x: 9,
+  lightbox: 9,
+  lightbox_2x: 9,
+};
 
-function isTransparentMime(mimeType: string): boolean {
-  return mimeType === "image/png" || mimeType === "image/webp";
+export function resolveVariantOutputMimeType(params: {
+  sourceMimeType: string;
+  hasTransparentPixels: boolean;
+}): "image/webp" | "image/png" {
+  const normalizedMime = params.sourceMimeType.toLowerCase();
+  if (normalizedMime === "image/png" && params.hasTransparentPixels) return "image/png";
+  if (normalizedMime === "image/webp" && params.hasTransparentPixels) return "image/webp";
+  return "image/webp";
 }
 
 async function transformImageWithSharp(params: {
   input: Buffer;
   sourceMimeType: string;
+  variantKey: VariantKey;
   targetMaxWidth: number;
   targetMaxHeight: number;
 }): Promise<TransformOutput> {
@@ -91,12 +116,12 @@ async function transformImageWithSharp(params: {
 
   const sharpFactory = sharpModule.default ?? sharpModule;
   const pipeline = sharpFactory(params.input, { failOn: "warning" }).rotate();
-  const metadata = await pipeline.metadata();
-
-  const hasAlpha = Boolean(metadata.hasAlpha);
-  const targetMimeType = hasAlpha && isTransparentMime(params.sourceMimeType)
-    ? "image/png"
-    : "image/webp";
+  const stats = await pipeline.stats();
+  const hasTransparentPixels = stats.isOpaque === false;
+  const targetMimeType = resolveVariantOutputMimeType({
+    sourceMimeType: params.sourceMimeType,
+    hasTransparentPixels,
+  });
 
   const resized = pipeline.resize({
     width: params.targetMaxWidth,
@@ -106,8 +131,8 @@ async function transformImageWithSharp(params: {
   });
 
   const encoded = targetMimeType === "image/png"
-    ? resized.png({ compressionLevel: DEFAULT_PNG_COMPRESSION_LEVEL })
-    : resized.webp({ quality: DEFAULT_WEBP_QUALITY, effort: 5 });
+    ? resized.png({ compressionLevel: PNG_COMPRESSION_LEVEL_BY_VARIANT[params.variantKey], adaptiveFiltering: true, effort: 9 })
+    : resized.webp({ quality: WEBP_QUALITY_BY_VARIANT[params.variantKey], effort: 6, alphaQuality: 88, smartSubsample: true });
 
   const infoResult = await encoded.toBuffer({ resolveWithObject: true });
   return {
@@ -196,6 +221,7 @@ export async function generateMediaVariantsForAsset(
       const transformed = await transformImage({
         input: original,
         sourceMimeType: asset.mimeType,
+        variantKey: spec.key,
         targetMaxWidth: spec.maxWidth,
         targetMaxHeight: spec.maxHeight,
       });
@@ -237,15 +263,15 @@ export async function generateMediaVariantsForAsset(
 export const MEDIA_VARIANT_FORMAT_POLICY = {
   source: {
     "image/jpeg": "derived variants encoded as image/webp",
-    "image/png": "opaque PNGs -> image/webp, alpha PNGs -> image/png",
-    "image/webp": "opaque WebP -> image/webp, alpha WebP -> image/png",
+    "image/png": "transparent PNGs -> image/png, opaque PNGs -> image/webp",
+    "image/webp": "transparent WebP -> image/webp, opaque WebP -> image/webp",
   },
   quality: {
-    jpegQuality: DEFAULT_JPEG_QUALITY,
-    webpQuality: DEFAULT_WEBP_QUALITY,
-    pngCompressionLevel: DEFAULT_PNG_COMPRESSION_LEVEL,
+    webpByVariant: WEBP_QUALITY_BY_VARIANT,
+    pngCompressionByVariant: PNG_COMPRESSION_LEVEL_BY_VARIANT,
   },
   notes: [
+    "Transparency detection is based on actual pixel opacity (sharp stats.isOpaque), not only channel presence.",
     "Original upload is always retained and never mutated.",
     "Resize uses fit=inside with withoutEnlargement=true (no upscaling).",
     "Variants are generated per key and upserted idempotently.",

@@ -4,7 +4,10 @@ import { ArrowRight, Star } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
+import { resolveHeroImageConfig } from "../lib/hero-image-config";
 import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
+
+const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
 interface HomeSection {
   id: string;
@@ -65,11 +68,39 @@ export default function Home() {
 
   const renderSection = (section: HomeSection) => {
     if (section.type === "hero") {
-      const bg = String(section.content.backgroundImageUrl || heroImageFallback);
+      const heroImage = resolveHeroImageConfig(section.content, {
+        pngFallbackUrl: heroImageFallback,
+        optimizedFallbackUrl: HERO_IMAGE_OPTIMIZED_PATH,
+      });
       return (
         <section key={section.id} className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
           <div className="absolute inset-0">
-            <img src={bg} alt={section.title || "Hero"} fetchPriority="high" loading="eager" decoding="async" className="w-full h-full object-cover opacity-60" />
+            {heroImage.useCmsImage ? (
+              <img
+                src={heroImage.imageUrl}
+                alt={section.title || "Hero"}
+                fetchPriority="high"
+                loading="eager"
+                decoding="async"
+                sizes="100vw"
+                className="w-full h-full object-cover opacity-60"
+              />
+            ) : (
+              <picture>
+                <source srcSet={heroImage.optimizedFallbackUrl} type="image/webp" />
+                <img
+                  src={heroImage.pngFallbackUrl}
+                  alt={section.title || "Hero"}
+                  fetchPriority="high"
+                  loading="eager"
+                  decoding="async"
+                  sizes="100vw"
+                  width={1217}
+                  height={797}
+                  className="w-full h-full object-cover opacity-60"
+                />
+              </picture>
+            )}
             <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent" />
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">

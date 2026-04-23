@@ -31,6 +31,8 @@ export type ProductCardImageFields = {
   hoverImageHeight?: number;
 };
 
+export const PRODUCT_CARD_IMAGE_SIZES = "(min-width: 1280px) 280px, (min-width: 1024px) 29vw, (min-width: 640px) 44vw, 92vw";
+
 export function extract2xUrl(srcSet?: string): string | undefined {
   if (!srcSet) return undefined;
   const second = srcSet.split(",")[1]?.trim();

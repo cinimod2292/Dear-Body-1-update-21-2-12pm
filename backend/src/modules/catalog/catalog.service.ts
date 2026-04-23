@@ -911,20 +911,83 @@ export async function listProducts(rawQuery: unknown) {
       skip,
       take,
       orderBy: { [query.sortBy]: query.sortDir },
-      include: {
-        brand: true,
-        category: true,
-        seoMetadata: true,
-        tags: { include: { tag: true } },
-        galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
-        hoverImage: { include: { variants: true } },
-        variants: { include: { inventoryLevel: true, attributeValues: { include: { attribute: true, option: true } } } },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        visibility: true,
+        featured: true,
+        updatedAt: true,
+        brand: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        galleries: {
+          orderBy: { position: "asc" },
+          take: 1,
+          select: {
+            mediaAsset: {
+              select: {
+                storageKey: true,
+                publicUrl: true,
+                variants: {
+                  where: { key: { in: ["thumb", "card", "card_2x"] } },
+                  select: { key: true, storageKey: true, publicUrl: true },
+                },
+              },
+            },
+          },
+        },
+        variants: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            price: true,
+            salePrice: true,
+            inventoryLevel: { select: { quantityOnHand: true } },
+          },
+        },
       },
     }),
     prisma.product.count({ where }),
   ]);
+  const normalizedItems = items.map((item) => {
+    const firstVariant = item.variants[0] ?? null;
+    const stockTotal = item.variants.reduce((sum, variant) => sum + (variant.inventoryLevel?.quantityOnHand ?? 0), 0);
+    const media = item.galleries[0]?.mediaAsset;
+    const cardVariant = media?.variants.find((variant) => variant.key === "card");
+    const card2xVariant = media?.variants.find((variant) => variant.key === "card_2x");
+    const thumbVariant = media?.variants.find((variant) => variant.key === "thumb");
+    const thumbnailUrl = cardVariant?.storageKey
+      ? resolvePublicUrlForStorageKey(cardVariant.storageKey, cfg)
+      : thumbVariant?.storageKey
+        ? resolvePublicUrlForStorageKey(thumbVariant.storageKey, cfg)
+        : media?.storageKey
+          ? resolvePublicUrlForStorageKey(media.storageKey, cfg)
+          : media?.publicUrl
+            ? media.publicUrl
+            : null;
+    const thumbnail2xUrl = card2xVariant?.storageKey
+      ? resolvePublicUrlForStorageKey(card2xVariant.storageKey, cfg)
+      : card2xVariant?.publicUrl ?? null;
 
-  return toPaginatedResponse(items.map((item) => withResolvedProductMediaUrls(item, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg))), total, query);
+    return {
+      id: item.id,
+      name: item.name,
+      slug: item.slug,
+      status: item.status,
+      visibility: item.visibility,
+      featured: item.featured,
+      updatedAt: item.updatedAt,
+      brand: item.brand,
+      category: item.category,
+      price: firstVariant ? Number(firstVariant.price) : null,
+      salePrice: firstVariant?.salePrice ? Number(firstVariant.salePrice) : null,
+      stockTotal,
+      thumbnailUrl,
+      thumbnail2xUrl,
+    };
+  });
+  return toPaginatedResponse(normalizedItems, total, query);
 }
 
 export async function listStorefrontProducts(rawQuery: unknown) {
@@ -950,11 +1013,45 @@ export async function listStorefrontProducts(rawQuery: unknown) {
       skip,
       take,
       orderBy: { [query.sortBy]: query.sortDir },
-      include: {
-        category: true,
-        galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
-        hoverImage: { include: { variants: true } },
-        variants: { where: { isActive: true }, include: { inventoryLevel: true } },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        shortDescription: true,
+        featured: true,
+        hoverImageId: true,
+        category: { select: { id: true, name: true } },
+        galleries: {
+          include: {
+            mediaAsset: {
+              select: {
+                id: true,
+                filename: true,
+                mimeType: true,
+                publicUrl: true,
+                storageKey: true,
+                metadata: true,
+                variants: {
+                  where: { key: { in: ["thumb", "card", "card_2x", "gallery_thumb"] } },
+                  select: { key: true, publicUrl: true, storageKey: true, width: true, height: true },
+                },
+              },
+            },
+          },
+          orderBy: { position: "asc" },
+          take: 2,
+        },
+        variants: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            isActive: true,
+            price: true,
+            salePrice: true,
+            inventoryLevel: { select: { quantityOnHand: true } },
+          },
+        },
       },
     }),
     prisma.product.count({ where }),

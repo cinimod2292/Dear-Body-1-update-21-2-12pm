@@ -460,7 +460,30 @@ export default function AdminProducts() {
           rows={payload.items}
           columns={[
             { key: "select", header: "", render: (item) => <input type="checkbox" checked={selected.includes(item.id)} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id))} /> },
-            { key: "name", header: "Product", render: (item) => <div><p className="font-semibold">{item.name}</p><p className="text-xs text-gray-500">/{item.slug}</p></div> },
+            {
+              key: "name",
+              header: "Product",
+              render: (item) => (
+                <div className="flex items-center gap-3">
+                  {item.thumbnailUrl ? (
+                    <img
+                      src={item.thumbnailUrl}
+                      srcSet={item.thumbnail2xUrl ? `${item.thumbnailUrl} 1x, ${item.thumbnail2xUrl} 2x` : undefined}
+                      alt={item.name}
+                      className="w-10 h-10 rounded object-cover bg-gray-100"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded bg-gray-100" />
+                  )}
+                  <div>
+                    <p className="font-semibold">{item.name}</p>
+                    <p className="text-xs text-gray-500">/{item.slug}</p>
+                  </div>
+                </div>
+              ),
+            },
             { key: "status", header: "Status", render: (item) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{item.status}</span> },
             { key: "visibility", header: "Visibility", render: (item) => <span className="text-xs">{item.visibility}</span> },
             { key: "featured", header: "Featured", render: (item) => <span className={`text-xs ${item.featured ? "text-pink-600" : "text-gray-400"}`}>{item.featured ? "Yes" : "No"}</span> },
@@ -469,16 +492,15 @@ export default function AdminProducts() {
               key: "pricing",
               header: "Pricing",
               render: (item) => {
-                const first = item.variants?.[0];
-                if (!first) return <span className="text-xs text-gray-400">No variants</span>;
-                return <div className="text-xs"><p>{formatRand(Number(first.price))}</p>{first.salePrice ? <p className="text-green-600">Sale {formatRand(Number(first.salePrice))}</p> : null}</div>;
+                if (item.price === undefined || item.price === null) return <span className="text-xs text-gray-400">No variants</span>;
+                return <div className="text-xs"><p>{formatRand(Number(item.price))}</p>{item.salePrice ? <p className="text-green-600">Sale {formatRand(Number(item.salePrice))}</p> : null}</div>;
               },
             },
             {
               key: "stock",
               header: "Total Stock",
               render: (item) => {
-                const total = (item.variants ?? []).reduce((sum, v) => sum + (v.inventoryLevel?.quantityOnHand ?? 0), 0);
+                const total = item.stockTotal ?? 0;
                 return <span className={`text-xs font-medium ${total <= 0 ? "text-red-600" : "text-gray-700"}`}>{total}</span>;
               },
             },

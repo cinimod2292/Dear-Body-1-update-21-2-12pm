@@ -1,9 +1,10 @@
 import { API_BASE } from "../admin/api/client";
-import { normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
+import { getCardImageSources, mapGallerySurfaceImages, normalizeProductImages, resolveHoverImageUrl } from "../lib/product-images";
 
 export interface Product {
   id: string;
   slug: string;
+  categoryId?: string;
   variantId: string | null;
   backendVariantId?: string | null;
   name: string;
@@ -50,7 +51,7 @@ type StorefrontProductApi = {
   name: string;
   description?: string | null;
   shortDescription?: string | null;
-  category?: { name: string } | null;
+  category?: { id: string; name: string } | null;
   featured?: boolean;
   hoverImageId?: string | null;
   galleries?: Array<{
@@ -134,8 +135,9 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
   const galleryImages = normalizeProductImages(api.galleries);
   const image = galleryImages[0]?.url ?? "";
   const primaryImage = galleryImages[0];
-  const primaryCardImage = primaryImage?.variants.card?.url ?? image;
-  const primaryCardImage2x = primaryImage?.variants.card_2x?.url;
+  const primaryCardSources = getCardImageSources(primaryImage);
+  const primaryCardImage = primaryCardSources?.src ?? image;
+  const primaryCardImage2x = primaryCardSources?.srcSet ? primaryCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined;
   const hoverImage = resolveHoverImageUrl({
     primaryImageUrl: primaryCardImage,
     hoverImageId: api.hoverImageId,
@@ -148,10 +150,12 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     : normalizePrice(primaryVariant.salePrice, basePrice);
 
   const hoverImageMeta = api.hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === api.hoverImageId) : undefined;
+  const hoverCardSources = getCardImageSources(hoverImageMeta);
 
   return {
     id: api.id,
     slug: api.slug,
+    categoryId: api.category?.id,
     variantId: primaryVariant?.id ?? null,
     name: api.name,
     tagline: tagDetails?.tagline ?? api.shortDescription ?? "",
@@ -166,20 +170,11 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     imageWidth: primaryImage?.width,
     imageHeight: primaryImage?.height,
     hoverImage,
-    hoverImage2x: hoverImageMeta?.variants.card_2x?.url,
+    hoverImage2x: hoverCardSources?.srcSet ? hoverCardSources.srcSet.split(",")[1]?.trim().split(" ")[0] : undefined,
     hoverImageWidth: hoverImageMeta?.width,
     hoverImageHeight: hoverImageMeta?.height,
     images: galleryImages.map((entry) => entry.url),
-    galleryImages: galleryImages.map((entry) => ({
-      url: entry.url,
-      width: entry.width,
-      height: entry.height,
-      thumbUrl: entry.variants.gallery_thumb?.url ?? entry.variants.thumb?.url ?? entry.url,
-      mainUrl: entry.variants.gallery_main?.url ?? entry.variants.card?.url ?? entry.url,
-      main2xUrl: entry.variants.gallery_main_2x?.url,
-      lightboxUrl: entry.variants.lightbox?.url ?? entry.variants.gallery_main_2x?.url ?? entry.url,
-      lightbox2xUrl: entry.variants.lightbox_2x?.url,
-    })),
+    galleryImages: galleryImages.map((entry) => mapGallerySurfaceImages(entry)),
     description: api.description ?? "",
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",
@@ -190,6 +185,34 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     inStock: (primaryVariant?.inventoryLevel?.quantityOnHand ?? 0) > 0,
     scent: tagDetails?.scent,
   };
+}
+
+export async function fetchStoreProductsByQuery(query: {
+  q?: string;
+  categoryId?: string;
+  featured?: boolean;
+  perPage?: number;
+  sortBy?: "createdAt" | "updatedAt" | "name" | "publishedAt";
+  sortDir?: "asc" | "desc";
+}): Promise<Product[]> {
+  const params = new URLSearchParams({
+    perPage: String(query.perPage ?? 24),
+    sortBy: query.sortBy ?? "createdAt",
+    sortDir: query.sortDir ?? "desc",
+  });
+  if (query.q) params.set("q", query.q);
+  if (query.categoryId) params.set("categoryId", query.categoryId);
+  if (query.featured !== undefined) params.set("featured", String(query.featured));
+
+  const response = await fetch(`${API_BASE}/store/products?${params.toString()}`);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || "Failed to load products");
+  }
+  const items = (payload?.data?.items || []) as StorefrontProductApi[];
+  return items
+    .map((item, index) => toProduct(item, index))
+    .filter((product) => Boolean(product.variantId));
 }
 
 export async function fetchStoreProducts(forceRefresh = false): Promise<Product[]> {

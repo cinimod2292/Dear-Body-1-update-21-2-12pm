@@ -10,6 +10,8 @@ type BuilderRegistryEntry = {
   type: BuilderSectionType;
   displayName: string;
   description: string;
+  group: "Hero" | "Products" | "Content" | "Trust/Benefits" | "Promotions";
+  icon: string;
   component: ComponentType<any>;
   defaultProps: Record<string, unknown>;
   editableSchema: Record<string, EditableField>;
@@ -21,6 +23,8 @@ export const dearBodySectionRegistry: Record<BuilderSectionType, BuilderRegistry
     type: "hero_banner",
     displayName: "Hero Banner",
     description: "Top hero section with headline and CTA buttons",
+    group: "Hero",
+    icon: "🖼️",
     component: HeroBannerSection,
     removable: false,
     defaultProps: {
@@ -50,6 +54,8 @@ export const dearBodySectionRegistry: Record<BuilderSectionType, BuilderRegistry
     type: "featured_products",
     displayName: "Featured Products",
     description: "Product grid using existing product cards",
+    group: "Products",
+    icon: "🛍️",
     component: FeaturedProductsSection,
     removable: true,
     defaultProps: {
@@ -73,6 +79,8 @@ export const dearBodySectionRegistry: Record<BuilderSectionType, BuilderRegistry
     type: "image_text",
     displayName: "Image + Text",
     description: "Split content section with image and copy",
+    group: "Content",
+    icon: "📝",
     component: ImageTextSection,
     removable: true,
     defaultProps: {
@@ -96,6 +104,8 @@ export const dearBodySectionRegistry: Record<BuilderSectionType, BuilderRegistry
     type: "benefit_icons",
     displayName: "Benefit Icons",
     description: "Icon list with key value propositions",
+    group: "Trust/Benefits",
+    icon: "✅",
     component: BenefitIconsSection,
     removable: true,
     defaultProps: {
@@ -116,6 +126,8 @@ export const dearBodySectionRegistry: Record<BuilderSectionType, BuilderRegistry
     type: "promo_banner",
     displayName: "Promo Banner",
     description: "High-impact promotional strip",
+    group: "Promotions",
+    icon: "🏷️",
     component: PromoBannerSection,
     removable: true,
     defaultProps: {

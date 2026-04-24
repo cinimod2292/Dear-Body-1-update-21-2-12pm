@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dearBodySectionRegistry } from "./registry";
+import { DEAR_BODY_SECTION_META } from "./registry.meta";
 
-test("builder registry includes required Dear Body section types", () => {
-  assert.ok(dearBodySectionRegistry.hero_banner);
-  assert.ok(dearBodySectionRegistry.featured_products);
-  assert.ok(dearBodySectionRegistry.image_text);
-  assert.ok(dearBodySectionRegistry.benefit_icons);
-  assert.ok(dearBodySectionRegistry.promo_banner);
+test("builder registry metadata includes required Dear Body section types", () => {
+  assert.ok(DEAR_BODY_SECTION_META.hero_banner);
+  assert.ok(DEAR_BODY_SECTION_META.featured_products);
+  assert.ok(DEAR_BODY_SECTION_META.image_text);
+  assert.ok(DEAR_BODY_SECTION_META.benefit_icons);
+  assert.ok(DEAR_BODY_SECTION_META.promo_banner);
 });

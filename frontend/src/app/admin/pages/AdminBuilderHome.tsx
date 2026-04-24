@@ -240,7 +240,6 @@ function CraftWorkspace({
       onNodesChange={(query) => {
         const nextNodes = query.getSerializedNodes() as SerializedNodes;
         if (nextNodes) {
-          (window as any).__craft_latest_nodes = nextNodes;
           onNodesChange(nextNodes);
         }
       }}
@@ -305,7 +304,7 @@ function BuilderTopActions({
           onClick={async () => {
             setBusy(true);
             try {
-              await onSave(((window as any).__craft_latest_nodes ?? query.getSerializedNodes()) as SerializedNodes);
+              await onSave(query.getSerializedNodes() as SerializedNodes);
             } finally {
               setBusy(false);
             }
@@ -318,7 +317,7 @@ function BuilderTopActions({
           onClick={async () => {
             setBusy(true);
             try {
-              await onPublish(((window as any).__craft_latest_nodes ?? query.getSerializedNodes()) as SerializedNodes);
+              await onPublish(query.getSerializedNodes() as SerializedNodes);
             } finally {
               setBusy(false);
             }

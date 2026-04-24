@@ -9,6 +9,8 @@ export type BuilderRegistryMetaEntry = {
   defaultProps: Record<string, unknown>;
   editableSchema: Record<string, EditableField>;
   removable: boolean;
+  movable: boolean;
+  duplicatable: boolean;
 };
 
 export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryMetaEntry> = {
@@ -19,6 +21,8 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     group: "Hero",
     icon: "🖼️",
     removable: false,
+    movable: false,
+    duplicatable: false,
     defaultProps: {
       eyebrow: "New Collection",
       title: "Feel good in your skin",
@@ -49,6 +53,8 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     group: "Products",
     icon: "🛍️",
     removable: true,
+    movable: true,
+    duplicatable: true,
     defaultProps: {
       title: "Bestselling Products",
       subtitle: "Customer favorites.",
@@ -73,6 +79,8 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     group: "Content",
     icon: "📝",
     removable: true,
+    movable: true,
+    duplicatable: true,
     defaultProps: {
       title: "Body care for everyday confidence",
       body: "Made for your routine.",
@@ -97,6 +105,8 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     group: "Trust/Benefits",
     icon: "✅",
     removable: true,
+    movable: true,
+    duplicatable: true,
     defaultProps: {
       title: "Why shoppers choose Dear Body",
       columns: "4",
@@ -118,6 +128,8 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     group: "Promotions",
     icon: "🏷️",
     removable: true,
+    movable: true,
+    duplicatable: true,
     defaultProps: {
       text: "Limited-time promotion",
       buttonText: "Shop Now",

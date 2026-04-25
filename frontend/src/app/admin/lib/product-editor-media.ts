@@ -25,8 +25,8 @@ export function resolveBestMediaPreviewUrl(asset: EditorMediaAsset): string | un
   const variantMap = new Map(normalizedFromVariants.map((variant) => [variant.key, variant.publicUrl ?? variant.url]));
   return asset.thumbnailUrl
     ?? asset.previewUrl
-    ?? variantMap.get("thumb")
     ?? variantMap.get("card")
+    ?? variantMap.get("thumb")
     ?? variantMap.get("gallery_thumb")
     ?? asset.displayUrl
     ?? asset.url

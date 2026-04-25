@@ -5,6 +5,14 @@ export const createUploadSchema = z.object({
   mimeType: z.string().min(1),
   byteSize: z.number().int().positive().max(50 * 1024 * 1024),
   kind: z.enum(["IMAGE", "VIDEO", "FILE"]).default("IMAGE"),
+}).superRefine((value, ctx) => {
+  if (value.kind === "IMAGE" && !value.mimeType.toLowerCase().startsWith("image/")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["mimeType"],
+      message: "Invalid image file type",
+    });
+  }
 });
 
 export const mediaListQuerySchema = z.object({

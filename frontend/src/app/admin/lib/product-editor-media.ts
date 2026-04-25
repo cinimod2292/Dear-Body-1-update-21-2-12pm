@@ -2,8 +2,13 @@ export type EditorMediaAsset = {
   id: string;
   filename: string;
   publicUrl?: string;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+  displayUrl?: string;
+  url?: string;
   mimeType: string;
-  variants?: Array<{ key: string; publicUrl?: string | null }>;
+  variants?: Array<{ key: string; publicUrl?: string | null; url?: string | null }>
+    | Record<string, { publicUrl?: string | null; url?: string | null }>;
 };
 
 export type EditorGalleryEntry = {
@@ -12,8 +17,20 @@ export type EditorGalleryEntry = {
 };
 
 export function resolveBestMediaPreviewUrl(asset: EditorMediaAsset): string | undefined {
-  const variantMap = new Map((asset.variants ?? []).map((variant) => [variant.key, variant.publicUrl]));
-  return variantMap.get("card") ?? variantMap.get("thumb") ?? asset.publicUrl;
+  const normalizedFromVariants = Array.isArray(asset.variants)
+    ? asset.variants
+    : asset.variants
+      ? Object.entries(asset.variants).map(([key, value]) => ({ key, publicUrl: value?.publicUrl, url: value?.url }))
+      : [];
+  const variantMap = new Map(normalizedFromVariants.map((variant) => [variant.key, variant.publicUrl ?? variant.url]));
+  return asset.thumbnailUrl
+    ?? asset.previewUrl
+    ?? variantMap.get("thumb")
+    ?? variantMap.get("card")
+    ?? variantMap.get("gallery_thumb")
+    ?? asset.displayUrl
+    ?? asset.url
+    ?? asset.publicUrl;
 }
 
 export function resolveSelectedEditorMediaAssets(params: {

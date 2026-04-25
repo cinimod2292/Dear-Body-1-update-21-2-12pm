@@ -4,11 +4,12 @@ import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
+import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, regenerateVariantsBatchSchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
 import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { generateMediaVariantsForAsset } from "./media-variants.js";
 import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
+import { regenerateVariantsForMediaIds } from "./media-variants-batch.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
@@ -365,6 +366,16 @@ export async function mediaRoutes(app: FastifyInstance) {
       const { mediaId } = request.params as { mediaId: string };
       const query = request.query as { force?: string };
       const result = await generateMediaVariantsForAsset(mediaId, { force: query.force === "true" });
+      return reply.send({ data: result });
+    },
+  );
+
+  app.post(
+    "/admin/media/variants/regenerate",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const body = regenerateVariantsBatchSchema.parse(request.body);
+      const result = await regenerateVariantsForMediaIds(body.mediaIds, { concurrency: body.concurrency });
       return reply.send({ data: result });
     },
   );

@@ -6,6 +6,7 @@ import { AdminPagination } from "../components/AdminPagination";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
+import { isMissingProductRowBusy, MissingProductUploadState, setMissingProductRowState, validateVariantBatchBeforeAttach } from "../lib/missing-product-upload-state";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -30,6 +31,19 @@ interface MissingProductsResponse {
 }
 interface RegenerateVariantsResponse {
   data: { generated: number; skipped: number; failed: number };
+}
+interface RegenerateVariantsBatchResponse {
+  data: {
+    results: Array<{
+      mediaId: string;
+      status: "ok" | "failed" | "noop";
+      generated: number;
+      skipped: number;
+      failed: number;
+      error?: string;
+    }>;
+    summary: { total: number; ok: number; failed: number; noop: number };
+  };
 }
 
 type BackfillMode = "all" | "product" | "asset";
@@ -788,7 +802,7 @@ export default function AdminMedia() {
   const [configSaving, setConfigSaving] = useState(false);
   const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
   const [loadingMissingImageProducts, setLoadingMissingImageProducts] = useState(false);
-  const [uploadingMissingProductId, setUploadingMissingProductId] = useState<string | null>(null);
+  const [missingUploadStates, setMissingUploadStates] = useState<Record<string, MissingProductUploadState>>({});
 
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "18", sortBy: "createdAt", sortDir });
@@ -912,10 +926,28 @@ export default function AdminMedia() {
       return;
     }
 
+    const setRowState = (state: MissingProductUploadState) => {
+      setMissingUploadStates((current) => setMissingProductRowState(current, product.id, state));
+    };
+
+    const runWithConcurrency = async <T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> => {
+      const results: R[] = new Array(items.length);
+      let nextIndex = 0;
+      const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (true) {
+          const currentIndex = nextIndex;
+          nextIndex += 1;
+          if (currentIndex >= items.length) return;
+          results[currentIndex] = await worker(items[currentIndex]);
+        }
+      });
+      await Promise.all(runners);
+      return results;
+    };
+
     try {
-      setUploadingMissingProductId(product.id);
-      const uploadedMediaAssetIds: string[] = [];
-      for (const file of selectedFiles) {
+      setRowState({ phase: "uploading", message: "Uploading…" });
+      const uploadedMediaAssetIds = await runWithConcurrency(selectedFiles, 3, async (file) => {
         const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
           "/admin/media/uploads/prepare",
           {
@@ -935,9 +967,7 @@ export default function AdminMedia() {
           headers: prep.data.headers,
           body: file,
         });
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
-        }
+        if (!uploadResponse.ok) throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
 
         const finalized = await apiRequest<{ data: { id: string } }>("/admin/media/uploads/finalize", {
           method: "POST",
@@ -950,16 +980,23 @@ export default function AdminMedia() {
           }),
         }, session.accessToken);
 
-        const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
-          method: "POST",
-        }, session.accessToken);
-        if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
-          throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
-        }
+        return finalized.data.id;
+      });
 
-        uploadedMediaAssetIds.push(finalized.data.id);
+      setRowState({ phase: "processing", message: "Processing images…" });
+      const regen = await apiRequest<RegenerateVariantsBatchResponse>("/admin/media/variants/regenerate", {
+        method: "POST",
+        body: JSON.stringify({
+          mediaIds: uploadedMediaAssetIds,
+          concurrency: 3,
+        }),
+      }, session.accessToken);
+      const optimizationCheck = validateVariantBatchBeforeAttach(regen.data.results);
+      if (optimizationCheck.ok === false) {
+        throw new Error(optimizationCheck.message);
       }
 
+      setRowState({ phase: "attaching", message: "Attaching images…" });
       await apiRequest(`/admin/products/${product.id}/images/attach`, {
         method: "POST",
         body: JSON.stringify({
@@ -968,12 +1005,12 @@ export default function AdminMedia() {
       }, session.accessToken);
 
       setMissingImageProducts((current) => removeUploadedProductFromMissingList(current, product.id));
+      setRowState({ phase: "success", message: "Attached successfully" });
       toast.success(`Uploaded ${uploadedMediaAssetIds.length} image${uploadedMediaAssetIds.length === 1 ? "" : "s"} for ${product.name}`);
       await loadMedia();
     } catch (err) {
+      setRowState({ phase: "error", message: err instanceof Error ? err.message : `Failed to upload images for ${product.name}` });
       toast.error(err instanceof Error ? err.message : `Failed to upload images for ${product.name}`);
-    } finally {
-      setUploadingMissingProductId(null);
     }
   };
 
@@ -1104,20 +1141,33 @@ export default function AdminMedia() {
                     <td className="px-3 py-2 text-xs text-gray-700">{product.status ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-gray-700">{product.visibility ?? "—"}</td>
                     <td className="px-3 py-2">
+                      <div className="space-y-1">
+                        {missingUploadStates[product.id]?.message ? (
+                          <p className={`text-[11px] ${missingUploadStates[product.id]?.phase === "error" ? "text-red-600" : "text-gray-600"}`}>
+                            {missingUploadStates[product.id]?.phase === "error" ? `Failed: ${missingUploadStates[product.id]?.message}` : missingUploadStates[product.id]?.message}
+                          </p>
+                        ) : null}
                       <label className="inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-700 text-white text-xs cursor-pointer disabled:opacity-50">
-                        {uploadingMissingProductId === product.id ? "Uploading..." : "Upload photos"}
+                        {missingUploadStates[product.id]?.phase === "uploading"
+                          ? "Uploading..."
+                          : missingUploadStates[product.id]?.phase === "processing"
+                            ? "Processing..."
+                            : missingUploadStates[product.id]?.phase === "attaching"
+                              ? "Attaching..."
+                              : "Upload photos"}
                         <input
                           type="file"
                           accept="image/*"
                           multiple
                           className="hidden"
-                          disabled={uploadingMissingProductId === product.id}
+                          disabled={isMissingProductRowBusy(missingUploadStates[product.id])}
                           onChange={(event) => {
                             void uploadMissingProductPhotos(product, event.target.files);
                             event.target.value = "";
                           }}
                         />
                       </label>
+                      </div>
                     </td>
                   </tr>
                 ))}

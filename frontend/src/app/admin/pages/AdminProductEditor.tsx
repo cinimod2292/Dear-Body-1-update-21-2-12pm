@@ -43,6 +43,16 @@ interface Product {
   variants?: Variant[];
 }
 
+function isLegacyAssetId(id: unknown): boolean {
+  return typeof id === "string" && id.startsWith("legacy:");
+}
+
+function canRenderImagePreview(url: unknown, mimeType: unknown): url is string {
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (typeof mimeType !== "string" || mimeType.length === 0) return true;
+  return mimeType.startsWith("image");
+}
+
 export default function AdminProductEditor() {
   const { session } = useAdminAuth();
   const { productId } = useParams();
@@ -564,13 +574,13 @@ export default function AdminProductEditor() {
                 {selectedMediaAssets.map((asset, index) => (
                   <div key={asset.id} className="rounded-lg border border-gray-200 p-2">
                     <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                      {asset.publicUrl && asset.mimeType.startsWith("image")
+                      {canRenderImagePreview(asset.publicUrl, asset.mimeType)
                         ? <img src={asset.publicUrl} alt={asset.filename} className="w-full h-full object-cover" />
-                        : <span className="text-[10px] text-gray-500">{asset.mimeType}</span>}
+                        : <span className="text-[10px] text-gray-500">{asset.mimeType ?? "No preview"}</span>}
                     </div>
                     <p className="mt-2 text-[11px] truncate">{asset.filename}</p>
                     <p className="text-[10px] text-gray-400">{index === 0 ? "Primary image" : `Position ${index + 1}`}</p>
-                    {asset.id.startsWith("legacy:") ? (
+                    {isLegacyAssetId(asset.id) ? (
                       <p className="mt-2 text-[11px] text-amber-700">Legacy image fallback. Link a media asset to manage order/hover.</p>
                     ) : (
                       <div className="mt-2 flex flex-wrap gap-1">
@@ -593,7 +603,7 @@ export default function AdminProductEditor() {
               onChange={(e) => setProduct((prev) => ({ ...prev, hoverImageId: e.target.value || null }))}
             >
               <option value="">No hover image</option>
-              {selectedMediaAssets.filter((asset) => !asset.id.startsWith("legacy:")).map((asset) => (
+              {selectedMediaAssets.filter((asset) => !isLegacyAssetId(asset.id)).map((asset) => (
                 <option key={asset.id} value={asset.id}>{asset.filename}</option>
               ))}
             </select>
@@ -628,7 +638,7 @@ export default function AdminProductEditor() {
                       className={`border rounded-lg p-2 text-left ${selected ? "border-pink-400 bg-pink-50" : "border-gray-200"}`}
                     >
                       <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                        {m.publicUrl && m.mimeType.startsWith("image") ? <img src={m.publicUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType}</span>}
+                        {canRenderImagePreview(m.publicUrl, m.mimeType) ? <img src={m.publicUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType ?? "No preview"}</span>}
                       </div>
                       <p className="mt-1 text-[11px] truncate">{m.filename}</p>
                     </button>

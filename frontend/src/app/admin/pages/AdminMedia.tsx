@@ -28,6 +28,9 @@ interface MediaUpdateResponse {
 interface MissingProductsResponse {
   data: MissingProductImageRow[];
 }
+interface RegenerateVariantsResponse {
+  data: { generated: number; skipped: number; failed: number };
+}
 
 type BackfillMode = "all" | "product" | "asset";
 
@@ -868,7 +871,7 @@ export default function AdminMedia() {
           throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
         }
 
-        await apiRequest("/admin/media/uploads/finalize", {
+        const finalized = await apiRequest<{ data: { id: string } }>("/admin/media/uploads/finalize", {
           method: "POST",
           body: JSON.stringify({
             storageKey: prep.data.storageKey,
@@ -878,6 +881,15 @@ export default function AdminMedia() {
             altText: file.name,
           }),
         }, session.accessToken);
+
+        if (kind === "IMAGE") {
+          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
+            method: "POST",
+          }, session.accessToken);
+          if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
+            throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
+          }
+        }
         uploadedCount += 1;
       }
 
@@ -937,6 +949,13 @@ export default function AdminMedia() {
             altText: `${product.name} - ${file.name}`,
           }),
         }, session.accessToken);
+
+        const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
+          method: "POST",
+        }, session.accessToken);
+        if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
+          throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
+        }
 
         uploadedMediaAssetIds.push(finalized.data.id);
       }

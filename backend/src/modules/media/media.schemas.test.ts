@@ -19,4 +19,13 @@ test("createUploadSchema enforces maximum upload byte size", () => {
       kind: "IMAGE",
     });
   });
+
+  assert.throws(() => {
+    createUploadSchema.parse({
+      filename: "not-image.txt",
+      mimeType: "text/plain",
+      byteSize: 512,
+      kind: "IMAGE",
+    });
+  });
 });

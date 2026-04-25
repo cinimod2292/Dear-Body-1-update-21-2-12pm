@@ -89,9 +89,9 @@ export function resolveHoverImageUrl(params: {
   galleryImages: ProductGalleryImage[];
 }): string | undefined {
   const { primaryImageUrl, hoverImageId, galleryImages } = params;
-  if (!hoverImageId) return undefined;
-
-  const hoverImage = galleryImages.find((image) => image.mediaAssetId === hoverImageId);
+  const hoverImage = hoverImageId
+    ? galleryImages.find((image) => image.mediaAssetId === hoverImageId)
+    : galleryImages[1];
   if (!hoverImage?.url) return undefined;
   const hoverUrl = getCardImageSources(hoverImage)?.src ?? hoverImage.url;
   if (hoverUrl === primaryImageUrl) return undefined;
@@ -188,7 +188,9 @@ export function mapProductCardImageFields(params: {
   const { primaryImage, hoverImageId, galleryImages } = params;
   const fallbackImage = primaryImage?.url ?? "";
   const primaryCardSources = getCardImageSources(primaryImage);
-  const hoverImageMeta = hoverImageId ? galleryImages.find((entry) => entry.mediaAssetId === hoverImageId) : undefined;
+  const hoverImageMeta = hoverImageId
+    ? galleryImages.find((entry) => entry.mediaAssetId === hoverImageId)
+    : galleryImages[1];
   const hoverCardSources = getCardImageSources(hoverImageMeta);
   const hoverImage = resolveHoverImageUrl({
     primaryImageUrl: primaryCardSources?.src ?? fallbackImage,

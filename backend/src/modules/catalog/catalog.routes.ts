@@ -12,6 +12,7 @@ import {
   listProducts,
   listProductsMissingImages,
   listStorefrontProducts,
+  migrateLegacyProductImages,
   previewProductImportCsv,
   previewProductImageImportCsv,
   updateProduct,
@@ -112,6 +113,11 @@ export async function catalogRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: { message: "CSV file is required" } });
     }
     const result = await commitProductImageImport(csvContent, request.user.sub);
+    return reply.send({ data: result });
+  });
+
+  app.post("/admin/products/images/legacy-migration", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const result = await migrateLegacyProductImages(request.body);
     return reply.send({ data: result });
   });
 

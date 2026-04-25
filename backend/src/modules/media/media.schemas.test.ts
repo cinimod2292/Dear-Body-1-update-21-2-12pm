@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createUploadSchema, regenerateVariantsBatchSchema } from "./media.schemas.js";
+import { createUploadSchema, mediaByIdsSchema, regenerateVariantsBatchSchema } from "./media.schemas.js";
 
 test("createUploadSchema enforces maximum upload byte size", () => {
   const valid = createUploadSchema.parse({
@@ -40,4 +40,13 @@ test("regenerateVariantsBatchSchema validates media ids and concurrency", () => 
 
   assert.throws(() => regenerateVariantsBatchSchema.parse({ mediaIds: [] }));
   assert.throws(() => regenerateVariantsBatchSchema.parse({ mediaIds: ["ckf3w9j4b0000q4m1z3zv0a1b"], concurrency: 9 }));
+});
+
+test("mediaByIdsSchema validates lookup payload", () => {
+  const parsed = mediaByIdsSchema.parse({
+    ids: ["ckf3w9j4b0000q4m1z3zv0a1b"],
+    view: "picker",
+  });
+  assert.equal(parsed.ids.length, 1);
+  assert.equal(parsed.view, "picker");
 });

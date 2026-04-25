@@ -99,3 +99,8 @@ export const importProductImageRowSchema = z.object({
 export const attachProductImagesSchema = z.object({
   mediaAssetIds: z.array(z.string().cuid()).min(1).max(20),
 });
+
+export const legacyImageMigrationSchema = z.object({
+  dryRun: z.boolean().optional().default(true),
+  productIds: z.array(z.string().cuid()).optional(),
+});

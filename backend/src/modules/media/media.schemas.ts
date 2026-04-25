@@ -22,6 +22,7 @@ export const mediaListQuerySchema = z.object({
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   q: z.string().optional(),
   kind: z.enum(["IMAGE", "VIDEO", "FILE"]).optional(),
+  view: z.enum(["full", "picker"]).optional().default("full"),
 });
 
 export const finalizeUploadSchema = z.object({
@@ -55,4 +56,9 @@ export const runMediaBackfillSchema = z.object({
 export const regenerateVariantsBatchSchema = z.object({
   mediaIds: z.array(z.string().cuid()).min(1).max(50),
   concurrency: z.number().int().min(1).max(6).optional(),
+});
+
+export const mediaByIdsSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(200),
+  view: z.enum(["full", "picker"]).optional().default("picker"),
 });

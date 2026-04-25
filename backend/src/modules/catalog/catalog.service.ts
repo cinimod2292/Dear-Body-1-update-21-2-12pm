@@ -9,6 +9,7 @@ import {
   importCommitPayloadSchema,
   importProductImageRowSchema,
   importProductRowSchema,
+  legacyImageMigrationSchema,
   productFilterSchema,
   updateProductSchema,
   updateVariantSchema,
@@ -16,6 +17,7 @@ import {
 import { toPaginatedResponse } from "../../lib/pagination.js";
 import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
 import { normalizeHoverImageId, withResolvedProductMediaUrls } from "./product-images.js";
+import { extractLegacyImageUrls, planLegacyImageMigration } from "./legacy-image-migration.js";
 
 const IMPORT_TEMPLATE_HEADERS = [
   "sku",
@@ -1070,6 +1072,98 @@ export async function attachImagesToProduct(rawParams: unknown, rawBody: unknown
   return {
     productId,
     attached: mediaAssetIdsToAppend.length,
+  };
+}
+
+export async function migrateLegacyProductImages(rawBody: unknown) {
+  const body = legacyImageMigrationSchema.parse(rawBody);
+  const products = await prisma.product.findMany({
+    where: body.productIds?.length ? { id: { in: body.productIds } } : undefined,
+    include: {
+      galleries: {
+        include: {
+          mediaAsset: true,
+        },
+        orderBy: { position: "asc" },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const report: Array<{
+    productId: string;
+    name: string;
+    legacyUrls: string[];
+    toMigrate: string[];
+    duplicatesSkipped: string[];
+    missingOrBrokenUrls: string[];
+    attached: number;
+  }> = [];
+
+  for (const product of products) {
+    const legacyUrls = extractLegacyImageUrls(product.shortDescription);
+    if (!legacyUrls.length) continue;
+
+    const canonicalUrls = product.galleries
+      .map((entry) => entry.mediaAsset.publicUrl?.trim() ?? "")
+      .filter((url) => Boolean(url));
+    const plan = planLegacyImageMigration({
+      legacyUrls,
+      canonicalMediaUrls: canonicalUrls,
+    });
+    if (!plan.toMigrate.length && !plan.duplicates.length) continue;
+
+    const foundMediaAssets = plan.toMigrate.length
+      ? await prisma.mediaAsset.findMany({
+          where: {
+            kind: "IMAGE",
+            publicUrl: { in: plan.toMigrate },
+          },
+          select: { id: true, publicUrl: true },
+        })
+      : [];
+    const mediaByUrl = new Map(foundMediaAssets.map((asset) => [asset.publicUrl?.trim() ?? "", asset.id]));
+    const matchedMediaIds = plan.toMigrate.map((url) => mediaByUrl.get(url)).filter((id): id is string => Boolean(id));
+    const missingOrBrokenUrls = plan.toMigrate.filter((url) => !mediaByUrl.has(url));
+
+    let attached = 0;
+    if (!body.dryRun && matchedMediaIds.length > 0) {
+      const existingSet = new Set(product.galleries.map((entry) => entry.mediaAssetId));
+      const toCreate = matchedMediaIds.filter((mediaId) => !existingSet.has(mediaId));
+      if (toCreate.length > 0) {
+        const maxPosition = await prisma.productGalleryImage.aggregate({
+          where: { productId: product.id },
+          _max: { position: true },
+        });
+        const startPosition = (maxPosition._max.position ?? -1) + 1;
+        await prisma.productGalleryImage.createMany({
+          data: toCreate.map((mediaAssetId, index) => ({
+            productId: product.id,
+            mediaAssetId,
+            position: startPosition + index,
+          })),
+        });
+        attached = toCreate.length;
+      }
+    }
+
+    report.push({
+      productId: product.id,
+      name: product.name,
+      legacyUrls,
+      toMigrate: plan.toMigrate,
+      duplicatesSkipped: plan.duplicates,
+      missingOrBrokenUrls,
+      attached,
+    });
+  }
+
+  return {
+    dryRun: body.dryRun,
+    productsScanned: products.length,
+    affectedProducts: report.length,
+    attached: report.reduce((sum, item) => sum + item.attached, 0),
+    report,
   };
 }
 

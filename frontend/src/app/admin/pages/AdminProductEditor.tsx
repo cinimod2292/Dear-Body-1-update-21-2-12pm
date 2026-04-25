@@ -5,11 +5,12 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { formatRand } from "../../lib/currency";
+import { resolveSelectedEditorMediaAssets, type EditorGalleryEntry, type EditorMediaAsset } from "../lib/product-editor-media";
 
 interface Brand { id: string; name: string }
 interface Category { id: string; name: string }
 interface Tag { id: string; name: string }
-interface MediaAsset { id: string; filename: string; publicUrl?: string; mimeType: string }
+interface MediaAsset extends EditorMediaAsset {}
 interface Attribute { id: string; name: string; options: Array<{ id: string; value: string }> }
 
 interface Variant {
@@ -36,8 +37,9 @@ interface Product {
   categoryId?: string | null;
   seoMetadata?: { title?: string; description?: string; canonicalUrl?: string; ogTitle?: string; ogDescription?: string; ogImageUrl?: string } | null;
   tags?: Array<{ tagId: string }>;
-  galleries?: Array<{ mediaAssetId: string }>;
+  galleries?: EditorGalleryEntry[];
   hoverImageId?: string | null;
+  images?: string[];
   variants?: Variant[];
 }
 
@@ -127,10 +129,12 @@ export default function AdminProductEditor() {
   const selectedTagIds = useMemo(() => (product.tags ?? []).map((t) => t.tagId), [product.tags]);
   const selectedMediaIds = useMemo(() => (product.galleries ?? []).map((g) => g.mediaAssetId), [product.galleries]);
   const selectedMediaAssets = useMemo(
-    () => selectedMediaIds
-      .map((mediaId) => mediaAssets.find((asset) => asset.id === mediaId))
-      .filter((asset): asset is MediaAsset => Boolean(asset)),
-    [selectedMediaIds, mediaAssets],
+    () => resolveSelectedEditorMediaAssets({
+      galleries: product.galleries,
+      mediaAssets,
+      legacyImages: product.images,
+    }),
+    [product.galleries, product.images, mediaAssets],
   );
 
   const reorderGallery = (mediaAssetId: string, direction: "up" | "down") => {
@@ -501,12 +505,16 @@ export default function AdminProductEditor() {
                     </div>
                     <p className="mt-2 text-[11px] truncate">{asset.filename}</p>
                     <p className="text-[10px] text-gray-400">{index === 0 ? "Primary image" : `Position ${index + 1}`}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      <button type="button" onClick={() => reorderGallery(asset.id, "up")} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↑</button>
-                      <button type="button" onClick={() => reorderGallery(asset.id, "down")} disabled={index === selectedMediaAssets.length - 1} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↓</button>
-                      <button type="button" onClick={() => setPrimaryImage(asset.id)} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">Set Primary</button>
-                      <button type="button" onClick={() => removeGalleryImage(asset.id)} className="px-2 py-1 rounded border border-red-200 text-red-600 text-[11px]">Unlink</button>
-                    </div>
+                    {asset.id.startsWith("legacy:") ? (
+                      <p className="mt-2 text-[11px] text-amber-700">Legacy image fallback. Link a media asset to manage order/hover.</p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <button type="button" onClick={() => reorderGallery(asset.id, "up")} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↑</button>
+                        <button type="button" onClick={() => reorderGallery(asset.id, "down")} disabled={index === selectedMediaAssets.length - 1} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↓</button>
+                        <button type="button" onClick={() => setPrimaryImage(asset.id)} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">Set Primary</button>
+                        <button type="button" onClick={() => removeGalleryImage(asset.id)} className="px-2 py-1 rounded border border-red-200 text-red-600 text-[11px]">Unlink</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -520,7 +528,7 @@ export default function AdminProductEditor() {
               onChange={(e) => setProduct((prev) => ({ ...prev, hoverImageId: e.target.value || null }))}
             >
               <option value="">No hover image</option>
-              {selectedMediaAssets.map((asset) => (
+              {selectedMediaAssets.filter((asset) => !asset.id.startsWith("legacy:")).map((asset) => (
                 <option key={asset.id} value={asset.id}>{asset.filename}</option>
               ))}
             </select>

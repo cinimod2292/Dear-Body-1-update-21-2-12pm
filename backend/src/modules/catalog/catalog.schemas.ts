@@ -95,3 +95,7 @@ export const importProductImageRowSchema = z.object({
   position: z.string().trim().optional(),
   alt_text: z.string().trim().optional(),
 }).passthrough();
+
+export const attachProductImagesSchema = z.object({
+  mediaAssetIds: z.array(z.string().cuid()).min(1).max(20),
+});

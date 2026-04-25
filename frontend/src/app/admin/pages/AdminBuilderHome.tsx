@@ -19,8 +19,9 @@ import { SECTION_PRESETS } from "../../builder/presets";
 import { actionBlockedMessage, isActionAllowed } from "../../builder/action-rules";
 import { isSafeImageUrl } from "../../builder/media-url";
 import { duplicateSection, moveSection, removeSection } from "./builder/editor-state";
-import { buildSectionList, resolveNodeSectionType } from "./builder/section-tree";
+import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
+import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -141,7 +142,7 @@ function SectionLibrary() {
 
 function SectionList() {
   const { selectedNodeId, actions, query, stateNodes } = useEditor((state) => ({
-    selectedNodeId: state.events.selected?.[0] ?? null,
+    selectedNodeId: extractSelectedNodeId(state.events.selected),
     stateNodes: state.nodes,
   }));
 
@@ -328,7 +329,7 @@ function renderFieldControl(args: {
 function SelectedSectionInspector() {
   const products = useContext(CraftProductsContext);
   const { selectedNodeId, selectedNode, actions, query } = useEditor((state) => {
-    const selectedId = state.events.selected?.[0] ?? null;
+    const selectedId = extractSelectedNodeId(state.events.selected);
     return {
       selectedNodeId: selectedId,
       selectedNode: selectedId ? state.nodes[selectedId] : null,
@@ -339,16 +340,12 @@ function SelectedSectionInspector() {
     return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Select a section to edit settings.</div>;
   }
 
-  const sectionType = resolveNodeSectionType({
-    type: selectedNode.data.type as any,
-    custom: selectedNode.data.custom as Record<string, unknown>,
-  } as any);
-  if (!sectionType) {
+  const resolvedSection = resolveInspectableSection(selectedNodeId, selectedNode, dearBodySectionRegistry);
+  if (!resolvedSection) {
     return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Selected node is not an editable storefront section.</div>;
   }
 
-  const nodeProps = (selectedNode.data.props ?? {}) as Record<string, unknown>;
-  const registry = dearBodySectionRegistry[sectionType];
+  const { sectionType, registryEntry: registry, editableSchema, nodeProps } = resolvedSection;
   const rules = {
     removable: registry.removable,
     movable: registry.movable,
@@ -356,7 +353,7 @@ function SelectedSectionInspector() {
   };
 
   const groupedFields = new Map<string, Array<[string, EditableField]>>();
-  for (const entry of Object.entries(registry.editableSchema)) {
+  for (const entry of Object.entries(editableSchema)) {
     const [keyName, field] = entry;
     const groupName = inferInspectorGroup(keyName, field);
     const groupItems = groupedFields.get(groupName) ?? [];

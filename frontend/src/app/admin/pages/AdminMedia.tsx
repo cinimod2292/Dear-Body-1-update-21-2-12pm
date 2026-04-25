@@ -5,6 +5,7 @@ import { MediaAsset, PaginatedResult } from "../types/admin";
 import { AdminPagination } from "../components/AdminPagination";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -23,6 +24,9 @@ interface MediaDetailResponse {
 
 interface MediaUpdateResponse {
   data: MediaAsset;
+}
+interface MissingProductsResponse {
+  data: MissingProductImageRow[];
 }
 
 type BackfillMode = "all" | "product" | "asset";
@@ -779,6 +783,9 @@ export default function AdminMedia() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
+  const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
+  const [loadingMissingImageProducts, setLoadingMissingImageProducts] = useState(false);
+  const [uploadingMissingProductId, setUploadingMissingProductId] = useState<string | null>(null);
 
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "18", sortBy: "createdAt", sortDir });
@@ -801,9 +808,26 @@ export default function AdminMedia() {
     }
   };
 
+  const loadMissingImageProducts = async () => {
+    if (!session?.accessToken) return;
+    try {
+      setLoadingMissingImageProducts(true);
+      const response = await apiRequest<MissingProductsResponse>("/admin/products/missing-images", {}, session.accessToken);
+      setMissingImageProducts(response.data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load products missing images");
+    } finally {
+      setLoadingMissingImageProducts(false);
+    }
+  };
+
   useEffect(() => {
     loadMedia();
   }, [session?.accessToken, params]);
+
+  useEffect(() => {
+    loadMissingImageProducts();
+  }, [session?.accessToken]);
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -864,6 +888,73 @@ export default function AdminMedia() {
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const uploadMissingProductPhotos = async (product: MissingProductImageRow, files: FileList | null) => {
+    if (!session?.accessToken) return;
+    const selectedFiles = Array.from(files ?? []);
+    const validationError = validateProductImageFiles(selectedFiles);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    try {
+      setUploadingMissingProductId(product.id);
+      const uploadedMediaAssetIds: string[] = [];
+      for (const file of selectedFiles) {
+        const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+          "/admin/media/uploads/prepare",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              byteSize: file.size,
+              kind: "IMAGE",
+            }),
+          },
+          session.accessToken,
+        );
+
+        const uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
+        }
+
+        const finalized = await apiRequest<{ data: { id: string } }>("/admin/media/uploads/finalize", {
+          method: "POST",
+          body: JSON.stringify({
+            storageKey: prep.data.storageKey,
+            publicUrl: prep.data.publicUrl,
+            kind: "IMAGE",
+            metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+            altText: `${product.name} - ${file.name}`,
+          }),
+        }, session.accessToken);
+
+        uploadedMediaAssetIds.push(finalized.data.id);
+      }
+
+      await apiRequest(`/admin/products/${product.id}/images/attach`, {
+        method: "POST",
+        body: JSON.stringify({
+          mediaAssetIds: uploadedMediaAssetIds,
+        }),
+      }, session.accessToken);
+
+      setMissingImageProducts((current) => removeUploadedProductFromMissingList(current, product.id));
+      toast.success(`Uploaded ${uploadedMediaAssetIds.length} image${uploadedMediaAssetIds.length === 1 ? "" : "s"} for ${product.name}`);
+      await loadMedia();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to upload images for ${product.name}`);
+    } finally {
+      setUploadingMissingProductId(null);
     }
   };
 
@@ -960,6 +1051,62 @@ export default function AdminMedia() {
       </div>
 
       <MediaBackfillTool accessToken={session?.accessToken} />
+
+      <div className="rounded-xl border border-rose-200 bg-rose-50/30 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-rose-900">Products missing images</h3>
+          <p className="text-xs text-rose-800">Upload one or more images directly from this list to quickly complete product media.</p>
+        </div>
+        {loadingMissingImageProducts ? (
+          <p className="text-sm text-gray-500">Loading products…</p>
+        ) : missingImageProducts.length === 0 ? (
+          <p className="text-sm text-gray-500">All products currently have at least one image.</p>
+        ) : (
+          <div className="rounded-lg border border-rose-100 bg-white overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-rose-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Product</th>
+                  <th className="px-3 py-2 text-left">SKU / Handle / ID</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Visibility</th>
+                  <th className="px-3 py-2 text-left">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missingImageProducts.map((product) => (
+                  <tr key={product.id} className="border-t border-rose-50">
+                    <td className="px-3 py-2 font-medium text-gray-900">{product.name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
+                      <div>SKU: {product.sku ?? "—"}</div>
+                      <div>Handle: {product.slug}</div>
+                      <div>ID: {product.id}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-700">{product.status ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-gray-700">{product.visibility ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      <label className="inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-700 text-white text-xs cursor-pointer disabled:opacity-50">
+                        {uploadingMissingProductId === product.id ? "Uploading..." : "Upload photos"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          disabled={uploadingMissingProductId === product.id}
+                          onChange={(event) => {
+                            void uploadMissingProductPhotos(product, event.target.files);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-2">
         <h3 className="text-sm font-semibold text-blue-900">Brand / Home Image Assignments</h3>

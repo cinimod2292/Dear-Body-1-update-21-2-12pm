@@ -5,6 +5,7 @@ import {
   bulkProductActionSchema,
   createProductSchema,
   createVariantSchema,
+  attachProductImagesSchema,
   importCommitPayloadSchema,
   importProductImageRowSchema,
   importProductRowSchema,
@@ -984,6 +985,92 @@ export async function listProducts(rawQuery: unknown) {
     };
   });
   return toPaginatedResponse(normalizedItems, total, query);
+}
+
+export async function listProductsMissingImages() {
+  const items = await prisma.product.findMany({
+    where: {
+      galleries: { none: {} },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      visibility: true,
+      variants: {
+        where: { isActive: true },
+        orderBy: { createdAt: "asc" },
+        select: { sku: true },
+        take: 1,
+      },
+    },
+  });
+
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    slug: item.slug,
+    status: item.status,
+    visibility: item.visibility,
+    sku: item.variants[0]?.sku ?? null,
+  }));
+}
+
+export async function attachImagesToProduct(rawParams: unknown, rawBody: unknown) {
+  const { productId } = rawParams as { productId: string };
+  const body = attachProductImagesSchema.parse(rawBody);
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true },
+  });
+  if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
+
+  const mediaAssets = await prisma.mediaAsset.findMany({
+    where: { id: { in: body.mediaAssetIds } },
+    select: { id: true, kind: true },
+  });
+  if (mediaAssets.length !== body.mediaAssetIds.length) {
+    throw new AppError(404, "One or more media assets were not found", "MEDIA_NOT_FOUND");
+  }
+
+  const nonImages = mediaAssets.filter((asset) => asset.kind !== "IMAGE");
+  if (nonImages.length > 0) {
+    throw new AppError(422, "Only image media assets can be attached to product galleries", "INVALID_MEDIA_KIND");
+  }
+
+  const existing = await prisma.productGalleryImage.findMany({
+    where: {
+      productId,
+      mediaAssetId: { in: body.mediaAssetIds },
+    },
+    select: { mediaAssetId: true },
+  });
+  const existingSet = new Set(existing.map((entry) => entry.mediaAssetId));
+  const mediaAssetIdsToAppend = body.mediaAssetIds.filter((mediaAssetId) => !existingSet.has(mediaAssetId));
+
+  if (mediaAssetIdsToAppend.length > 0) {
+    const maxPosition = await prisma.productGalleryImage.aggregate({
+      where: { productId },
+      _max: { position: true },
+    });
+    const startPosition = (maxPosition._max.position ?? -1) + 1;
+
+    await prisma.productGalleryImage.createMany({
+      data: mediaAssetIdsToAppend.map((mediaAssetId, index) => ({
+        productId,
+        mediaAssetId,
+        position: startPosition + index,
+      })),
+    });
+  }
+
+  return {
+    productId,
+    attached: mediaAssetIdsToAppend.length,
+  };
 }
 
 export async function listStorefrontProducts(rawQuery: unknown) {

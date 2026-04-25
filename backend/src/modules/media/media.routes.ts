@@ -126,6 +126,9 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = createUploadSchema.parse(request.body);
+      if (body.kind === "IMAGE" && !body.mimeType.toLowerCase().startsWith("image/")) {
+        throw new AppError(422, "Invalid image file type", "INVALID_IMAGE_MIME_TYPE");
+      }
       const cfg = await resolveUploadConfig();
       const prepared = await prepareUpload(body.filename, body.mimeType);
       request.log.info({

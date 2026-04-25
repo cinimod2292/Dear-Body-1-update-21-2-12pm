@@ -1041,23 +1041,35 @@ export async function attachImagesToProduct(rawParams: unknown, rawBody: unknown
     throw new AppError(422, "Only image media assets can be attached to product galleries", "INVALID_MEDIA_KIND");
   }
 
-  const maxPosition = await prisma.productGalleryImage.aggregate({
-    where: { productId },
-    _max: { position: true },
+  const existing = await prisma.productGalleryImage.findMany({
+    where: {
+      productId,
+      mediaAssetId: { in: body.mediaAssetIds },
+    },
+    select: { mediaAssetId: true },
   });
-  let nextPosition = (maxPosition._max.position ?? -1) + 1;
+  const existingSet = new Set(existing.map((entry) => entry.mediaAssetId));
+  const mediaAssetIdsToAppend = body.mediaAssetIds.filter((mediaAssetId) => !existingSet.has(mediaAssetId));
 
-  for (const mediaAssetId of body.mediaAssetIds) {
-    await prisma.productGalleryImage.upsert({
-      where: { productId_mediaAssetId: { productId, mediaAssetId } },
-      create: { productId, mediaAssetId, position: nextPosition++ },
-      update: {},
+  if (mediaAssetIdsToAppend.length > 0) {
+    const maxPosition = await prisma.productGalleryImage.aggregate({
+      where: { productId },
+      _max: { position: true },
+    });
+    const startPosition = (maxPosition._max.position ?? -1) + 1;
+
+    await prisma.productGalleryImage.createMany({
+      data: mediaAssetIdsToAppend.map((mediaAssetId, index) => ({
+        productId,
+        mediaAssetId,
+        position: startPosition + index,
+      })),
     });
   }
 
   return {
     productId,
-    attached: body.mediaAssetIds.length,
+    attached: mediaAssetIdsToAppend.length,
   };
 }
 

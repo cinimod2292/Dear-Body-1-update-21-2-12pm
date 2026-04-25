@@ -109,6 +109,42 @@ test("ProductCard field mapping uses card-sized sources by default", () => {
   assert.equal(mapped.hoverImage2x, "https://img/hover-card-2x.jpg");
 });
 
+test("ProductCard field mapping defaults hover image to second gallery image", () => {
+  const second = {
+    ...baseImage,
+    mediaAssetId: "img2",
+    url: "https://img/second-original.jpg",
+    variants: {
+      ...baseImage.variants,
+      card: { url: "https://img/second-card.jpg" },
+      card_2x: { url: "https://img/second-card-2x.jpg" },
+    },
+  };
+
+  const mapped = mapProductCardImageFields({
+    primaryImage: baseImage as any,
+    galleryImages: [baseImage as any, second as any],
+  });
+
+  assert.equal(mapped.hoverImage, "https://img/second-card.jpg");
+  assert.equal(mapped.hoverImage2x, "https://img/second-card-2x.jpg");
+});
+
+test("ProductCard hover image fallback handles one-or-zero images", () => {
+  const singleImageMapped = mapProductCardImageFields({
+    primaryImage: baseImage as any,
+    galleryImages: [baseImage as any],
+  });
+  assert.equal(singleImageMapped.hoverImage, undefined);
+
+  const noImageMapped = mapProductCardImageFields({
+    primaryImage: undefined,
+    galleryImages: [],
+  });
+  assert.equal(noImageMapped.image, "");
+  assert.equal(noImageMapped.hoverImage, undefined);
+});
+
 test("Product card responsive sizes favor realistic rendered card widths", () => {
   assert.equal(
     PRODUCT_CARD_IMAGE_SIZES,

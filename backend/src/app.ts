@@ -116,6 +116,11 @@ export async function buildApp() {
       select: { mimeType: true },
     });
     reply.header("Content-Type", asset?.mimeType || "application/octet-stream");
+    if (storageKey.startsWith("variants/")) {
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      reply.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+    }
     return reply.send(file);
   });
 

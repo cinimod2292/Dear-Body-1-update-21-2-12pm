@@ -9,6 +9,7 @@ import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d2
 import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
 import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent } from "../builder/types";
+import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
 
 const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
@@ -263,6 +264,24 @@ export default function Home() {
       });
     return () => { cancelled = true; };
   }, [needsProducts]);
+
+  const heroPreloadUrl = useMemo(() => getBuilderHeroImageUrl(builderContent), [builderContent]);
+
+  useEffect(() => {
+    if (!heroPreloadUrl) return;
+    const descriptor = heroPreloadDescriptor(heroPreloadUrl);
+    const existing = document.head.querySelector<HTMLLinkElement>('link[data-builder-hero-preload="true"]');
+    const link = existing ?? document.createElement("link");
+    link.setAttribute("data-builder-hero-preload", "true");
+    link.rel = descriptor.rel;
+    link.as = descriptor.as;
+    link.href = descriptor.href;
+    link.setAttribute("imagesizes", descriptor.imagesizes);
+    if (!existing) document.head.appendChild(link);
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
+  }, [heroPreloadUrl]);
 
   return (
     <div className="min-h-screen">

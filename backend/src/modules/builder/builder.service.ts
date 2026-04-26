@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
 import {
   BUILDER_PAGE_KEYS,
   type BuilderPageKey,
@@ -155,9 +156,10 @@ export async function getStoreBuilderPage(rawPageKey: string) {
   const pageKey = parsePageKey(rawPageKey);
   const existing = await readPage(pageKey);
   if (!existing) return null;
+  const normalizedContent = await normalizePublishedContentForStore(existing.publishedContent);
   return {
     pageKey,
-    content: existing.publishedContent,
+    content: normalizedContent,
     version: existing.version,
     publishedAt: existing.publishedAt,
   };
@@ -227,4 +229,70 @@ function parsePageKey(rawPageKey: string): BuilderPageKey {
 
 export function __testOnly__buildPublishedSnapshot(content: unknown) {
   return builderPageContentSchema.parse(content);
+}
+
+function normalizeLookupUrl(url: string): string {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return value.split("?")[0]?.split("#")[0] ?? value;
+  }
+}
+
+async function normalizePublishedContentForStore(content: BuilderPageContent): Promise<BuilderPageContent> {
+  const sections = Array.isArray(content.sections) ? content.sections : [];
+  const imageUrls = sections.flatMap((section) => (
+    Object.entries(section.props ?? {})
+      .filter(([key, value]) => key.toLowerCase().includes("image") && typeof value === "string" && value.trim())
+      .map(([, value]) => normalizeLookupUrl(String(value)))
+  ));
+  const uniqueUrls = Array.from(new Set(imageUrls.filter(Boolean)));
+  if (!uniqueUrls.length) return content;
+
+  const cfg = await resolveUploadConfig();
+  const assets = await prisma.mediaAsset.findMany({
+    where: {
+      OR: [
+        { publicUrl: { in: uniqueUrls } },
+        { variants: { some: { publicUrl: { in: uniqueUrls } } } },
+      ],
+    },
+    include: { variants: true },
+  });
+
+  const byUrl = new Map<string, (typeof assets)[number]>();
+  for (const asset of assets) {
+    if (asset.publicUrl) byUrl.set(normalizeLookupUrl(asset.publicUrl), asset);
+    for (const variant of asset.variants) {
+      if (variant.publicUrl) byUrl.set(normalizeLookupUrl(variant.publicUrl), asset);
+    }
+  }
+
+  const resolveVariant = (asset: (typeof assets)[number], isHero: boolean) => {
+    const preferred = isHero
+      ? ["hero_desktop", "gallery_main", "card", "thumb"]
+      : ["gallery_main", "card", "thumb"];
+    for (const key of preferred) {
+      const variant = asset.variants.find((entry) => entry.key === key);
+      if (variant) return resolvePublicUrlForStorageKey(variant.storageKey, cfg);
+    }
+    return resolvePublicUrlForStorageKey(asset.storageKey, cfg);
+  };
+
+  return {
+    sections: sections.map((section) => ({
+      ...section,
+      props: Object.fromEntries(Object.entries(section.props ?? {}).map(([key, value]) => {
+        if (!(key.toLowerCase().includes("image") && typeof value === "string")) return [key, value];
+        const matched = byUrl.get(normalizeLookupUrl(value));
+        if (!matched) return [key, value];
+        return [key, resolveVariant(matched, section.type === "hero_banner" || key.toLowerCase().includes("hero"))];
+      })),
+    })),
+  };
 }

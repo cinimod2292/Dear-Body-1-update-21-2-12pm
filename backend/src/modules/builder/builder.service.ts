@@ -238,7 +238,7 @@ export function __testOnly__choosePreferredImageVariantUrl(
     isHero: boolean;
   },
   resolver: (storageKey: string) => string,
-) {
+): string | null {
   const preferred = params.isHero
     ? ["hero_desktop", "gallery_main", "card", "thumb"]
     : ["gallery_main", "card", "thumb"];
@@ -246,20 +246,93 @@ export function __testOnly__choosePreferredImageVariantUrl(
     const variant = params.variants.find((entry) => entry.key === key);
     if (variant) return resolver(variant.storageKey);
   }
+  if (params.isHero) return null;
   return resolver(params.fallbackStorageKey);
 }
 
-function normalizeLookupUrl(url: string): string {
-  const value = String(url || "").trim();
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizePathname(value: string): string {
   if (!value) return "";
+  const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/").trim();
+  if (!normalized) return "";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+export function __testOnly__normalizeLookupCandidates(url: string): string[] {
+  const value = String(url || "").trim();
+  if (!value) return [];
+  const candidates = new Set<string>();
+  const add = (input: string) => {
+    const trimmed = String(input || "").trim();
+    if (!trimmed) return;
+    candidates.add(trimmed);
+    candidates.add(safeDecodeURIComponent(trimmed));
+  };
+
+  const rawNoQueryOrHash = value.split("?")[0]?.split("#")[0] ?? value;
+  add(rawNoQueryOrHash);
+
+  let parsedPath = "";
   try {
     const parsed = new URL(value);
     parsed.search = "";
     parsed.hash = "";
-    return parsed.toString();
+    add(parsed.toString());
+    parsedPath = parsed.pathname;
   } catch {
-    return value.split("?")[0]?.split("#")[0] ?? value;
+    parsedPath = rawNoQueryOrHash;
   }
+
+  const normalizedPath = normalizePathname(parsedPath);
+  if (normalizedPath) {
+    add(normalizedPath);
+    add(normalizedPath.replace(/^\//, ""));
+    const filename = normalizedPath.split("/").filter(Boolean).at(-1);
+    if (filename) add(filename);
+
+    const localUploadIdx = normalizedPath.indexOf("/local-upload/");
+    if (localUploadIdx >= 0) {
+      const storageKey = normalizedPath.slice(localUploadIdx + "/local-upload/".length).replace(/^\//, "");
+      add(storageKey);
+    }
+
+    const variantsIdx = normalizedPath.indexOf("/variants/");
+    if (variantsIdx >= 0) add(normalizedPath.slice(variantsIdx + 1));
+    const uploadsIdx = normalizedPath.indexOf("/uploads/");
+    if (uploadsIdx >= 0) add(normalizedPath.slice(uploadsIdx + 1));
+  }
+
+  return Array.from(candidates).filter(Boolean);
+}
+
+export function __testOnly__matchAssetForImageUrl(
+  imageUrl: string,
+  assets: Array<{ id: string; filename: string; storageKey: string; publicUrl?: string | null; variants: Array<{ publicUrl?: string | null; storageKey: string }> }>,
+): string | null {
+  const byCandidate = new Map<string, string>();
+  for (const asset of assets) {
+    if (asset.publicUrl) {
+      for (const candidate of __testOnly__normalizeLookupCandidates(asset.publicUrl)) byCandidate.set(candidate, asset.id);
+    }
+    byCandidate.set(asset.storageKey, asset.id);
+    byCandidate.set(asset.filename, asset.id);
+    for (const variant of asset.variants) {
+      if (variant.publicUrl) {
+        for (const candidate of __testOnly__normalizeLookupCandidates(variant.publicUrl)) byCandidate.set(candidate, asset.id);
+      }
+      byCandidate.set(variant.storageKey, asset.id);
+    }
+  }
+  return __testOnly__normalizeLookupCandidates(imageUrl)
+    .map((candidate) => byCandidate.get(candidate))
+    .find(Boolean) ?? null;
 }
 
 async function normalizePublishedContentForStore(content: BuilderPageContent): Promise<BuilderPageContent> {
@@ -267,7 +340,7 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
   const imageUrls = sections.flatMap((section) => (
     Object.entries(section.props ?? {})
       .filter(([key, value]) => key.toLowerCase().includes("image") && typeof value === "string" && value.trim())
-      .map(([, value]) => normalizeLookupUrl(String(value)))
+      .flatMap(([, value]) => __testOnly__normalizeLookupCandidates(String(value)))
   ));
   const uniqueUrls = Array.from(new Set(imageUrls.filter(Boolean)));
   if (!uniqueUrls.length) return content;
@@ -277,7 +350,10 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
     where: {
       OR: [
         { publicUrl: { in: uniqueUrls } },
+        { storageKey: { in: uniqueUrls } },
+        { filename: { in: uniqueUrls } },
         { variants: { some: { publicUrl: { in: uniqueUrls } } } },
+        { variants: { some: { storageKey: { in: uniqueUrls } } } },
       ],
     },
     include: { variants: true },
@@ -285,9 +361,16 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
 
   const byUrl = new Map<string, (typeof assets)[number]>();
   for (const asset of assets) {
-    if (asset.publicUrl) byUrl.set(normalizeLookupUrl(asset.publicUrl), asset);
+    if (asset.publicUrl) {
+      for (const candidate of __testOnly__normalizeLookupCandidates(asset.publicUrl)) byUrl.set(candidate, asset);
+    }
+    byUrl.set(asset.storageKey, asset);
+    byUrl.set(asset.filename, asset);
     for (const variant of asset.variants) {
-      if (variant.publicUrl) byUrl.set(normalizeLookupUrl(variant.publicUrl), asset);
+      if (variant.publicUrl) {
+        for (const candidate of __testOnly__normalizeLookupCandidates(variant.publicUrl)) byUrl.set(candidate, asset);
+      }
+      byUrl.set(variant.storageKey, asset);
     }
   }
 
@@ -302,9 +385,13 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
       ...section,
       props: Object.fromEntries(Object.entries(section.props ?? {}).map(([key, value]) => {
         if (!(key.toLowerCase().includes("image") && typeof value === "string")) return [key, value];
-        const matched = byUrl.get(normalizeLookupUrl(value));
+        const matched = __testOnly__normalizeLookupCandidates(value)
+          .map((candidate) => byUrl.get(candidate))
+          .find(Boolean);
         if (!matched) return [key, value];
-        return [key, resolveVariant(matched, section.type === "hero_banner" || key.toLowerCase().includes("hero"))];
+        const resolved = resolveVariant(matched, section.type === "hero_banner" || key.toLowerCase().includes("hero"));
+        if (!resolved) return [key, null];
+        return [key, resolved];
       })),
     })),
   };

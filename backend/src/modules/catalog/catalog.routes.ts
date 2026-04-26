@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import {
+  attachImagesToProduct,
   bulkProductAction,
   commitProductImageImport,
   commitProductImport,
@@ -9,7 +10,9 @@ import {
   getStorefrontProductById,
   getProductImportTemplateCsv,
   listProducts,
+  listProductsMissingImages,
   listStorefrontProducts,
+  migrateLegacyProductImages,
   previewProductImportCsv,
   previewProductImageImportCsv,
   updateProduct,
@@ -46,6 +49,11 @@ export async function catalogRoutes(app: FastifyInstance) {
 
   app.get("/admin/products", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
     const result = await listProducts(request.query);
+    return reply.send({ data: result });
+  });
+
+  app.get("/admin/products/missing-images", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (_request, reply) => {
+    const result = await listProductsMissingImages();
     return reply.send({ data: result });
   });
 
@@ -108,6 +116,11 @@ export async function catalogRoutes(app: FastifyInstance) {
     return reply.send({ data: result });
   });
 
+  app.post("/admin/products/images/legacy-migration", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const result = await migrateLegacyProductImages(request.body);
+    return reply.send({ data: result });
+  });
+
   app.get("/admin/products/:productId", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:read")] }, async (request, reply) => {
     const params = request.params as { productId: string };
     const product = await getProductById(params.productId);
@@ -118,6 +131,11 @@ export async function catalogRoutes(app: FastifyInstance) {
     const params = request.params as { productId: string };
     const product = await updateProduct(params.productId, request.body);
     return reply.send({ data: product });
+  });
+
+  app.post("/admin/products/:productId/images/attach", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
+    const result = await attachImagesToProduct(request.params, request.body);
+    return reply.send({ data: result });
   });
 
   app.post("/admin/products/bulk", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {

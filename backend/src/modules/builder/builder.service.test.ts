@@ -42,6 +42,20 @@ test("hero variant preference does not fall back to original when optimized vari
   assert.equal(url, null);
 });
 
+test("hero variant preference preserves currently selected safe variant when available", () => {
+  const url = __testOnly__choosePreferredImageVariantUrl({
+    variants: [
+      { key: "card", storageKey: "variants/asset/card.webp" },
+      { key: "thumb", storageKey: "variants/asset/thumb.webp" },
+    ],
+    fallbackStorageKey: "uploads/original.jpg",
+    isHero: true,
+    currentVariantStorageKey: "variants/asset/thumb.webp",
+  }, (storageKey) => `https://cdn.test/${storageKey}`);
+
+  assert.equal(url, "https://cdn.test/variants/asset/thumb.webp");
+});
+
 test("lookup candidate normalization supports CDN/signed/original URL path matching", () => {
   const candidates = __testOnly__normalizeLookupCandidates("https://cdn.example.com/media/local-upload/uploads%2Fhero%2F01b39ccb.jpg?X-Amz-Signature=abc#hero");
 

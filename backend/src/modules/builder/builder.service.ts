@@ -239,9 +239,16 @@ export function __testOnly__choosePreferredImageVariantUrl(
     variants: Array<{ key: string; storageKey: string }>;
     fallbackStorageKey: string;
     isHero: boolean;
+    currentVariantStorageKey?: string | null;
   },
   resolver: (storageKey: string) => string,
 ): string | null {
+  const currentVariantStorageKey = params.currentVariantStorageKey?.trim();
+  if (currentVariantStorageKey) {
+    const hasCurrentVariant = params.variants.some((entry) => entry.storageKey === currentVariantStorageKey);
+    if (hasCurrentVariant) return resolver(currentVariantStorageKey);
+  }
+
   const preferred = params.isHero
     ? ["hero_desktop", "gallery_main", "card", "thumb"]
     : ["gallery_main", "card", "thumb"];
@@ -377,12 +384,6 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
     }
   }
 
-  const resolveVariant = (asset: (typeof assets)[number], isHero: boolean) => __testOnly__choosePreferredImageVariantUrl({
-    variants: asset.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
-    fallbackStorageKey: asset.storageKey,
-    isHero,
-  }, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
-
   return {
     sections: sections.map((section) => ({
       ...section,
@@ -392,7 +393,18 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
           .map((candidate) => byUrl.get(candidate))
           .find(Boolean);
         if (!matched) return [key, value];
-        const resolved = resolveVariant(matched, section.type === "hero_banner" || key.toLowerCase().includes("hero"));
+        const currentVariantStorageKey = matched.variants
+          .map((variant) => variant.storageKey)
+          .find((storageKey) => {
+            const variantCandidates = new Set(__testOnly__normalizeLookupCandidates(storageKey));
+            return __testOnly__normalizeLookupCandidates(value).some((candidate) => variantCandidates.has(candidate));
+          }) ?? null;
+        const resolved = __testOnly__choosePreferredImageVariantUrl({
+          variants: matched.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
+          fallbackStorageKey: matched.storageKey,
+          isHero: section.type === "hero_banner" || key.toLowerCase().includes("hero"),
+          currentVariantStorageKey,
+        }, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
         if (!resolved) return [key, null];
         return [key, resolved];
       })),

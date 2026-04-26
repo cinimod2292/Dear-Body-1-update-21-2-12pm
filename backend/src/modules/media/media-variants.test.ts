@@ -140,3 +140,10 @@ test("resolveVariantOutputMimeType preserves transparency only when truly needed
   assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: false }), "image/webp");
   assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: true }), "image/webp");
 });
+
+test("hero variant specs target optimized storefront sizes", () => {
+  const heroDesktop = MEDIA_VARIANT_SPECS.find((spec) => spec.key === "hero_desktop");
+  const heroMobile = MEDIA_VARIANT_SPECS.find((spec) => spec.key === "hero_mobile");
+  assert.equal(heroDesktop?.maxWidth, 1920);
+  assert.equal(heroMobile?.maxWidth, 900);
+});

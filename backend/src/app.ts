@@ -26,6 +26,7 @@ import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
+import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -115,6 +116,11 @@ export async function buildApp() {
       select: { mimeType: true },
     });
     reply.header("Content-Type", asset?.mimeType || "application/octet-stream");
+    if (storageKey.startsWith("variants/")) {
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      reply.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+    }
     return reply.send(file);
   });
 
@@ -168,6 +174,7 @@ export async function buildApp() {
     await api.register(crmRoutes);
     await api.register(ordersRoutes);
     await api.register(storeAccountRoutes);
+    await api.register(builderRoutes);
     await api.register(emailTemplateRoutes);
     await api.register(paymentsRoutes);
     await api.register(xeroRoutes);

@@ -345,6 +345,21 @@ export function __testOnly__matchAssetForImageUrl(
     .find(Boolean) ?? null;
 }
 
+export function __testOnly__resolveCurrentVariantStorageKey(
+  imageUrl: string,
+  variants: Array<{ storageKey: string; publicUrl?: string | null }>,
+): string | null {
+  const imageCandidates = __testOnly__normalizeLookupCandidates(imageUrl);
+  return variants
+    .find((variant) => {
+      const variantCandidates = new Set([
+        ...__testOnly__normalizeLookupCandidates(variant.storageKey),
+        ...__testOnly__normalizeLookupCandidates(String(variant.publicUrl ?? "")),
+      ]);
+      return imageCandidates.some((candidate) => variantCandidates.has(candidate));
+    })?.storageKey ?? null;
+}
+
 async function normalizePublishedContentForStore(content: BuilderPageContent): Promise<BuilderPageContent> {
   const sections = Array.isArray(content.sections) ? content.sections : [];
   const imageUrls = sections.flatMap((section) => (
@@ -393,12 +408,7 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
           .map((candidate) => byUrl.get(candidate))
           .find(Boolean);
         if (!matched) return [key, value];
-        const currentVariantStorageKey = matched.variants
-          .map((variant) => variant.storageKey)
-          .find((storageKey) => {
-            const variantCandidates = new Set(__testOnly__normalizeLookupCandidates(storageKey));
-            return __testOnly__normalizeLookupCandidates(value).some((candidate) => variantCandidates.has(candidate));
-          }) ?? null;
+        const currentVariantStorageKey = __testOnly__resolveCurrentVariantStorageKey(value, matched.variants);
         const resolved = __testOnly__choosePreferredImageVariantUrl({
           variants: matched.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
           fallbackStorageKey: matched.storageKey,

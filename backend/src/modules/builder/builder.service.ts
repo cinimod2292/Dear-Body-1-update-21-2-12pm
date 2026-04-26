@@ -100,6 +100,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isBuilderDebugEnabled() {
+  return process.env.NODE_ENV !== "production" || process.env.BUILDER_DEBUG === "1";
+}
+
+function extractHeroImageUrl(content: BuilderPageContent | undefined | null): string | null {
+  if (!content || !Array.isArray(content.sections)) return null;
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return typeof hero?.props?.imageUrl === "string" ? hero.props.imageUrl : null;
+}
+
 function defaultPage(pageKey: BuilderPageKey): BuilderPageRecord {
   const content = pageKey === "home" ? DEFAULT_HOME_PAGE_CONTENT : { sections: [] };
   const timestamp = nowIso();
@@ -123,6 +133,13 @@ async function readPage(pageKey: BuilderPageKey): Promise<BuilderPageRecord | nu
 
 async function writePage(page: BuilderPageRecord) {
   const parsed = builderPageSchema.parse(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] writePage before upsert", {
+      pageKey: parsed.pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(parsed.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(parsed.publishedContent),
+    });
+  }
   await prisma.setting.upsert({
     where: { scope_key: { scope: BUILDER_SCOPE, key: settingKey(page.pageKey) } },
     update: { value: parsed as Prisma.InputJsonValue },
@@ -149,7 +166,22 @@ export async function getAdminBuilderPage(rawPageKey: string) {
   const pageKey = parsePageKey(rawPageKey);
   const existing = await readPage(pageKey);
   const page = existing ?? await writePage(defaultPage(pageKey));
-  return normalizeAdminBuilderPage(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] getAdminBuilderPage before normalization", {
+      pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(page.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(page.publishedContent),
+    });
+  }
+  const normalized = await normalizeAdminBuilderPage(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] getAdminBuilderPage after normalization", {
+      pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(normalized.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(normalized.publishedContent),
+    });
+  }
+  return normalized;
 }
 
 export async function getStoreBuilderPage(rawPageKey: string) {
@@ -167,7 +199,21 @@ export async function getStoreBuilderPage(rawPageKey: string) {
 
 export async function updateBuilderDraft(rawPageKey: string, rawBody: unknown, actorUserId?: string | null) {
   const pageKey = parsePageKey(rawPageKey);
+  if (isBuilderDebugEnabled()) {
+    const preValidationHeroImageUrl = (() => {
+      if (typeof rawBody !== "object" || rawBody === null) return null;
+      const content = (rawBody as { content?: BuilderPageContent }).content;
+      return extractHeroImageUrl(content ?? null);
+    })();
+    console.info("[builder-debug] updateBuilderDraft pre-validation", { pageKey, preValidationHeroImageUrl });
+  }
   const body = updateBuilderDraftSchema.parse(rawBody);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] updateBuilderDraft post-validation", {
+      pageKey,
+      validatedHeroImageUrl: extractHeroImageUrl(body.content),
+    });
+  }
   const existing = await readPage(pageKey);
   const base = existing ?? defaultPage(pageKey);
 

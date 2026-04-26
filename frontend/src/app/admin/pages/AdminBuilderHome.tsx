@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
-import { Editor, Element, Frame, useEditor, useNode, type SerializedNodes } from "@craftjs/core";
+import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link } from "react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Copy, Eye, Loader2, Monitor, Redo2, Save, Smartphone, Tablet, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,8 +28,17 @@ import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveNextImage
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
+function isBuilderDebugEnabled() {
+  if (import.meta.env.DEV) return true;
+  try {
+    return localStorage.getItem("builderDebug") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function builderDebugLog(message: string, payload: Record<string, unknown>) {
-  if (!import.meta.env.DEV) return;
+  if (!isBuilderDebugEnabled()) return;
   console.info(`[builder-home] ${message}`, payload);
 }
 
@@ -317,6 +326,7 @@ function InspectorImageField({
   keyName,
   sectionType,
   actions,
+  query,
   accessToken,
 }: {
   label: string;
@@ -325,6 +335,7 @@ function InspectorImageField({
   keyName: string;
   sectionType: BuilderSectionType;
   actions: ReturnType<typeof useEditor>["actions"];
+  query: ReturnType<typeof useEditor>["query"];
   accessToken?: string;
 }) {
   const imageValue = toFieldValue(value);
@@ -336,7 +347,27 @@ function InspectorImageField({
 
   const setFieldValue = (next: string) => {
     const safeNext = resolveNextImageValue(imageValue, next);
-    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = safeNext; });
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+      props[keyName] = safeNext;
+      builderDebugLog("setProp image field", {
+        selectedNodeId,
+        sectionType,
+        keyName,
+        imageUrl: String(props.imageUrl ?? ""),
+        imageAlt: String(props.imageAlt ?? ""),
+      });
+    });
+    queueMicrotask(() => {
+      const node = query.getSerializedNodes()[selectedNodeId] as SerializedNode | undefined;
+      const props = (node?.props ?? {}) as Record<string, unknown>;
+      builderDebugLog("setProp post-state snapshot", {
+        selectedNodeId,
+        sectionType,
+        keyName,
+        imageUrl: String(props.imageUrl ?? ""),
+        imageAlt: String(props.imageAlt ?? ""),
+      });
+    });
   };
 
   const onUploadFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -386,7 +417,7 @@ function InspectorImageField({
         throw new Error(`Upload failed (${uploadResponse.status})${details ? `: ${details.slice(0, 200)}` : ""}`);
       }
 
-      const finalized = await apiRequest<{ data: MediaAsset }>("/admin/media/uploads/finalize", {
+      const finalized = await apiRequest<{ data: MediaAsset; variantsPending?: boolean; variantErrors?: string[] }>("/admin/media/uploads/finalize", {
         method: "POST",
         body: JSON.stringify({
           storageKey: prep.data.storageKey,
@@ -401,6 +432,8 @@ function InspectorImageField({
         mediaId: finalized.data.id,
         publicUrl: finalized.data.publicUrl,
         variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
+        variantsPending: finalized.variantsPending ?? false,
+        variantErrors: finalized.variantErrors ?? [],
       });
 
       const preferredKeys = isHeroField
@@ -408,7 +441,13 @@ function InspectorImageField({
         : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
       const allowOriginalFallback = !isHeroField;
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
-      builderDebugLog("upload selected image URL", { keyName, chosenImageUrl: next, previousImageUrl: imageValue });
+      builderDebugLog("upload selected image URL", {
+        keyName,
+        mediaId: finalized.data.id,
+        chosenImageUrl: next,
+        previousImageUrl: imageValue,
+        variantsPending: finalized.variantsPending ?? false,
+      });
       setFieldValue(next);
       if (!allowOriginalFallback && next === imageValue) {
         toast.info("Optimizing image… hero variant not ready yet.");
@@ -457,13 +496,6 @@ function InspectorImageField({
             variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
             chosenImageUrl: next,
           });
-          builderDebugLog("library selected image URL", {
-            keyName,
-            mediaId: asset.id,
-            mediaPublicUrl: asset.publicUrl,
-            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
-            chosenImageUrl: next,
-          });
           setFieldValue(next);
           setShowLibrary(false);
         }}
@@ -481,9 +513,10 @@ function renderFieldControl(args: {
   nodeProps: Record<string, unknown>;
   products: Product[];
   actions: ReturnType<typeof useEditor>["actions"];
+  query: ReturnType<typeof useEditor>["query"];
   accessToken?: string;
 }) {
-  const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions, accessToken } = args;
+  const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken } = args;
 
   if (sectionType === "featured_products" && keyName === "mode") {
     return (
@@ -549,10 +582,25 @@ function renderFieldControl(args: {
   }
 
   if (field.type === "image") {
-    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} sectionType={sectionType} actions={actions} accessToken={accessToken} />;
+    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} sectionType={sectionType} actions={actions} query={query} accessToken={accessToken} />;
   }
 
   return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
+}
+
+function extractHeroImageUrlFromContent(content: BuilderPageContent) {
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return String(hero?.props?.imageUrl ?? "");
+}
+
+function extractHeroImageUrlFromNodes(nodes: SerializedNodes) {
+  const heroNode = Object.values(nodes).find((node) => {
+    if (!node || typeof node !== "object") return false;
+    const resolvedName = typeof node.type === "string" ? node.type : node.type?.resolvedName;
+    return resolvedName === "HeroCraftSection";
+  });
+  const props = (heroNode?.props ?? {}) as Record<string, unknown>;
+  return String(props.imageUrl ?? "");
 }
 
 function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
@@ -612,7 +660,7 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
             {fields.map(([keyName, field]) => (
               <div key={keyName}>
                 <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
-                {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions, accessToken })}
+                {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken })}
               </div>
             ))}
           </section>
@@ -762,9 +810,16 @@ export default function AdminBuilderHome() {
       builderDebugLog("loaded draft content", {
         heroImageUrl: page.draftContent.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
       });
+      builderDebugLog("before pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setProducts(productsResponse);
       setSavedSnapshot(page.draftContent);
-      setSerialized(pageContentToCraftNodes(page.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -786,8 +841,18 @@ export default function AdminBuilderHome() {
         heroImageUrl: content.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
       });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
+      builderDebugLog("save draft response content", {
+        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
+      });
+      builderDebugLog("before pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(saved.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(saved.draftContent);
-      setSerialized(pageContentToCraftNodes(saved.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -803,10 +868,21 @@ export default function AdminBuilderHome() {
     try {
       setStatus("publishing");
       const content = craftNodesToPageContent(nodes);
+      builderDebugLog("publish save payload content", {
+        heroImageUrl: extractHeroImageUrlFromContent(content),
+      });
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
+      builderDebugLog("publish response draft/published content", {
+        draftHeroImageUrl: extractHeroImageUrlFromContent(published.draftContent),
+        publishedHeroImageUrl: extractHeroImageUrlFromContent(published.publishedContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(published.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(published.draftContent);
-      setSerialized(pageContentToCraftNodes(published.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
       setEditorVersion((v) => v + 1);
@@ -823,8 +899,15 @@ export default function AdminBuilderHome() {
     try {
       setStatus("saving");
       const page = await discardBuilderDraft("home", session.accessToken);
+      builderDebugLog("discard response content", {
+        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(page.draftContent);
-      setSerialized(pageContentToCraftNodes(page.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);

@@ -9,3 +9,7 @@
 
   Run `npm run dev` to start the development server.
   
+## Developer note (tests)
+
+- Current `npm test` uses the shared TypeScript test runner from `../backend/node_modules/tsx`.
+- TODO: replace this with a frontend-local test runner/dependency setup once package/registry access is available in CI and local environments.

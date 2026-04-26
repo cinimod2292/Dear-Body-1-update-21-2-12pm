@@ -37,3 +37,16 @@ test("mapSelectedMediaVariantToFieldValue does not fallback to original for hero
     "https://cdn.example.com/current.webp",
   );
 });
+
+test("mapSelectedMediaVariantToFieldValue keeps stable optimized variant URL", () => {
+  assert.equal(
+    mapSelectedMediaVariantToFieldValue("", {
+      publicUrl: "https://cdn.example.com/local-upload/uploads/a/original.jpg",
+      variants: [
+        { key: "card", publicUrl: "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc" },
+        { key: "thumb", publicUrl: "https://cdn.example.com/local-upload/variants/uploads/a/thumb.webp?X-Amz-Signature=abc" },
+      ],
+    } as any, ["hero_desktop", "card", "thumb"], { allowOriginalFallback: false }),
+    "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc",
+  );
+});

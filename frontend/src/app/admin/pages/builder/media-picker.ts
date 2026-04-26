@@ -1,5 +1,6 @@
 import { MediaAsset } from "../../types/admin";
 import { isSafeImageUrl } from "../../../builder/media-url";
+import { BuilderSectionType } from "../../../builder/types";
 
 function pickVariantUrl(asset: Pick<MediaAsset, "variants"> | null | undefined, preferredKeys: string[]) {
   const variants = Array.isArray(asset?.variants) ? asset?.variants : [];
@@ -39,4 +40,8 @@ export function mapSelectedMediaVariantToFieldValue(
   if (variantUrl) return variantUrl;
   if (options?.allowOriginalFallback === false) return currentValue;
   return mapSelectedMediaToFieldValue(currentValue, asset);
+}
+
+export function isHeroImageField(sectionType: BuilderSectionType, keyName: string) {
+  return sectionType === "hero_banner" || keyName.toLowerCase().includes("hero");
 }

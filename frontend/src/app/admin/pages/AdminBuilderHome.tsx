@@ -24,7 +24,7 @@ import { duplicateSection, moveSection, removeSection } from "./builder/editor-s
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
-import { mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
+import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -315,6 +315,7 @@ function InspectorImageField({
   value,
   selectedNodeId,
   keyName,
+  sectionType,
   actions,
   accessToken,
 }: {
@@ -322,11 +323,13 @@ function InspectorImageField({
   value: unknown;
   selectedNodeId: string;
   keyName: string;
+  sectionType: BuilderSectionType;
   actions: ReturnType<typeof useEditor>["actions"];
   accessToken?: string;
 }) {
   const imageValue = toFieldValue(value);
   const safe = isSafeImageUrl(imageValue);
+  const isHeroField = isHeroImageField(sectionType, keyName);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -400,10 +403,10 @@ function InspectorImageField({
         variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
       });
 
-      const preferredKeys = keyName.toLowerCase().includes("hero")
+      const preferredKeys = isHeroField
         ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
         : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
-      const allowOriginalFallback = !keyName.toLowerCase().includes("hero");
+      const allowOriginalFallback = !isHeroField;
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
       builderDebugLog("upload selected image URL", { keyName, chosenImageUrl: next, previousImageUrl: imageValue });
       setFieldValue(next);
@@ -441,11 +444,18 @@ function InspectorImageField({
         accessToken={accessToken}
         onClose={() => setShowLibrary(false)}
         onSelect={(asset) => {
-          const preferredKeys = keyName.toLowerCase().includes("hero")
+          const preferredKeys = isHeroField
             ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
             : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
           const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys, {
-            allowOriginalFallback: !keyName.toLowerCase().includes("hero"),
+            allowOriginalFallback: !isHeroField,
+          });
+          builderDebugLog("library selected image URL", {
+            keyName,
+            mediaId: asset.id,
+            mediaPublicUrl: asset.publicUrl,
+            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
+            chosenImageUrl: next,
           });
           builderDebugLog("library selected image URL", {
             keyName,
@@ -539,7 +549,7 @@ function renderFieldControl(args: {
   }
 
   if (field.type === "image") {
-    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} actions={actions} accessToken={accessToken} />;
+    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} sectionType={sectionType} actions={actions} accessToken={accessToken} />;
   }
 
   return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;

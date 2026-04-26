@@ -31,6 +31,7 @@ const AdminCustomerDetail = lazy(() => import("./admin/pages/AdminCustomerDetail
 const AdminOrders = lazy(() => import("./admin/pages/AdminOrders"));
 const AdminOrderDetail = lazy(() => import("./admin/pages/AdminOrderDetail"));
 const AdminCmsEditor = lazy(() => import("./admin/pages/AdminCmsEditor"));
+const AdminBuilderHome = lazy(() => import("./admin/pages/AdminBuilderHome"));
 const AdminOperations = lazy(() => import("./admin/pages/AdminOperations"));
 const AdminShippingMethods = lazy(() => import("./admin/pages/AdminShippingMethods"));
 const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates"));
@@ -88,6 +89,7 @@ export const router = createBrowserRouter([
           { path: "media", Component: AdminMedia },
           { path: "settings", Component: AdminSettings },
           { path: "cms", Component: AdminCmsEditor },
+          { path: "builder/home", Component: AdminBuilderHome },
           { path: "operations", Component: AdminOperations },
           { path: "shipping-methods", Component: AdminShippingMethods },
           { path: "email-templates", Component: AdminEmailTemplates },

@@ -24,7 +24,7 @@ import { duplicateSection, moveSection, removeSection } from "./builder/editor-s
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
-import { mapSelectedMediaToFieldValue, resolveNextImageValue } from "./builder/media-picker";
+import { mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -406,7 +406,10 @@ function InspectorImageField({
         accessToken={accessToken}
         onClose={() => setShowLibrary(false)}
         onSelect={(asset) => {
-          const next = mapSelectedMediaToFieldValue(imageValue, asset);
+          const preferredKeys = keyName.toLowerCase().includes("hero")
+            ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
+            : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+          const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys);
           setFieldValue(next);
           setShowLibrary(false);
         }}

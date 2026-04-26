@@ -37,7 +37,7 @@ export function HeroBannerSection(props: HeroBannerProps) {
     <section className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
       <div className="absolute inset-0">
         {imageUrl
-          ? <img src={imageUrl} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" />
+          ? <img src={imageUrl} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" sizes="100vw" width={1217} height={797} />
           : <picture>
             <source srcSet={HERO_IMAGE_OPTIMIZED_PATH} type="image/webp" />
             <img src={heroImageFallback} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" />

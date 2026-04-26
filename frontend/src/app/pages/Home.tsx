@@ -192,40 +192,83 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
+  const [builderResolved, setBuilderResolved] = useState(false);
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    fetchStoreProducts()
-      .then((items) => setProducts(items))
-      .catch(() => setProducts([]));
-  }, []);
-
-  useEffect(() => {
+    let cancelled = false;
     const isPreview = searchParams.get("preview") === "builder";
     if (isPreview) {
       const adminRaw = localStorage.getItem("dear-body-admin-session");
       const token = adminRaw ? (JSON.parse(adminRaw) as { accessToken?: string }).accessToken : undefined;
-      if (!token) return;
+      if (!token) {
+        setBuilderContent(null);
+        setBuilderResolved(true);
+        return;
+      }
       fetchAdminBuilderPage("home", token)
-        .then((page) => setBuilderContent(page.draftContent))
-        .catch(() => setBuilderContent(null));
-      return;
+        .then((page) => {
+          if (cancelled) return;
+          setBuilderContent(page.draftContent);
+          setBuilderResolved(true);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setBuilderContent(null);
+          setBuilderResolved(true);
+        });
+      return () => { cancelled = true; };
     }
 
     fetchStoreBuilderPage("home")
       .then((page) => {
+        if (cancelled) return;
         if (!page?.content?.sections?.length) {
           setBuilderContent(null);
+          setBuilderResolved(true);
           return;
         }
         setBuilderContent(page.content);
+        setBuilderResolved(true);
       })
-      .catch(() => setBuilderContent(null));
+      .catch(() => {
+        if (cancelled) return;
+        setBuilderContent(null);
+        setBuilderResolved(true);
+      });
+    return () => { cancelled = true; };
   }, [searchParams]);
+
+  const needsProducts = useMemo(() => {
+    if (!builderResolved) return false;
+    if (!builderContent) return true;
+    return builderContent.sections.some((section) => section.enabled !== false && section.type === "featured_products");
+  }, [builderResolved, builderContent]);
+
+  useEffect(() => {
+    if (!needsProducts) {
+      setProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchStoreProducts()
+      .then((items) => {
+        if (cancelled) return;
+        setProducts(items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProducts([]);
+      });
+    return () => { cancelled = true; };
+  }, [needsProducts]);
 
   return (
     <div className="min-h-screen">
-      {builderContent
+      {!builderResolved
+        ? null
+        : builderContent
         ? <BuilderPageRenderer content={builderContent} products={products} />
         : <LegacyHomeContent products={products} />}
 

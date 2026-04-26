@@ -4,11 +4,13 @@ import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
-import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaListQuerySchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
+import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaByIdsSchema, mediaListQuerySchema, regenerateVariantsBatchSchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
 import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { generateMediaVariantsForAsset } from "./media-variants.js";
 import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
+import { regenerateVariantsForMediaIds } from "./media-variants-batch.js";
+import { toPickerMediaItem } from "./media-picker.js";
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
@@ -126,6 +128,9 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = createUploadSchema.parse(request.body);
+      if (body.kind === "IMAGE" && !body.mimeType.toLowerCase().startsWith("image/")) {
+        throw new AppError(422, "Invalid image file type", "INVALID_IMAGE_MIME_TYPE");
+      }
       const cfg = await resolveUploadConfig();
       const prepared = await prepareUpload(body.filename, body.mimeType);
       request.log.info({
@@ -321,20 +326,70 @@ export async function mediaRoutes(app: FastifyInstance) {
       };
 
       const cfg = await resolveUploadConfig();
+      const includeVariants = query.view === "picker"
+        ? {
+            variants: {
+              where: { key: { in: ["thumb", "card", "gallery_thumb"] } },
+              select: { key: true, storageKey: true, publicUrl: true },
+            },
+          }
+        : { variants: true };
+
       const [items, total] = await Promise.all([
-        prisma.mediaAsset.findMany({ where, skip, take, orderBy, include: { variants: true } }),
+        prisma.mediaAsset.findMany({ where, skip, take, orderBy, include: includeVariants as any }),
         prisma.mediaAsset.count({ where }),
       ]);
 
-      const normalizedItems = items.map((item) => ({
-        ...item,
-        publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
-        variants: item.variants.map((variant) => ({
-          ...variant,
-          publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
-        })),
-      }));
-      return reply.send({ data: toPaginatedResponse(normalizedItems, total, query) });
+      const normalizedItems = query.view === "picker"
+        ? items.map((item) => toPickerMediaItem(item as any, cfg))
+        : items.map((item) => ({
+            ...item,
+            publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
+            variants: item.variants.map((variant: any) => ({
+              ...variant,
+              publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
+            })),
+          }));
+      return reply.send({ data: toPaginatedResponse(normalizedItems as any[], total, query) });
+    },
+  );
+
+  app.post(
+    "/admin/media/by-ids",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+    async (request, reply) => {
+      const body = mediaByIdsSchema.parse(request.body);
+      const cfg = await resolveUploadConfig();
+
+      const include = body.view === "picker"
+        ? {
+            variants: {
+              where: { key: { in: ["thumb", "card", "gallery_thumb"] } },
+              select: { key: true, storageKey: true, publicUrl: true },
+            },
+          }
+        : { variants: true };
+
+      const items = await prisma.mediaAsset.findMany({
+        where: { id: { in: body.ids } },
+        include: include as any,
+      });
+
+      const idOrder = new Map(body.ids.map((id, index) => [id, index]));
+      items.sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0));
+
+      const data = body.view === "picker"
+        ? items.map((item) => toPickerMediaItem(item as any, cfg))
+        : items.map((item) => ({
+            ...item,
+            publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
+            variants: item.variants.map((variant: any) => ({
+              ...variant,
+              publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
+            })),
+          }));
+
+      return reply.send({ data });
     },
   );
 
@@ -397,6 +452,16 @@ export async function mediaRoutes(app: FastifyInstance) {
       const { mediaId } = request.params as { mediaId: string };
       const query = request.query as { force?: string };
       const result = await generateMediaVariantsForAsset(mediaId, { force: query.force === "true" });
+      return reply.send({ data: result });
+    },
+  );
+
+  app.post(
+    "/admin/media/variants/regenerate",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const body = regenerateVariantsBatchSchema.parse(request.body);
+      const result = await regenerateVariantsForMediaIds(body.mediaIds, { concurrency: body.concurrency });
       return reply.send({ data: result });
     },
   );

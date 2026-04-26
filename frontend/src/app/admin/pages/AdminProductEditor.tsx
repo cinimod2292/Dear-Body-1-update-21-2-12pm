@@ -5,11 +5,12 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { formatRand } from "../../lib/currency";
+import { resolveSelectedEditorMediaAssets, type EditorGalleryEntry, type EditorMediaAsset } from "../lib/product-editor-media";
 
 interface Brand { id: string; name: string }
 interface Category { id: string; name: string }
 interface Tag { id: string; name: string }
-interface MediaAsset { id: string; filename: string; publicUrl?: string; mimeType: string }
+interface MediaAsset extends EditorMediaAsset {}
 interface Attribute { id: string; name: string; options: Array<{ id: string; value: string }> }
 
 interface Variant {
@@ -36,9 +37,20 @@ interface Product {
   categoryId?: string | null;
   seoMetadata?: { title?: string; description?: string; canonicalUrl?: string; ogTitle?: string; ogDescription?: string; ogImageUrl?: string } | null;
   tags?: Array<{ tagId: string }>;
-  galleries?: Array<{ mediaAssetId: string }>;
+  galleries?: EditorGalleryEntry[];
   hoverImageId?: string | null;
+  images?: string[];
   variants?: Variant[];
+}
+
+function isLegacyAssetId(id: unknown): boolean {
+  return typeof id === "string" && id.startsWith("legacy:");
+}
+
+function canRenderImagePreview(url: unknown, mimeType: unknown): url is string {
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (typeof mimeType !== "string" || mimeType.length === 0) return true;
+  return mimeType.startsWith("image");
 }
 
 export default function AdminProductEditor() {
@@ -51,6 +63,10 @@ export default function AdminProductEditor() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaQuery, setMediaQuery] = useState("");
+  const [mediaPage, setMediaPage] = useState(1);
+  const [mediaTotalPages, setMediaTotalPages] = useState(1);
+  const [loadingMoreMedia, setLoadingMoreMedia] = useState(false);
 
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -100,7 +116,7 @@ export default function AdminProductEditor() {
         apiRequest<{ data: { items: Brand[] } }>("/admin/brands?page=1&perPage=200", {}, session.accessToken),
         apiRequest<{ data: { items: Category[] } }>("/admin/categories?page=1&perPage=200", {}, session.accessToken),
         apiRequest<{ data: { items: Tag[] } }>("/admin/tags?page=1&perPage=200", {}, session.accessToken),
-        apiRequest<{ data: { items: MediaAsset[] } }>("/admin/media?page=1&perPage=200", {}, session.accessToken),
+        apiRequest<{ data: { items: MediaAsset[]; page: number; totalPages: number } }>("/admin/media?page=1&perPage=50&view=picker", {}, session.accessToken),
         apiRequest<{ data: Attribute[] }>("/admin/attributes", {}, session.accessToken),
       ]);
 
@@ -108,11 +124,25 @@ export default function AdminProductEditor() {
       setCategories(categoriesRes.data.items);
       setTags(tagsRes.data.items);
       setMediaAssets(mediaRes.data.items);
+      setMediaPage(mediaRes.data.page);
+      setMediaTotalPages(mediaRes.data.totalPages);
       setAttributes(attrsRes.data);
 
       if (!isNew && productId) {
         const productRes = await apiRequest<{ data: Product }>(`/admin/products/${productId}`, {}, session.accessToken);
         const found = productRes.data;
+        const referencedIds = (found.galleries ?? []).map((entry) => entry.mediaAssetId);
+        const missingIds = referencedIds.filter((id) => !mediaRes.data.items.some((asset) => asset.id === id));
+        if (missingIds.length > 0) {
+          const byIdsRes = await apiRequest<{ data: MediaAsset[] }>("/admin/media/by-ids", {
+            method: "POST",
+            body: JSON.stringify({ ids: missingIds, view: "picker" }),
+          }, session.accessToken);
+          setMediaAssets((current) => {
+            const seen = new Set(current.map((asset) => asset.id));
+            return [...current, ...byIdsRes.data.filter((asset) => !seen.has(asset.id))];
+          });
+        }
         setProduct({ ...found, brandId: found.brandId ?? "", categoryId: found.categoryId ?? "", seoMetadata: found.seoMetadata ?? {}, tags: found.tags ?? [], galleries: found.galleries ?? [], hoverImageId: found.hoverImageId ?? null, variants: found.variants ?? [] });
       }
     } catch (err) {
@@ -124,13 +154,62 @@ export default function AdminProductEditor() {
 
   useEffect(() => { load(); }, [session?.accessToken, productId]);
 
+  const loadMorePickerMedia = async () => {
+    if (!session?.accessToken) return;
+    if (mediaPage >= mediaTotalPages) return;
+    try {
+      setLoadingMoreMedia(true);
+      const nextPage = mediaPage + 1;
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        perPage: "50",
+        view: "picker",
+      });
+      if (mediaQuery.trim()) params.set("q", mediaQuery.trim());
+      const res = await apiRequest<{ data: { items: MediaAsset[]; page: number; totalPages: number } }>(`/admin/media?${params.toString()}`, {}, session.accessToken);
+      setMediaAssets((current) => {
+        const seen = new Set(current.map((asset) => asset.id));
+        return [...current, ...res.data.items.filter((asset) => !seen.has(asset.id))];
+      });
+      setMediaPage(res.data.page);
+      setMediaTotalPages(res.data.totalPages);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load more media");
+    } finally {
+      setLoadingMoreMedia(false);
+    }
+  };
+
+  const searchPickerMedia = async (query: string) => {
+    if (!session?.accessToken) return;
+    try {
+      setLoadingMoreMedia(true);
+      const params = new URLSearchParams({
+        page: "1",
+        perPage: "50",
+        view: "picker",
+      });
+      if (query.trim()) params.set("q", query.trim());
+      const res = await apiRequest<{ data: { items: MediaAsset[]; page: number; totalPages: number } }>(`/admin/media?${params.toString()}`, {}, session.accessToken);
+      setMediaAssets(res.data.items);
+      setMediaPage(res.data.page);
+      setMediaTotalPages(res.data.totalPages);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to search media");
+    } finally {
+      setLoadingMoreMedia(false);
+    }
+  };
+
   const selectedTagIds = useMemo(() => (product.tags ?? []).map((t) => t.tagId), [product.tags]);
   const selectedMediaIds = useMemo(() => (product.galleries ?? []).map((g) => g.mediaAssetId), [product.galleries]);
   const selectedMediaAssets = useMemo(
-    () => selectedMediaIds
-      .map((mediaId) => mediaAssets.find((asset) => asset.id === mediaId))
-      .filter((asset): asset is MediaAsset => Boolean(asset)),
-    [selectedMediaIds, mediaAssets],
+    () => resolveSelectedEditorMediaAssets({
+      galleries: product.galleries,
+      mediaAssets,
+      legacyImages: product.images,
+    }),
+    [product.galleries, product.images, mediaAssets],
   );
 
   const reorderGallery = (mediaAssetId: string, direction: "up" | "down") => {
@@ -495,18 +574,22 @@ export default function AdminProductEditor() {
                 {selectedMediaAssets.map((asset, index) => (
                   <div key={asset.id} className="rounded-lg border border-gray-200 p-2">
                     <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                      {asset.publicUrl && asset.mimeType.startsWith("image")
+                      {canRenderImagePreview(asset.publicUrl, asset.mimeType)
                         ? <img src={asset.publicUrl} alt={asset.filename} className="w-full h-full object-cover" />
-                        : <span className="text-[10px] text-gray-500">{asset.mimeType}</span>}
+                        : <span className="text-[10px] text-gray-500">{asset.mimeType ?? "No preview"}</span>}
                     </div>
                     <p className="mt-2 text-[11px] truncate">{asset.filename}</p>
                     <p className="text-[10px] text-gray-400">{index === 0 ? "Primary image" : `Position ${index + 1}`}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      <button type="button" onClick={() => reorderGallery(asset.id, "up")} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↑</button>
-                      <button type="button" onClick={() => reorderGallery(asset.id, "down")} disabled={index === selectedMediaAssets.length - 1} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↓</button>
-                      <button type="button" onClick={() => setPrimaryImage(asset.id)} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">Set Primary</button>
-                      <button type="button" onClick={() => removeGalleryImage(asset.id)} className="px-2 py-1 rounded border border-red-200 text-red-600 text-[11px]">Unlink</button>
-                    </div>
+                    {isLegacyAssetId(asset.id) ? (
+                      <p className="mt-2 text-[11px] text-amber-700">Legacy image fallback. Link a media asset to manage order/hover.</p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <button type="button" onClick={() => reorderGallery(asset.id, "up")} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↑</button>
+                        <button type="button" onClick={() => reorderGallery(asset.id, "down")} disabled={index === selectedMediaAssets.length - 1} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">↓</button>
+                        <button type="button" onClick={() => setPrimaryImage(asset.id)} disabled={index === 0} className="px-2 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-50">Set Primary</button>
+                        <button type="button" onClick={() => removeGalleryImage(asset.id)} className="px-2 py-1 rounded border border-red-200 text-red-600 text-[11px]">Unlink</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -520,31 +603,61 @@ export default function AdminProductEditor() {
               onChange={(e) => setProduct((prev) => ({ ...prev, hoverImageId: e.target.value || null }))}
             >
               <option value="">No hover image</option>
-              {selectedMediaAssets.map((asset) => (
+              {selectedMediaAssets.filter((asset) => !isLegacyAssetId(asset.id)).map((asset) => (
                 <option key={asset.id} value={asset.id}>{asset.filename}</option>
               ))}
             </select>
             <p className="mt-1 text-xs text-gray-500">Primary image remains the first linked image. Hover image only appears on product cards.</p>
           </div>
           {mediaAssets.length === 0 ? <EmptyState label="No media found. Upload files from Media page." /> : (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {mediaAssets.map((m) => {
-                const selected = selectedMediaIds.includes(m.id);
-                return (
+            <>
+              <div className="mb-3 flex items-center gap-2">
+                <input
+                  value={mediaQuery}
+                  onChange={(e) => setMediaQuery(e.target.value)}
+                  placeholder="Search media"
+                  className="w-full max-w-sm rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => searchPickerMedia(mediaQuery)}
+                  disabled={loadingMoreMedia}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm disabled:opacity-50"
+                >
+                  Search
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {mediaAssets.map((m) => {
+                  const selected = selectedMediaIds.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setProduct((p) => ({ ...p, galleries: selected ? (p.galleries ?? []).filter((g) => g.mediaAssetId !== m.id) : [...(p.galleries ?? []), { mediaAssetId: m.id }] }))}
+                      className={`border rounded-lg p-2 text-left ${selected ? "border-pink-400 bg-pink-50" : "border-gray-200"}`}
+                    >
+                      <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+                        {canRenderImagePreview(m.publicUrl, m.mimeType) ? <img src={m.publicUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType ?? "No preview"}</span>}
+                      </div>
+                      <p className="mt-1 text-[11px] truncate">{m.filename}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              {mediaPage < mediaTotalPages ? (
+                <div className="mt-3">
                   <button
-                    key={m.id}
                     type="button"
-                    onClick={() => setProduct((p) => ({ ...p, galleries: selected ? (p.galleries ?? []).filter((g) => g.mediaAssetId !== m.id) : [...(p.galleries ?? []), { mediaAssetId: m.id }] }))}
-                    className={`border rounded-lg p-2 text-left ${selected ? "border-pink-400 bg-pink-50" : "border-gray-200"}`}
+                    onClick={loadMorePickerMedia}
+                    disabled={loadingMoreMedia}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm disabled:opacity-50"
                   >
-                    <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                      {m.publicUrl && m.mimeType.startsWith("image") ? <img src={m.publicUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType}</span>}
-                    </div>
-                    <p className="mt-1 text-[11px] truncate">{m.filename}</p>
+                    {loadingMoreMedia ? "Loading..." : "Load more"}
                   </button>
-                );
-              })}
-            </div>
+                </div>
+              ) : null}
+            </>
           )}
         </section>
 

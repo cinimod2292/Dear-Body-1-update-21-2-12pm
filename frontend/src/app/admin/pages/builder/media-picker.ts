@@ -33,8 +33,10 @@ export function mapSelectedMediaVariantToFieldValue(
   currentValue: string,
   asset: Pick<MediaAsset, "publicUrl" | "variants"> | null | undefined,
   preferredKeys: string[],
+  options?: { allowOriginalFallback?: boolean },
 ) {
   const variantUrl = pickVariantUrl(asset, preferredKeys);
   if (variantUrl) return variantUrl;
+  if (options?.allowOriginalFallback === false) return currentValue;
   return mapSelectedMediaToFieldValue(currentValue, asset);
 }

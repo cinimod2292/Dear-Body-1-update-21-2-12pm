@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
 import heroImageFallback from "../../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
+import { sanitizeBuilderImageUrl } from "../media-url";
 
 const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
@@ -24,7 +25,7 @@ export function HeroBannerSection(props: HeroBannerProps) {
     : props.layout === "image_left"
       ? "text-right ml-auto"
       : "";
-  const imageUrl = props.imageUrl?.trim() || "";
+  const imageUrl = sanitizeBuilderImageUrl(props.imageUrl, { isHero: true }) ?? "";
   const overlayClass = props.tone === "clean"
     ? "bg-gradient-to-r from-gray-900/80 via-gray-900/40 to-transparent"
     : props.tone === "warm"

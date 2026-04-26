@@ -365,7 +365,7 @@ function InspectorImageField({
         throw new Error(`Upload failed (${uploadResponse.status})`);
       }
 
-      await apiRequest("/admin/media/uploads/finalize", {
+      const finalized = await apiRequest<{ data: MediaAsset }>("/admin/media/uploads/finalize", {
         method: "POST",
         body: JSON.stringify({
           storageKey: prep.data.storageKey,
@@ -376,7 +376,15 @@ function InspectorImageField({
         }),
       }, accessToken);
 
-      setFieldValue(prep.data.publicUrl);
+      const preferredKeys = keyName.toLowerCase().includes("hero")
+        ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
+        : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+      const allowOriginalFallback = !keyName.toLowerCase().includes("hero");
+      const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
+      setFieldValue(next);
+      if (!allowOriginalFallback && next === imageValue) {
+        toast.info("Optimizing image… hero variant not ready yet.");
+      }
       toast.success("Image uploaded");
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
@@ -409,7 +417,9 @@ function InspectorImageField({
           const preferredKeys = keyName.toLowerCase().includes("hero")
             ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
             : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
-          const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys);
+          const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys, {
+            allowOriginalFallback: !keyName.toLowerCase().includes("hero"),
+          });
           setFieldValue(next);
           setShowLibrary(false);
         }}

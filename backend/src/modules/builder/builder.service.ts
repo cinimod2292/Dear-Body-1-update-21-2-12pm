@@ -149,7 +149,7 @@ export async function getAdminBuilderPage(rawPageKey: string) {
   const pageKey = parsePageKey(rawPageKey);
   const existing = await readPage(pageKey);
   const page = existing ?? await writePage(defaultPage(pageKey));
-  return page;
+  return normalizeAdminBuilderPage(page);
 }
 
 export async function getStoreBuilderPage(rawPageKey: string) {
@@ -178,7 +178,8 @@ export async function updateBuilderDraft(rawPageKey: string, rawBody: unknown, a
     updatedBy: actorUserId ?? null,
   };
 
-  return writePage(updated);
+  const saved = await writePage(updated);
+  return normalizeAdminBuilderPage(saved);
 }
 
 export async function publishBuilderDraft(rawPageKey: string, actorUserId?: string | null) {
@@ -199,7 +200,8 @@ export async function publishBuilderDraft(rawPageKey: string, actorUserId?: stri
     updatedBy: actorUserId ?? null,
   };
 
-  return writePage(updated);
+  const saved = await writePage(updated);
+  return normalizeAdminBuilderPage(saved);
 }
 
 export async function discardBuilderDraft(rawPageKey: string, actorUserId?: string | null) {
@@ -216,7 +218,8 @@ export async function discardBuilderDraft(rawPageKey: string, actorUserId?: stri
     updatedBy: actorUserId ?? null,
   };
 
-  return writePage(updated);
+  const saved = await writePage(updated);
+  return normalizeAdminBuilderPage(saved);
 }
 
 function parsePageKey(rawPageKey: string): BuilderPageKey {
@@ -394,5 +397,17 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
         return [key, resolved];
       })),
     })),
+  };
+}
+
+async function normalizeAdminBuilderPage(page: BuilderPageRecord): Promise<BuilderPageRecord> {
+  const [draftContent, publishedContent] = await Promise.all([
+    normalizePublishedContentForStore(page.draftContent),
+    normalizePublishedContentForStore(page.publishedContent),
+  ]);
+  return {
+    ...page,
+    draftContent,
+    publishedContent,
   };
 }

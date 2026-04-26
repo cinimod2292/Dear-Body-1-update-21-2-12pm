@@ -27,3 +27,13 @@ test("mapSelectedMediaVariantToFieldValue prefers variant URL", () => {
     "https://cdn.example.com/hero.webp",
   );
 });
+
+test("mapSelectedMediaVariantToFieldValue does not fallback to original for hero selection when disabled", () => {
+  assert.equal(
+    mapSelectedMediaVariantToFieldValue("https://cdn.example.com/current.webp", {
+      publicUrl: "https://cdn.example.com/original.jpg",
+      variants: [],
+    } as any, ["hero_desktop", "card"], { allowOriginalFallback: false }),
+    "https://cdn.example.com/current.webp",
+  );
+});

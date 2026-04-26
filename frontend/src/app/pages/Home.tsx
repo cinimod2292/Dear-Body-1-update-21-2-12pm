@@ -1,11 +1,15 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { ArrowRight, Star } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { resolveHeroImageConfig } from "../lib/hero-image-config";
 import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
+import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
+import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
+import { BuilderPageContent } from "../builder/types";
+import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
 
 const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
@@ -46,16 +50,9 @@ function DeferredSection({ children, minHeight = 280 }: { children: ReactNode; m
   );
 }
 
-export default function Home() {
+function LegacyHomeContent({ products }: { products: Product[] }) {
   const [sections, setSections] = useState<HomeSection[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const featuredProducts = useMemo(() => products.slice(0, 8), [products]);
-
-  useEffect(() => {
-    fetchStoreProducts()
-      .then((items) => setProducts(items))
-      .catch(() => setProducts([]));
-  }, []);
 
   useEffect(() => {
     fetchCmsBootstrap()
@@ -157,7 +154,7 @@ export default function Home() {
             <h2 className="text-3xl font-black text-gray-900 mb-2">{section.title || "Featured Products"}</h2>
             <p className="text-gray-500 mb-8">{section.subtitle}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product, index) => <ProductCard key={product.id} product={product} prioritizeImage={index < 2} />)}
+              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product) => <ProductCard key={product.id} product={product} prioritizeImage={false} />)}
             </div>
           </div>
         </section>
@@ -176,42 +173,11 @@ export default function Home() {
       );
     }
 
-    if (section.type === "faq" || section.type === "testimonials") {
-      const items = Array.isArray(section.content.items) ? (section.content.items as Array<{ question?: string; answer?: string; name?: string; quote?: string }>) : [];
-      return (
-        <section key={section.id} className="py-16 bg-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <h3 className="text-3xl font-black text-gray-900 mb-8">{section.title}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {items.map((item, idx) => (
-                <div key={idx} className="border border-gray-100 rounded-xl p-4">
-                  <p className="font-bold text-gray-900">{item.question || item.name}</p>
-                  <p className="text-gray-600 mt-2">{item.answer || item.quote}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      );
-    }
-
-    if (section.type === "text_block" || section.type === "image_block") {
-      return (
-        <section key={section.id} className="py-14 bg-white">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
-            <h3 className="text-3xl font-black text-gray-900 mb-3">{section.title}</h3>
-            <p className="text-gray-600">{section.subtitle || String(section.content.body || "")}</p>
-            {section.type === "image_block" && section.content.imageUrl ? <img src={String(section.content.imageUrl)} alt={section.title || ""} loading="lazy" decoding="async" className="mt-6 mx-auto rounded-xl max-h-96 object-cover" /> : null}
-          </div>
-        </section>
-      );
-    }
-
     return null;
   };
 
   return (
-    <div className="min-h-screen">
+    <>
       {sections.length > 0
         ? sections.map((section, index) => {
           const rendered = renderSection(section);
@@ -220,6 +186,111 @@ export default function Home() {
           return <DeferredSection key={`deferred-${section.id}`}>{rendered}</DeferredSection>;
         })
         : null}
+    </>
+  );
+}
+
+export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
+  const [builderResolved, setBuilderResolved] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    let cancelled = false;
+    const isPreview = searchParams.get("preview") === "builder";
+    if (isPreview) {
+      const adminRaw = localStorage.getItem("dear-body-admin-session");
+      const token = adminRaw ? (JSON.parse(adminRaw) as { accessToken?: string }).accessToken : undefined;
+      if (!token) {
+        setBuilderContent(null);
+        setBuilderResolved(true);
+        return;
+      }
+      fetchAdminBuilderPage("home", token)
+        .then((page) => {
+          if (cancelled) return;
+          setBuilderContent(page.draftContent);
+          setBuilderResolved(true);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setBuilderContent(null);
+          setBuilderResolved(true);
+        });
+      return () => { cancelled = true; };
+    }
+
+    fetchStoreBuilderPage("home")
+      .then((page) => {
+        if (cancelled) return;
+        if (!page?.content?.sections?.length) {
+          setBuilderContent(null);
+          setBuilderResolved(true);
+          return;
+        }
+        setBuilderContent(page.content);
+        setBuilderResolved(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBuilderContent(null);
+        setBuilderResolved(true);
+      });
+    return () => { cancelled = true; };
+  }, [searchParams]);
+
+  const needsProducts = useMemo(() => {
+    if (!builderResolved) return false;
+    if (!builderContent) return true;
+    return builderContent.sections.some((section) => section.enabled !== false && section.type === "featured_products");
+  }, [builderResolved, builderContent]);
+
+  useEffect(() => {
+    if (!needsProducts) {
+      setProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchStoreProducts()
+      .then((items) => {
+        if (cancelled) return;
+        setProducts(items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProducts([]);
+      });
+    return () => { cancelled = true; };
+  }, [needsProducts]);
+
+  const heroPreloadUrl = useMemo(() => getBuilderHeroImageUrl(builderContent), [builderContent]);
+
+  useEffect(() => {
+    if (!heroPreloadUrl) return;
+    const descriptor = heroPreloadDescriptor(heroPreloadUrl);
+    const existing = document.head.querySelector<HTMLLinkElement>('link[data-builder-hero-preload="true"]');
+    const link = existing ?? document.createElement("link");
+    link.setAttribute("data-builder-hero-preload", "true");
+    link.rel = descriptor.rel;
+    link.as = descriptor.as;
+    link.href = descriptor.href;
+    link.setAttribute("imagesizes", descriptor.imagesizes);
+    if (!existing) document.head.appendChild(link);
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
+  }, [heroPreloadUrl]);
+
+  return (
+    <div className="min-h-screen">
+      {!builderResolved
+        ? null
+        : builderContent
+        ? <BuilderPageRenderer content={builderContent} products={products} />
+        : <LegacyHomeContent products={products} />}
+
       <DeferredSection minHeight={160}>
         <section className="py-14 bg-gray-900 text-white">
           <div className="max-w-5xl mx-auto px-4 text-center">

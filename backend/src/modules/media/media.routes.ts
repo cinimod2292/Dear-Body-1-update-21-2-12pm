@@ -205,11 +205,50 @@ export async function mediaRoutes(app: FastifyInstance) {
       }, "Media upload finalized");
 
       if (asset.kind === "IMAGE") {
-        generateMediaVariantsForAsset(asset.id).catch((error) => {
+        try {
+          const generation = await generateMediaVariantsForAsset(asset.id);
+          request.log.info({ mediaAssetId: asset.id, generation }, "Generated media variants on finalize");
+        } catch (error) {
           request.log.error({ err: error, mediaAssetId: asset.id }, "Failed to generate media variants");
-        });
+        }
       }
-      return reply.send({ data: asset });
+      const assetWithVariants = await prisma.mediaAsset.findUnique({
+        where: { id: asset.id },
+        include: { variants: true },
+      });
+      return reply.send({ data: assetWithVariants ?? asset });
+    },
+  );
+
+  app.get(
+    "/admin/media/assets/:assetId/debug",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+    async (request, reply) => {
+      const { assetId } = request.params as { assetId: string };
+      const asset = await prisma.mediaAsset.findUnique({
+        where: { id: assetId },
+        include: { variants: true },
+      });
+      if (!asset) return reply.status(404).send({ error: { message: "Media asset not found" } });
+
+      const variants = asset.variants.map((variant) => ({
+        key: variant.key,
+        publicUrl: variant.publicUrl,
+        storageKey: variant.storageKey,
+        byteSize: variant.byteSize,
+      }));
+
+      const payload = {
+        assetId: asset.id,
+        originalPublicUrl: asset.publicUrl,
+        originalByteSize: asset.byteSize,
+        variants,
+        hasHeroDesktop: variants.some((variant) => variant.key === "hero_desktop"),
+        hasCard: variants.some((variant) => variant.key === "card"),
+        hasThumb: variants.some((variant) => variant.key === "thumb"),
+      };
+      request.log.info(payload, "Admin media debug payload");
+      return reply.send({ data: payload });
     },
   );
 

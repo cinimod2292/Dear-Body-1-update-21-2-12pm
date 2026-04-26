@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNodes } from "@craftjs/core";
 import { Link } from "react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Copy, Eye, Loader2, Monitor, Redo2, Save, Smartphone, Tablet, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, publishBuilderDraft, saveBuilderDraft } from "../../builder/api";
 import { dearBodySectionRegistry } from "../../builder/registry";
 import { BenefitIconsSection } from "../../builder/sections/BenefitIconsSection";
@@ -14,6 +15,7 @@ import { BuilderPageContent, BuilderSection, BuilderSectionType, EditableField }
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
+import { MediaAsset, PaginatedResult } from "../types/admin";
 import { craftNodesToPageContent, pageContentToCraftNodes } from "../../builder/craft-mapper";
 import { SECTION_PRESETS } from "../../builder/presets";
 import { actionBlockedMessage, isActionAllowed } from "../../builder/action-rules";
@@ -22,6 +24,7 @@ import { duplicateSection, moveSection, removeSection } from "./builder/editor-s
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
+import { mapSelectedMediaToFieldValue, resolveNextImageValue } from "./builder/media-picker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -235,6 +238,183 @@ function SectionList() {
   );
 }
 
+function MediaLibraryModal({
+  open,
+  accessToken,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  accessToken?: string;
+  onClose: () => void;
+  onSelect: (asset: MediaAsset) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [queryText, setQueryText] = useState("");
+  const [items, setItems] = useState<MediaAsset[]>([]);
+
+  useEffect(() => {
+    if (!open || !accessToken) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams({ page: "1", perPage: "24", kind: "IMAGE", sortBy: "createdAt", sortDir: "desc" });
+        if (queryText.trim()) params.set("q", queryText.trim());
+        const response = await apiRequest<{ data: PaginatedResult<MediaAsset> }>(`/admin/media?${params.toString()}`, {}, accessToken);
+        if (!cancelled) setItems(response.data.items);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load media");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [open, accessToken, queryText]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-4xl rounded-xl shadow-xl border border-gray-200 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Choose image from media library</h3>
+          <button type="button" onClick={onClose} className="px-2 py-1 rounded border border-gray-200 text-xs">Close</button>
+        </div>
+        <input value={queryText} onChange={(event) => setQueryText(event.target.value)} placeholder="Search by filename..." className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+        {loading ? <div className="text-xs text-gray-500">Loading media...</div> : null}
+        {error ? <div className="text-xs text-red-600">{error}</div> : null}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[420px] overflow-auto">
+          {items.map((asset) => (
+            <button
+              key={asset.id}
+              type="button"
+              onClick={() => onSelect(asset)}
+              className="text-left border border-gray-200 rounded-lg p-2 hover:border-gray-400"
+            >
+              {asset.publicUrl ? <img src={asset.publicUrl} alt={asset.altText ?? asset.filename} className="w-full h-24 object-cover rounded mb-2" /> : <div className="w-full h-24 bg-gray-100 rounded mb-2" />}
+              <p className="text-[11px] font-medium truncate">{asset.filename}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InspectorImageField({
+  label,
+  value,
+  selectedNodeId,
+  keyName,
+  actions,
+  accessToken,
+}: {
+  label: string;
+  value: unknown;
+  selectedNodeId: string;
+  keyName: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+  accessToken?: string;
+}) {
+  const imageValue = toFieldValue(value);
+  const safe = isSafeImageUrl(imageValue);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+
+  const setFieldValue = (next: string) => {
+    const safeNext = resolveNextImageValue(imageValue, next);
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = safeNext; });
+  };
+
+  const onUploadFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !accessToken) return;
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Only image files are allowed.");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError(null);
+      const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+        "/admin/media/uploads/prepare",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            byteSize: file.size,
+            kind: "IMAGE",
+          }),
+        },
+        accessToken,
+      );
+
+      const uploadResponse = await fetch(prep.data.uploadUrl, {
+        method: prep.data.method,
+        headers: prep.data.headers,
+        body: file,
+      });
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed (${uploadResponse.status})`);
+      }
+
+      await apiRequest("/admin/media/uploads/finalize", {
+        method: "POST",
+        body: JSON.stringify({
+          storageKey: prep.data.storageKey,
+          publicUrl: prep.data.publicUrl,
+          kind: "IMAGE",
+          metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+          altText: file.name,
+        }),
+      }, accessToken);
+
+      setFieldValue(prep.data.publicUrl);
+      toast.success("Image uploaded");
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  return (
+    <div>
+      {imageValue ? <img src={imageValue} alt={label} className="w-full h-24 rounded-lg border border-gray-200 object-cover mb-2" /> : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
+      <input type="text" className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`} value={imageValue} onChange={(event) => setFieldValue(event.target.value)} />
+      {!safe ? <p className="text-xs text-red-600 mt-1">Use only relative or https image URLs.</p> : null}
+      {uploadError ? <p className="text-xs text-red-600 mt-1">{uploadError}</p> : null}
+      <p className="text-[11px] text-gray-500 mt-1 truncate">{imageValue || "No image URL"}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <label className="text-xs px-2 py-1 rounded border border-gray-300 cursor-pointer">
+          {uploading ? "Uploading..." : "Upload image"}
+          <input type="file" accept="image/*" className="hidden" disabled={uploading || !accessToken} onChange={onUploadFile} />
+        </label>
+        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button>
+        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
+      </div>
+      <MediaLibraryModal
+        open={showLibrary}
+        accessToken={accessToken}
+        onClose={() => setShowLibrary(false)}
+        onSelect={(asset) => {
+          const next = mapSelectedMediaToFieldValue(imageValue, asset);
+          setFieldValue(next);
+          setShowLibrary(false);
+        }}
+      />
+    </div>
+  );
+}
+
 function renderFieldControl(args: {
   keyName: string;
   field: EditableField;
@@ -244,8 +424,9 @@ function renderFieldControl(args: {
   nodeProps: Record<string, unknown>;
   products: Product[];
   actions: ReturnType<typeof useEditor>["actions"];
+  accessToken?: string;
 }) {
-  const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions } = args;
+  const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions, accessToken } = args;
 
   if (sectionType === "featured_products" && keyName === "mode") {
     return (
@@ -311,22 +492,13 @@ function renderFieldControl(args: {
   }
 
   if (field.type === "image") {
-    const imageValue = toFieldValue(value);
-    const safe = isSafeImageUrl(imageValue);
-    return (
-      <div>
-        {imageValue ? <img src={imageValue} alt={field.label} className="w-full h-24 rounded-lg border border-gray-200 object-cover mb-2" /> : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
-        <input type="text" className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`} value={imageValue} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />
-        {!safe ? <p className="text-xs text-red-600 mt-1">Use only relative or https image URLs.</p> : null}
-        <button type="button" className="mt-2 text-xs px-2 py-1 rounded border border-gray-300" onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = ""; })}>Clear image</button>
-      </div>
-    );
+    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} actions={actions} accessToken={accessToken} />;
   }
 
   return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
 }
 
-function SelectedSectionInspector() {
+function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
   const products = useContext(CraftProductsContext);
   const { selectedNodeId, selectedNode, actions, query } = useEditor((state) => {
     const selectedId = extractSelectedNodeId(state.events.selected);
@@ -383,7 +555,7 @@ function SelectedSectionInspector() {
             {fields.map(([keyName, field]) => (
               <div key={keyName}>
                 <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
-                {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions })}
+                {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions, accessToken })}
               </div>
             ))}
           </section>
@@ -459,7 +631,7 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   );
 }
 
-function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version }: {
+function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken }: {
   initialData: SerializedNodes;
   viewport: "desktop" | "tablet" | "mobile";
   products: Product[];
@@ -471,6 +643,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   updatedAt?: string | null;
   publishedAt?: string | null;
   version?: number | null;
+  accessToken?: string;
 }) {
   const widthClass = viewport === "mobile" ? "max-w-[390px]" : viewport === "tablet" ? "max-w-[820px]" : "max-w-[1200px]";
 
@@ -497,7 +670,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
             </div>
           </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto"><div className={`mx-auto ${widthClass}`}><div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><Frame data={initialData}><Element is={BuilderCanvas} canvas /></Frame></div></div></main>
-          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p><SelectedSectionInspector /></aside>
+          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p><SelectedSectionInspector accessToken={accessToken} /></aside>
         </div>
       </Editor>
     </CraftProductsContext.Provider>
@@ -627,6 +800,7 @@ export default function AdminBuilderHome() {
         updatedAt={meta.updatedAt}
         publishedAt={meta.publishedAt}
         version={meta.version}
+        accessToken={session?.accessToken}
       />
     </div>
   );

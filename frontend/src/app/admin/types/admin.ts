@@ -43,6 +43,7 @@ export interface MediaAsset {
   filename: string;
   kind: "IMAGE" | "VIDEO" | "FILE";
   publicUrl?: string;
+  variants?: Array<{ key: string; publicUrl?: string | null; width?: number | null; height?: number | null }>;
   mimeType: string;
   byteSize: number;
   altText?: string | null;

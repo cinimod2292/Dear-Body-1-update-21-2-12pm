@@ -100,6 +100,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isBuilderDebugEnabled() {
+  return process.env.NODE_ENV !== "production" || process.env.BUILDER_DEBUG === "1";
+}
+
+function extractHeroImageUrl(content: BuilderPageContent | undefined | null): string | null {
+  if (!content || !Array.isArray(content.sections)) return null;
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return typeof hero?.props?.imageUrl === "string" ? hero.props.imageUrl : null;
+}
+
 function defaultPage(pageKey: BuilderPageKey): BuilderPageRecord {
   const content = pageKey === "home" ? DEFAULT_HOME_PAGE_CONTENT : { sections: [] };
   const timestamp = nowIso();
@@ -123,6 +133,13 @@ async function readPage(pageKey: BuilderPageKey): Promise<BuilderPageRecord | nu
 
 async function writePage(page: BuilderPageRecord) {
   const parsed = builderPageSchema.parse(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] writePage before upsert", {
+      pageKey: parsed.pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(parsed.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(parsed.publishedContent),
+    });
+  }
   await prisma.setting.upsert({
     where: { scope_key: { scope: BUILDER_SCOPE, key: settingKey(page.pageKey) } },
     update: { value: parsed as Prisma.InputJsonValue },
@@ -149,7 +166,22 @@ export async function getAdminBuilderPage(rawPageKey: string) {
   const pageKey = parsePageKey(rawPageKey);
   const existing = await readPage(pageKey);
   const page = existing ?? await writePage(defaultPage(pageKey));
-  return normalizeAdminBuilderPage(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] getAdminBuilderPage before normalization", {
+      pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(page.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(page.publishedContent),
+    });
+  }
+  const normalized = await normalizeAdminBuilderPage(page);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] getAdminBuilderPage after normalization", {
+      pageKey,
+      draftHeroImageUrl: extractHeroImageUrl(normalized.draftContent),
+      publishedHeroImageUrl: extractHeroImageUrl(normalized.publishedContent),
+    });
+  }
+  return normalized;
 }
 
 export async function getStoreBuilderPage(rawPageKey: string) {
@@ -167,7 +199,21 @@ export async function getStoreBuilderPage(rawPageKey: string) {
 
 export async function updateBuilderDraft(rawPageKey: string, rawBody: unknown, actorUserId?: string | null) {
   const pageKey = parsePageKey(rawPageKey);
+  if (isBuilderDebugEnabled()) {
+    const preValidationHeroImageUrl = (() => {
+      if (typeof rawBody !== "object" || rawBody === null) return null;
+      const content = (rawBody as { content?: BuilderPageContent }).content;
+      return extractHeroImageUrl(content ?? null);
+    })();
+    console.info("[builder-debug] updateBuilderDraft pre-validation", { pageKey, preValidationHeroImageUrl });
+  }
   const body = updateBuilderDraftSchema.parse(rawBody);
+  if (isBuilderDebugEnabled()) {
+    console.info("[builder-debug] updateBuilderDraft post-validation", {
+      pageKey,
+      validatedHeroImageUrl: extractHeroImageUrl(body.content),
+    });
+  }
   const existing = await readPage(pageKey);
   const base = existing ?? defaultPage(pageKey);
 
@@ -239,9 +285,16 @@ export function __testOnly__choosePreferredImageVariantUrl(
     variants: Array<{ key: string; storageKey: string }>;
     fallbackStorageKey: string;
     isHero: boolean;
+    currentVariantStorageKey?: string | null;
   },
   resolver: (storageKey: string) => string,
 ): string | null {
+  const currentVariantStorageKey = params.currentVariantStorageKey?.trim();
+  if (currentVariantStorageKey) {
+    const hasCurrentVariant = params.variants.some((entry) => entry.storageKey === currentVariantStorageKey);
+    if (hasCurrentVariant) return resolver(currentVariantStorageKey);
+  }
+
   const preferred = params.isHero
     ? ["hero_desktop", "gallery_main", "card", "thumb"]
     : ["gallery_main", "card", "thumb"];
@@ -338,6 +391,21 @@ export function __testOnly__matchAssetForImageUrl(
     .find(Boolean) ?? null;
 }
 
+export function __testOnly__resolveCurrentVariantStorageKey(
+  imageUrl: string,
+  variants: Array<{ storageKey: string; publicUrl?: string | null }>,
+): string | null {
+  const imageCandidates = __testOnly__normalizeLookupCandidates(imageUrl);
+  return variants
+    .find((variant) => {
+      const variantCandidates = new Set([
+        ...__testOnly__normalizeLookupCandidates(variant.storageKey),
+        ...__testOnly__normalizeLookupCandidates(String(variant.publicUrl ?? "")),
+      ]);
+      return imageCandidates.some((candidate) => variantCandidates.has(candidate));
+    })?.storageKey ?? null;
+}
+
 async function normalizePublishedContentForStore(content: BuilderPageContent): Promise<BuilderPageContent> {
   const sections = Array.isArray(content.sections) ? content.sections : [];
   const imageUrls = sections.flatMap((section) => (
@@ -377,12 +445,6 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
     }
   }
 
-  const resolveVariant = (asset: (typeof assets)[number], isHero: boolean) => __testOnly__choosePreferredImageVariantUrl({
-    variants: asset.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
-    fallbackStorageKey: asset.storageKey,
-    isHero,
-  }, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
-
   return {
     sections: sections.map((section) => ({
       ...section,
@@ -392,7 +454,13 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
           .map((candidate) => byUrl.get(candidate))
           .find(Boolean);
         if (!matched) return [key, value];
-        const resolved = resolveVariant(matched, section.type === "hero_banner" || key.toLowerCase().includes("hero"));
+        const currentVariantStorageKey = __testOnly__resolveCurrentVariantStorageKey(value, matched.variants);
+        const resolved = __testOnly__choosePreferredImageVariantUrl({
+          variants: matched.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
+          fallbackStorageKey: matched.storageKey,
+          isHero: section.type === "hero_banner" || key.toLowerCase().includes("hero"),
+          currentVariantStorageKey,
+        }, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
         if (!resolved) return [key, null];
         return [key, resolved];
       })),

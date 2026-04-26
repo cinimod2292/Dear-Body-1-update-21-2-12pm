@@ -1,17 +1,9 @@
-export function resolveHeroImageConfig(content: Record<string, unknown>, defaults: { pngFallbackUrl: string; optimizedFallbackUrl: string }) {
+import { sanitizeBuilderImageUrl } from "../builder/media-url";
+
+export function resolveHeroImageConfig(content: Record<string, unknown>) {
   const cmsBackgroundImage = content.backgroundImageUrl ? String(content.backgroundImageUrl) : "";
-  if (cmsBackgroundImage) {
-    return {
-      useCmsImage: true,
-      imageUrl: cmsBackgroundImage,
-      optimizedFallbackUrl: "",
-      pngFallbackUrl: "",
-    } as const;
-  }
+  const imageUrl = sanitizeBuilderImageUrl(cmsBackgroundImage, { isHero: true });
   return {
-    useCmsImage: false,
-    imageUrl: defaults.pngFallbackUrl,
-    optimizedFallbackUrl: defaults.optimizedFallbackUrl,
-    pngFallbackUrl: defaults.pngFallbackUrl,
+    imageUrl,
   } as const;
 }

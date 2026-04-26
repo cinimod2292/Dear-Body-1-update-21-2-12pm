@@ -28,6 +28,11 @@ import { mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./bu
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
+function builderDebugLog(message: string, payload: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  console.info(`[builder-home] ${message}`, payload);
+}
+
 function BuilderCanvas({ children }: { children?: ReactNode }) {
   return <div className="space-y-3">{children}</div>;
 }
@@ -355,14 +360,27 @@ function InspectorImageField({
         },
         accessToken,
       );
-
-      const uploadResponse = await fetch(prep.data.uploadUrl, {
-        method: prep.data.method,
-        headers: prep.data.headers,
-        body: file,
+      builderDebugLog("prepare upload response", {
+        keyName,
+        storageKey: prep.data.storageKey,
+        publicUrl: prep.data.publicUrl,
       });
+
+      let uploadResponse: Response;
+      try {
+        uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+      } catch (error) {
+        throw new Error(
+          `Browser upload request failed before reaching storage. Likely bucket CORS issue for admin origin. ${error instanceof Error ? error.message : ""}`.trim(),
+        );
+      }
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed (${uploadResponse.status})`);
+        const details = await uploadResponse.text().catch(() => "");
+        throw new Error(`Upload failed (${uploadResponse.status})${details ? `: ${details.slice(0, 200)}` : ""}`);
       }
 
       const finalized = await apiRequest<{ data: MediaAsset }>("/admin/media/uploads/finalize", {
@@ -375,19 +393,28 @@ function InspectorImageField({
           altText: file.name,
         }),
       }, accessToken);
+      builderDebugLog("finalize upload response", {
+        keyName,
+        mediaId: finalized.data.id,
+        publicUrl: finalized.data.publicUrl,
+        variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
+      });
 
       const preferredKeys = keyName.toLowerCase().includes("hero")
         ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
         : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
       const allowOriginalFallback = !keyName.toLowerCase().includes("hero");
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
+      builderDebugLog("upload selected image URL", { keyName, chosenImageUrl: next, previousImageUrl: imageValue });
       setFieldValue(next);
       if (!allowOriginalFallback && next === imageValue) {
         toast.info("Optimizing image… hero variant not ready yet.");
       }
       toast.success("Image uploaded");
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setUploadError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
       event.target.value = "";
@@ -419,6 +446,13 @@ function InspectorImageField({
             : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
           const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys, {
             allowOriginalFallback: !keyName.toLowerCase().includes("hero"),
+          });
+          builderDebugLog("library selected image URL", {
+            keyName,
+            mediaId: asset.id,
+            mediaPublicUrl: asset.publicUrl,
+            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
+            chosenImageUrl: next,
           });
           setFieldValue(next);
           setShowLibrary(false);
@@ -715,6 +749,9 @@ export default function AdminBuilderHome() {
       setLoading(true);
       setError(null);
       const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
+      builderDebugLog("loaded draft content", {
+        heroImageUrl: page.draftContent.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+      });
       setProducts(productsResponse);
       setSavedSnapshot(page.draftContent);
       setSerialized(pageContentToCraftNodes(page.draftContent));
@@ -735,6 +772,9 @@ export default function AdminBuilderHome() {
     try {
       setStatus("saving");
       const content = craftNodesToPageContent(nodes);
+      builderDebugLog("saving draft content", {
+        heroImageUrl: content.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+      });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
       setSavedSnapshot(saved.draftContent);
       setSerialized(pageContentToCraftNodes(saved.draftContent));

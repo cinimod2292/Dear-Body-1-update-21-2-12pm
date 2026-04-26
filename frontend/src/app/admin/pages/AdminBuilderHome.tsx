@@ -457,6 +457,13 @@ function InspectorImageField({
             variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
             chosenImageUrl: next,
           });
+          builderDebugLog("library selected image URL", {
+            keyName,
+            mediaId: asset.id,
+            mediaPublicUrl: asset.publicUrl,
+            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
+            chosenImageUrl: next,
+          });
           setFieldValue(next);
           setShowLibrary(false);
         }}

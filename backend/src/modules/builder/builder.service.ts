@@ -231,6 +231,24 @@ export function __testOnly__buildPublishedSnapshot(content: unknown) {
   return builderPageContentSchema.parse(content);
 }
 
+export function __testOnly__choosePreferredImageVariantUrl(
+  params: {
+    variants: Array<{ key: string; storageKey: string }>;
+    fallbackStorageKey: string;
+    isHero: boolean;
+  },
+  resolver: (storageKey: string) => string,
+) {
+  const preferred = params.isHero
+    ? ["hero_desktop", "gallery_main", "card", "thumb"]
+    : ["gallery_main", "card", "thumb"];
+  for (const key of preferred) {
+    const variant = params.variants.find((entry) => entry.key === key);
+    if (variant) return resolver(variant.storageKey);
+  }
+  return resolver(params.fallbackStorageKey);
+}
+
 function normalizeLookupUrl(url: string): string {
   const value = String(url || "").trim();
   if (!value) return "";
@@ -273,16 +291,11 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
     }
   }
 
-  const resolveVariant = (asset: (typeof assets)[number], isHero: boolean) => {
-    const preferred = isHero
-      ? ["hero_desktop", "gallery_main", "card", "thumb"]
-      : ["gallery_main", "card", "thumb"];
-    for (const key of preferred) {
-      const variant = asset.variants.find((entry) => entry.key === key);
-      if (variant) return resolvePublicUrlForStorageKey(variant.storageKey, cfg);
-    }
-    return resolvePublicUrlForStorageKey(asset.storageKey, cfg);
-  };
+  const resolveVariant = (asset: (typeof assets)[number], isHero: boolean) => __testOnly__choosePreferredImageVariantUrl({
+    variants: asset.variants.map((variant) => ({ key: variant.key, storageKey: variant.storageKey })),
+    fallbackStorageKey: asset.storageKey,
+    isHero,
+  }, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
 
   return {
     sections: sections.map((section) => ({

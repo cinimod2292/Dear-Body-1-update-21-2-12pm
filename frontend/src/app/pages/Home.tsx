@@ -154,7 +154,7 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
             <h2 className="text-3xl font-black text-gray-900 mb-2">{section.title || "Featured Products"}</h2>
             <p className="text-gray-500 mb-8">{section.subtitle}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product, index) => <ProductCard key={product.id} product={product} prioritizeImage={index < 2} />)}
+              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product) => <ProductCard key={product.id} product={product} prioritizeImage={false} />)}
             </div>
           </div>
         </section>

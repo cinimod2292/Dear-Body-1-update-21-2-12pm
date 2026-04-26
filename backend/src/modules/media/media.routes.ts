@@ -210,9 +210,12 @@ export async function mediaRoutes(app: FastifyInstance) {
       }, "Media upload finalized");
 
       if (asset.kind === "IMAGE") {
-        generateMediaVariantsForAsset(asset.id).catch((error) => {
+        try {
+          const generation = await generateMediaVariantsForAsset(asset.id);
+          request.log.info({ mediaAssetId: asset.id, generation }, "Generated media variants on finalize");
+        } catch (error) {
           request.log.error({ err: error, mediaAssetId: asset.id }, "Failed to generate media variants");
-        });
+        }
       }
       return reply.send({ data: asset });
     },

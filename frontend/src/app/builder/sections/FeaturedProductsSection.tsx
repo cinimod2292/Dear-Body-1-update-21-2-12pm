@@ -32,7 +32,7 @@ export function FeaturedProductsSection({ products, ...props }: FeaturedProducts
         <h2 className="text-3xl font-black text-gray-900 mb-2">{props.title}</h2>
         {props.subtitle ? <p className="text-gray-500 mb-8">{props.subtitle}</p> : null}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {curated.slice(0, limit).map((product, index) => <ProductCard key={product.id} product={product} prioritizeImage={index < 2} />)}
+          {curated.slice(0, limit).map((product) => <ProductCard key={product.id} product={product} prioritizeImage={false} />)}
         </div>
         {props.buttonText ? <div className="mt-8 text-center"><Link to={props.buttonHref || "/shop"} className="px-7 py-3 rounded-full border border-gray-300 text-gray-800 font-semibold inline-flex">{props.buttonText}</Link></div> : null}
       </div>

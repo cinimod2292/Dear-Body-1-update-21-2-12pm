@@ -1,12 +1,12 @@
 import { BuilderPageContent } from "./types";
-import { isSafeImageUrl } from "./media-url";
+import { sanitizeBuilderImageUrl } from "./media-url";
 
 export function getBuilderHeroImageUrl(content: BuilderPageContent | null): string | null {
   const sections = Array.isArray(content?.sections) ? content.sections : [];
   const hero = sections.find((section) => section.type === "hero_banner" && section.enabled !== false);
   const url = String(hero?.props?.imageUrl ?? "").trim();
-  if (!url || !isSafeImageUrl(url)) return null;
-  return url;
+  if (!url) return null;
+  return sanitizeBuilderImageUrl(url, { isHero: true });
 }
 
 export function heroPreloadDescriptor(url: string) {

@@ -52,7 +52,7 @@ test("generateMediaVariantsForAsset transforms images and writes variant metadat
   }));
 
   const result = await generateMediaVariantsForAsset("asset_1");
-  assert.deepEqual(result, { generated: MEDIA_VARIANT_SPECS.length, skipped: 0, failed: 0 });
+  assert.deepEqual(result, { generated: MEDIA_VARIANT_SPECS.length, skipped: 0, failed: 0, errors: [] });
   assert.equal(writes.length, MEDIA_VARIANT_SPECS.length);
   assert.equal(upserts.length, MEDIA_VARIANT_SPECS.length);
   assert.match(writes[0]!.key, /^variants\/asset_1\//);
@@ -91,6 +91,7 @@ test("generateMediaVariantsForAsset does not upscale small sources and is idempo
   const result = await generateMediaVariantsForAsset("asset_small");
   assert.equal(result.skipped, 2);
   assert.equal(result.generated, MEDIA_VARIANT_SPECS.length - 2);
+  assert.deepEqual(result.errors, []);
   assert.ok(upserts.every((entry) => entry.create.width <= 100));
   assert.ok(upserts.every((entry) => entry.create.height <= 80));
 });
@@ -131,6 +132,8 @@ test("generateMediaVariantsForAsset supports forced regeneration and partial fai
   assert.equal(result.failed, 1);
   assert.equal(result.generated, MEDIA_VARIANT_SPECS.length - 1);
   assert.equal(writes, MEDIA_VARIANT_SPECS.length - 1);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0] ?? "", /card:/i);
 });
 
 test("resolveVariantOutputMimeType preserves transparency only when truly needed", () => {
@@ -139,4 +142,11 @@ test("resolveVariantOutputMimeType preserves transparency only when truly needed
   assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/png", hasTransparentPixels: true }), "image/png");
   assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: false }), "image/webp");
   assert.equal(resolveVariantOutputMimeType({ sourceMimeType: "image/webp", hasTransparentPixels: true }), "image/webp");
+});
+
+test("hero variant specs target optimized storefront sizes", () => {
+  const heroDesktop = MEDIA_VARIANT_SPECS.find((spec) => spec.key === "hero_desktop");
+  const heroMobile = MEDIA_VARIANT_SPECS.find((spec) => spec.key === "hero_mobile");
+  assert.equal(heroDesktop?.maxWidth, 1920);
+  assert.equal(heroMobile?.maxWidth, 900);
 });

@@ -10,8 +10,8 @@ export const MEDIA_VARIANT_SPECS = [
   { key: "gallery_main_2x", maxWidth: 1440, maxHeight: 1440 },
   { key: "lightbox", maxWidth: 1600, maxHeight: 1600 },
   { key: "lightbox_2x", maxWidth: 2000, maxHeight: 2000 },
-  { key: "hero_mobile", maxWidth: 720, maxHeight: 960 },
-  { key: "hero_desktop", maxWidth: 1600, maxHeight: 900 },
+  { key: "hero_mobile", maxWidth: 900, maxHeight: 1200 },
+  { key: "hero_desktop", maxWidth: 1920, maxHeight: 1080 },
   { key: "hero_desktop_2x", maxWidth: 2400, maxHeight: 1350 },
   { key: "logo_header", maxWidth: 220, maxHeight: 80 },
   { key: "logo_footer", maxWidth: 260, maxHeight: 100 },
@@ -84,8 +84,8 @@ const WEBP_QUALITY_BY_VARIANT: Record<VariantKey, number> = {
   gallery_main_2x: 80,
   lightbox: 82,
   lightbox_2x: 84,
-  hero_mobile: 76,
-  hero_desktop: 80,
+  hero_mobile: 78,
+  hero_desktop: 78,
   hero_desktop_2x: 82,
   logo_header: 84,
   logo_footer: 84,
@@ -216,7 +216,7 @@ export async function generateMediaVariantsForAsset(
   options: { force?: boolean; variantKeys?: VariantKey[] } = {},
 ) {
   const asset = await mediaVariantDeps.findAssetWithVariants(mediaAssetId);
-  if (!asset || asset.kind !== "IMAGE") return { generated: 0, skipped: 0, failed: 0 };
+  if (!asset || asset.kind !== "IMAGE") return { generated: 0, skipped: 0, failed: 0, errors: [] as string[] };
 
   const cfg = await mediaVariantDeps.resolveUploadConfig();
   const original = await mediaVariantDeps.readStorageObjectBuffer(asset.storageKey, cfg);
@@ -227,6 +227,7 @@ export async function generateMediaVariantsForAsset(
   let generated = 0;
   let skipped = 0;
   let failed = 0;
+  const errors: string[] = [];
 
   for (const spec of requestedSpecs) {
     const existing = asset.variants.find((variant) => variant.key === spec.key);
@@ -270,12 +271,14 @@ export async function generateMediaVariantsForAsset(
         },
       });
       generated += 1;
-    } catch {
+    } catch (error) {
       failed += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${spec.key}: ${message}`);
     }
   }
 
-  return { generated, skipped, failed };
+  return { generated, skipped, failed, errors };
 }
 
 export const MEDIA_VARIANT_FORMAT_POLICY = {

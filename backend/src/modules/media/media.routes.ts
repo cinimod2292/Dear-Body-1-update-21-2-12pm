@@ -43,6 +43,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         productId: body.productId,
         assetId: body.assetId,
         force: body.force,
+        maxAssets: body.maxAssets ?? (mode === "all" ? 100 : undefined),
       }, (message, meta) => {
         request.log.info({ ...meta }, message);
       });
@@ -57,6 +58,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         skipped: result.skipped,
         failed: result.failed,
         sharpAvailable: result.sharpAvailable,
+        truncated: result.truncated,
         force: body.force,
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
@@ -75,6 +77,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
         sharpAvailable: result.sharpAvailable,
+        truncated: result.truncated,
       });
     } catch (error) {
       request.log.error({ err: error, mode, force: body.force, assetId: body.assetId ?? null, productId: body.productId ?? null }, "Media variant backfill failed");
@@ -100,15 +103,14 @@ export async function mediaRoutes(app: FastifyInstance) {
     "/admin/media/run-backfill",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
-      if (!env.MEDIA_BACKFILL_TOKEN) {
-        request.log.error("MEDIA_BACKFILL_TOKEN is not configured; refusing to run media backfill endpoint");
-        return reply.status(503).send({ error: { message: "Backfill endpoint is not configured" } });
-      }
-
-      const token = request.headers["x-internal-token"];
-      const suppliedToken = Array.isArray(token) ? token[0] : token;
-      if (suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
-        return reply.status(403).send({ error: { message: "Invalid internal token" } });
+      if (env.MEDIA_BACKFILL_TOKEN) {
+        const token = request.headers["x-internal-token"];
+        const suppliedToken = Array.isArray(token) ? token[0] : token;
+        if (suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
+          return reply.status(403).send({ error: { message: "Invalid internal token" } });
+        }
+      } else {
+        request.log.warn("MEDIA_BACKFILL_TOKEN is not configured; falling back to authenticated admin-only access");
       }
 
       return executeBackfill(request, reply);
@@ -149,6 +151,12 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = finalizeUploadSchema.parse(request.body);
+      request.log.info({
+        storageKey: body.storageKey,
+        kind: body.kind ?? null,
+        mimeType: body.metadata?.mimeType ?? null,
+        byteSize: body.metadata?.byteSize ?? null,
+      }, "Finalize upload payload received");
       const cfg = await resolveUploadConfig();
       const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey, cfg);
 
@@ -207,16 +215,68 @@ export async function mediaRoutes(app: FastifyInstance) {
         mediaAssetId: asset.id,
         storageKey: asset.storageKey,
         publicUrl: asset.publicUrl,
+        kind: asset.kind,
       }, "Media upload finalized");
 
+      let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };
       if (asset.kind === "IMAGE") {
-        generateMediaVariantsForAsset(asset.id).catch((error) => {
-          request.log.error({ err: error, mediaAssetId: asset.id }, "Failed to generate media variants");
-        });
+        request.log.info({ mediaAssetId: asset.id }, "Starting media variant generation on finalize");
+        variantStatus = await __testOnly__attemptVariantGenerationOnFinalize(
+          () => generateMediaVariantsForAsset(asset.id),
+          request.log,
+          { mediaAssetId: asset.id },
+        );
       }
-      return reply.send({ data: asset });
+      const assetWithVariants = await prisma.mediaAsset.findUnique({
+        where: { id: asset.id },
+        include: { variants: true },
+      });
+      request.log.info({
+        mediaAssetId: asset.id,
+        variantsPending: variantStatus.variantsPending,
+        variantErrors: variantStatus.variantErrors,
+      }, "Finalize upload response path");
+      return reply.send({
+        data: assetWithVariants ?? asset,
+        variantsPending: variantStatus.variantsPending,
+        variantErrors: variantStatus.variantErrors,
+      });
     },
   );
+
+  if (process.env.NODE_ENV !== "production") {
+    app.get(
+      "/admin/media/assets/:assetId/debug",
+      { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+      async (request, reply) => {
+        const { assetId } = request.params as { assetId: string };
+        const asset = await prisma.mediaAsset.findUnique({
+          where: { id: assetId },
+          include: { variants: true },
+        });
+        if (!asset) return reply.status(404).send({ error: { message: "Media asset not found" } });
+
+        const variants = asset.variants.map((variant) => ({
+          key: variant.key,
+          publicUrl: variant.publicUrl,
+          storageKey: variant.storageKey,
+          byteSize: variant.byteSize,
+        }));
+
+        const payload = {
+          assetId: asset.id,
+          originalPublicUrl: asset.publicUrl,
+          originalByteSize: asset.byteSize,
+          variants,
+          hasHeroDesktop: variants.some((variant) => variant.key === "hero_desktop"),
+          hasCard: variants.some((variant) => variant.key === "card"),
+          hasThumb: variants.some((variant) => variant.key === "thumb"),
+        };
+        request.log.info(payload, "Admin media debug payload");
+        return reply.send({ data: payload });
+      },
+    );
+  }
 
   app.get(
     "/admin/media/local-upload/diagnostics",
@@ -411,12 +471,48 @@ export async function mediaRoutes(app: FastifyInstance) {
   );
 
   app.post(
+    "/admin/media/assets/:assetId/regenerate-variants",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { assetId } = request.params as { assetId: string };
+      const query = request.query as { force?: string };
+      const cfg = await resolveUploadConfig();
+      const response = await __testOnly__regenerateSingleAssetVariants(assetId, {
+        force: query.force === "true",
+        timeoutMs: 6000,
+        runGeneration: (mediaId, options) => generateMediaVariantsForAsset(mediaId, options),
+        loadVariantRecords: async (mediaId) => {
+          const asset = await prisma.mediaAsset.findUnique({
+            where: { id: mediaId },
+            select: {
+              id: true,
+              variants: { select: { key: true, storageKey: true, width: true, height: true, mimeType: true }, orderBy: { key: "asc" } },
+            },
+          });
+          if (!asset) return null;
+          return { mediaId: asset.id, variants: asset.variants };
+        },
+        resolveVariantPublicUrl: (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg),
+      });
+      return reply.send({ data: response });
+    },
+  );
+
+  app.post(
     "/admin/media/:mediaId/regenerate-variants",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
-      const query = request.query as { force?: string };
-      const result = await generateMediaVariantsForAsset(mediaId, { force: query.force === "true" });
+      return reply.redirect(`/admin/media/assets/${mediaId}/regenerate-variants`, 307);
+    },
+  );
+
+  app.post(
+    "/admin/media/variants/regenerate",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const body = regenerateVariantsBatchSchema.parse(request.body);
+      const result = await regenerateVariantsForMediaIds(body.mediaIds, { concurrency: body.concurrency });
       return reply.send({ data: result });
     },
   );

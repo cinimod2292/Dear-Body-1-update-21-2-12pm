@@ -3,7 +3,7 @@ import { API_BASE } from "../lib/api";
 import { BuilderPageKey, BuilderPageRecord } from "./types";
 
 export async function fetchStoreBuilderPage(pageKey: BuilderPageKey) {
-  const response = await fetch(`${API_BASE}/store/builder/pages/${pageKey}`);
+  const response = await fetch(`${API_BASE}/store/builder/pages/${pageKey}`, { cache: "no-store" });
   if (!response.ok) return null;
   const payload = await response.json().catch(() => null);
   return (payload?.data ?? null) as { pageKey: BuilderPageKey; content: { sections: any[] } } | null;

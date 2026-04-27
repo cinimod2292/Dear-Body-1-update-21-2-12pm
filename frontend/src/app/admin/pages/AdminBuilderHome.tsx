@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Editor, Element, Frame, useEditor, useNode, type SerializedNodes } from "@craftjs/core";
+import { createContext, useContext, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link } from "react-router";
-import { ArrowLeft, Copy, Eye, Loader2, Monitor, Redo2, Save, Smartphone, Tablet, Trash2, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Copy, Eye, Loader2, Monitor, Redo2, Save, Smartphone, Tablet, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, publishBuilderDraft, saveBuilderDraft } from "../../builder/api";
 import { dearBodySectionRegistry } from "../../builder/registry";
 import { BenefitIconsSection } from "../../builder/sections/BenefitIconsSection";
@@ -10,16 +11,36 @@ import { FeaturedProductsSection } from "../../builder/sections/FeaturedProducts
 import { HeroBannerSection } from "../../builder/sections/HeroBannerSection";
 import { ImageTextSection } from "../../builder/sections/ImageTextSection";
 import { PromoBannerSection } from "../../builder/sections/PromoBannerSection";
-import { BuilderPageContent, BuilderSectionType } from "../../builder/types";
+import { BuilderPageContent, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
-import { craftNodesToPageContent, duplicateSectionInContent, pageContentToCraftNodes } from "../../builder/craft-mapper";
+import { MediaAsset, PaginatedResult } from "../types/admin";
+import { craftNodesToPageContent, pageContentToCraftNodes } from "../../builder/craft-mapper";
 import { SECTION_PRESETS } from "../../builder/presets";
 import { actionBlockedMessage, isActionAllowed } from "../../builder/action-rules";
 import { isSafeImageUrl } from "../../builder/media-url";
+import { duplicateSection, moveSection, removeSection } from "./builder/editor-state";
+import { buildSectionList } from "./builder/section-tree";
+import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
+import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
+import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
+
+function isBuilderDebugEnabled() {
+  if (import.meta.env.DEV) return true;
+  try {
+    return localStorage.getItem("builderDebug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function builderDebugLog(message: string, payload: Record<string, unknown>) {
+  if (!isBuilderDebugEnabled()) return;
+  console.info(`[builder-home] ${message}`, payload);
+}
 
 function BuilderCanvas({ children }: { children?: ReactNode }) {
   return <div className="space-y-3">{children}</div>;
@@ -83,7 +104,28 @@ function resolvedComponent(type: BuilderSectionType) {
   return PromoBannerCraftSection;
 }
 
-function SectionToolbox() {
+function toFieldValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return "";
+}
+
+function applySectionMutation(
+  query: ReturnType<typeof useEditor>["query"],
+  actions: ReturnType<typeof useEditor>["actions"],
+  mutate: (sections: BuilderSection[]) => BuilderSection[],
+  nextSelectedNodeId?: string,
+) {
+  const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+  const nextContent = { sections: mutate(content.sections) };
+  actions.deserialize(pageContentToCraftNodes(nextContent));
+  if (nextSelectedNodeId) {
+    actions.selectNode(nextSelectedNodeId);
+  }
+}
+
+function SectionLibrary() {
   const { connectors } = useEditor();
 
   return (
@@ -98,6 +140,7 @@ function SectionToolbox() {
               <Element
                 is={resolvedComponent(preset.sectionType)}
                 canvas={false}
+                custom={{ sectionType: preset.sectionType }}
                 {...preset.defaultProps}
                 sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
                 enabled
@@ -114,26 +157,509 @@ function SectionToolbox() {
   );
 }
 
-function InspectorPanel() {
-  const products = useContext(CraftProductsContext);
-  const { selected, actions, query } = useEditor((state) => ({ selected: state.events.selected?.[0] ?? null }));
+function SectionList() {
+  const { selectedNodeId, actions, query, stateNodes } = useEditor((state) => ({
+    selectedNodeId: extractSelectedNodeId(state.events.selected),
+    stateNodes: state.nodes,
+  }));
 
-  if (!selected) {
+  const sections = buildSectionList(query.getSerializedNodes() as SerializedNodes);
+  void stateNodes;
+
+  if (sections.length === 0) {
+    return <div className="text-xs text-gray-500 border border-dashed border-gray-200 rounded-lg p-2">No sections yet. Drag a preset into the canvas.</div>;
+  }
+
+  const getRules = (sectionType: BuilderSectionType) => ({
+    removable: dearBodySectionRegistry[sectionType].removable,
+    movable: dearBodySectionRegistry[sectionType].movable,
+    duplicatable: dearBodySectionRegistry[sectionType].duplicatable,
+  });
+
+  return (
+    <div className="space-y-2">
+      {sections.map((section, index) => {
+        const registry = dearBodySectionRegistry[section.sectionType];
+        const rules = getRules(section.sectionType);
+        const selected = selectedNodeId === section.nodeId;
+
+        return (
+          <div key={section.nodeId} className={`border rounded-lg p-2 ${selected ? "border-pink-400 bg-pink-50/40" : "border-gray-200 bg-white"}`}>
+            <button type="button" onClick={() => actions.selectNode(section.nodeId)} className="w-full text-left">
+              <p className="text-xs font-semibold">{registry.icon} {registry.displayName}</p>
+              <p className="text-[11px] text-gray-500">{section.sectionId}{section.enabled ? "" : " · hidden"}</p>
+            </button>
+            <div className="mt-2 grid grid-cols-5 gap-1">
+              <button
+                type="button"
+                title="Move up"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-40"
+                disabled={index === 0}
+                onClick={() => {
+                  if (!isActionAllowed(rules, "move")) return toast.error(actionBlockedMessage("move"));
+                  applySectionMutation(query, actions, (sectionsData) => moveSection(sectionsData, index, -1), section.nodeId);
+                }}
+              ><ArrowUp size={12} className="mx-auto" /></button>
+              <button
+                type="button"
+                title="Move down"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-40"
+                disabled={index === sections.length - 1}
+                onClick={() => {
+                  if (!isActionAllowed(rules, "move")) return toast.error(actionBlockedMessage("move"));
+                  applySectionMutation(query, actions, (sectionsData) => moveSection(sectionsData, index, 1), section.nodeId);
+                }}
+              ><ArrowDown size={12} className="mx-auto" /></button>
+              <button
+                type="button"
+                title="Duplicate"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                onClick={() => {
+                  if (!isActionAllowed(rules, "duplicate")) return toast.error(actionBlockedMessage("duplicate"));
+                  const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+                  const nextSections = duplicateSection(content.sections, section.sectionId);
+                  const newSection = nextSections.find((entry, entryIndex) => entryIndex > index && entry.type === section.sectionType && entry.id !== section.sectionId);
+                  actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
+                  if (newSection) actions.selectNode(newSection.id);
+                }}
+              ><Copy size={12} className="mx-auto" /></button>
+              <button
+                type="button"
+                title={section.enabled ? "Hide" : "Show"}
+                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                onClick={() => {
+                  actions.setProp(section.nodeId, (props: Record<string, unknown>) => { props.enabled = !Boolean(props.enabled ?? true); });
+                }}
+              >{section.enabled ? "Hide" : "Show"}</button>
+              <button
+                type="button"
+                title="Delete"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                onClick={() => {
+                  if (!isActionAllowed(rules, "remove")) return toast.error(actionBlockedMessage("remove"));
+                  const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+                  const nextSections = removeSection(content.sections, section.sectionId);
+                  actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
+                  const fallback = nextSections[index] ?? nextSections[index - 1];
+                  if (fallback) actions.selectNode(fallback.id);
+                }}
+              ><Trash2 size={12} className="mx-auto" /></button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MediaLibraryModal({
+  open,
+  accessToken,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  accessToken?: string;
+  onClose: () => void;
+  onSelect: (asset: MediaAsset) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [queryText, setQueryText] = useState("");
+  const [items, setItems] = useState<MediaAsset[]>([]);
+
+  useEffect(() => {
+    if (!open || !accessToken) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams({ page: "1", perPage: "24", kind: "IMAGE", sortBy: "createdAt", sortDir: "desc" });
+        if (queryText.trim()) params.set("q", queryText.trim());
+        const response = await apiRequest<{ data: PaginatedResult<MediaAsset> }>(`/admin/media?${params.toString()}`, {}, accessToken);
+        if (!cancelled) setItems(response.data.items);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load media");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [open, accessToken, queryText]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-4xl rounded-xl shadow-xl border border-gray-200 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Choose image from media library</h3>
+          <button type="button" onClick={onClose} className="px-2 py-1 rounded border border-gray-200 text-xs">Close</button>
+        </div>
+        <input value={queryText} onChange={(event) => setQueryText(event.target.value)} placeholder="Search by filename..." className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+        {loading ? <div className="text-xs text-gray-500">Loading media...</div> : null}
+        {error ? <div className="text-xs text-red-600">{error}</div> : null}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[420px] overflow-auto">
+          {items.map((asset) => (
+            <button
+              key={asset.id}
+              type="button"
+              onClick={() => onSelect(asset)}
+              className="text-left border border-gray-200 rounded-lg p-2 hover:border-gray-400"
+            >
+              {asset.publicUrl ? <img src={asset.publicUrl} alt={asset.altText ?? asset.filename} className="w-full h-24 object-cover rounded mb-2" /> : <div className="w-full h-24 bg-gray-100 rounded mb-2" />}
+              <p className="text-[11px] font-medium truncate">{asset.filename}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InspectorImageField({
+  label,
+  value,
+  selectedNodeId,
+  keyName,
+  sectionType,
+  actions,
+  query,
+  accessToken,
+}: {
+  label: string;
+  value: unknown;
+  selectedNodeId: string;
+  keyName: string;
+  sectionType: BuilderSectionType;
+  actions: ReturnType<typeof useEditor>["actions"];
+  query: ReturnType<typeof useEditor>["query"];
+  accessToken?: string;
+}) {
+  const imageValue = toFieldValue(value);
+  const safe = isSafeImageUrl(imageValue);
+  const isHeroField = isHeroImageField(sectionType, keyName);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+
+  const setFieldValue = (next: string) => {
+    const safeNext = resolveNextImageValue(imageValue, next);
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+      props[keyName] = safeNext;
+      builderDebugLog("setProp image field", {
+        selectedNodeId,
+        sectionType,
+        keyName,
+        imageUrl: String(props.imageUrl ?? ""),
+        imageAlt: String(props.imageAlt ?? ""),
+      });
+    });
+    queueMicrotask(() => {
+      const node = query.getSerializedNodes()[selectedNodeId] as SerializedNode | undefined;
+      const props = (node?.props ?? {}) as Record<string, unknown>;
+      builderDebugLog("setProp post-state snapshot", {
+        selectedNodeId,
+        sectionType,
+        keyName,
+        imageUrl: String(props.imageUrl ?? ""),
+        imageAlt: String(props.imageAlt ?? ""),
+      });
+    });
+  };
+
+  const onUploadFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !accessToken) return;
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Only image files are allowed.");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError(null);
+      const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+        "/admin/media/uploads/prepare",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            byteSize: file.size,
+            kind: "IMAGE",
+          }),
+        },
+        accessToken,
+      );
+      builderDebugLog("prepare upload response", {
+        keyName,
+        storageKey: prep.data.storageKey,
+        publicUrl: prep.data.publicUrl,
+      });
+
+      let uploadResponse: Response;
+      try {
+        uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+      } catch (error) {
+        throw new Error(
+          `Browser upload request failed before reaching storage. Likely bucket CORS issue for admin origin. ${error instanceof Error ? error.message : ""}`.trim(),
+        );
+      }
+      if (!uploadResponse.ok) {
+        const details = await uploadResponse.text().catch(() => "");
+        throw new Error(`Upload failed (${uploadResponse.status})${details ? `: ${details.slice(0, 200)}` : ""}`);
+      }
+
+      const finalized = await apiRequest<{ data: MediaAsset; variantsPending?: boolean; variantErrors?: string[] }>("/admin/media/uploads/finalize", {
+        method: "POST",
+        body: JSON.stringify({
+          storageKey: prep.data.storageKey,
+          publicUrl: prep.data.publicUrl,
+          kind: "IMAGE",
+          metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+          altText: file.name,
+        }),
+      }, accessToken);
+      builderDebugLog("finalize upload response", {
+        keyName,
+        mediaId: finalized.data.id,
+        publicUrl: finalized.data.publicUrl,
+        variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
+        variantsPending: finalized.variantsPending ?? false,
+        variantErrors: finalized.variantErrors ?? [],
+      });
+
+      const preferredKeys = isHeroField
+        ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
+        : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+      const allowOriginalFallback = !isHeroField;
+      const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
+      builderDebugLog("upload selected image URL", {
+        keyName,
+        mediaId: finalized.data.id,
+        chosenImageUrl: next,
+        previousImageUrl: imageValue,
+        variantsPending: finalized.variantsPending ?? false,
+      });
+      if (isHeroField) {
+        const variantKeys = finalized.data.variants?.map((variant) => variant.key) ?? [];
+        if (finalized.variantsPending || variantKeys.length === 0) {
+          toast.warning("Image uploaded. Optimizing variants — please wait, then choose it again.");
+          return;
+        }
+        const heroSelection = resolveHeroImageSelection(imageValue, finalized.data, preferredKeys);
+        if (!heroSelection.shouldUpdate) {
+          toast.warning(heroSelection.warning);
+          return;
+        }
+        setFieldValue(heroSelection.nextValue);
+      } else {
+        setFieldValue(next);
+      }
+      if (!allowOriginalFallback && next === imageValue) {
+        toast.info("Optimizing image… hero variant not ready yet.");
+      }
+      toast.success("Image uploaded");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setUploadError(message);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  return (
+    <div>
+      {imageValue ? <img src={imageValue} alt={label} className="w-full h-24 rounded-lg border border-gray-200 object-cover mb-2" /> : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
+      <input type="text" className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`} value={imageValue} onChange={(event) => setFieldValue(event.target.value)} />
+      {!safe ? <p className="text-xs text-red-600 mt-1">Use only relative or https image URLs.</p> : null}
+      {uploadError ? <p className="text-xs text-red-600 mt-1">{uploadError}</p> : null}
+      <p className="text-[11px] text-gray-500 mt-1 truncate">{imageValue || "No image URL"}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <label className="text-xs px-2 py-1 rounded border border-gray-300 cursor-pointer">
+          {uploading ? "Uploading..." : "Upload image"}
+          <input type="file" accept="image/*" className="hidden" disabled={uploading || !accessToken} onChange={onUploadFile} />
+        </label>
+        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button>
+        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
+      </div>
+      <MediaLibraryModal
+        open={showLibrary}
+        accessToken={accessToken}
+        onClose={() => setShowLibrary(false)}
+        onSelect={(asset) => {
+          const preferredKeys = isHeroField
+            ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
+            : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+          const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys, {
+            allowOriginalFallback: !isHeroField,
+          });
+          builderDebugLog("library selected image URL", {
+            keyName,
+            mediaId: asset.id,
+            mediaPublicUrl: asset.publicUrl,
+            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
+            chosenImageUrl: next,
+          });
+          if (isHeroField) {
+            const heroSelection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+            if (!heroSelection.shouldUpdate) {
+              toast.warning(heroSelection.warning);
+              return;
+            }
+            setFieldValue(heroSelection.nextValue);
+          } else {
+            setFieldValue(next);
+          }
+          setShowLibrary(false);
+        }}
+      />
+    </div>
+  );
+}
+
+function renderFieldControl(args: {
+  keyName: string;
+  field: EditableField;
+  value: unknown;
+  selectedNodeId: string;
+  sectionType: BuilderSectionType;
+  nodeProps: Record<string, unknown>;
+  products: Product[];
+  actions: ReturnType<typeof useEditor>["actions"];
+  query: ReturnType<typeof useEditor>["query"];
+  accessToken?: string;
+}) {
+  const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken } = args;
+
+  if (sectionType === "featured_products" && keyName === "mode") {
+    return (
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Mode</label>
+        <div className="grid grid-cols-3 gap-2">
+          {(["latest", "featured", "manual"] as const).map((option) => (
+            <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "latest") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.mode = option; })}>{option}</button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (sectionType === "featured_products" && keyName === "productIds" && nodeProps.mode === "manual") {
+    const selectedIds = Array.isArray(value) ? value.map(String) : [];
+    return (
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Manual products</label>
+        <div className="max-h-36 overflow-auto border border-gray-200 rounded-lg p-2 space-y-1">
+          {products.slice(0, 40).map((product) => {
+            const checked = selectedIds.includes(product.id);
+            return (
+              <label key={product.id} className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+                    const next = new Set(Array.isArray(props.productIds) ? props.productIds.map(String) : []);
+                    if (event.target.checked) next.add(product.id); else next.delete(product.id);
+                    props.productIds = [...next];
+                  })}
+                />
+                <span>{product.name}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (field.type === "textarea") {
+    return <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-20" value={toFieldValue(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
+  }
+
+  if (field.type === "select") {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        {(field.options ?? []).map((option) => (
+          <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = option; })}>{option}</button>
+        ))}
+      </div>
+    );
+  }
+
+  if (field.type === "number") {
+    return <input type="number" min={field.min} max={field.max} value={Number(value ?? 0)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = Number(event.target.value); })} />;
+  }
+
+  if (field.type === "boolean") {
+    return <input type="checkbox" checked={Boolean(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.checked; })} />;
+  }
+
+  if (field.type === "image") {
+    return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} sectionType={sectionType} actions={actions} query={query} accessToken={accessToken} />;
+  }
+
+  return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
+}
+
+function extractHeroImageUrlFromContent(content: BuilderPageContent) {
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return String(hero?.props?.imageUrl ?? "");
+}
+
+function extractHeroImageUrlFromNodes(nodes: SerializedNodes) {
+  const heroNode = Object.values(nodes).find((node) => {
+    if (!node || typeof node !== "object") return false;
+    const resolvedName = typeof node.type === "string" ? node.type : node.type?.resolvedName;
+    return resolvedName === "HeroCraftSection";
+  });
+  const props = (heroNode?.props ?? {}) as Record<string, unknown>;
+  return String(props.imageUrl ?? "");
+}
+
+function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
+  const products = useContext(CraftProductsContext);
+  const { selectedNodeId, selectedNode, actions, query } = useEditor((state) => {
+    const selectedId = extractSelectedNodeId(state.events.selected);
+    return {
+      selectedNodeId: selectedId,
+      selectedNode: selectedId ? state.nodes[selectedId] : null,
+    };
+  });
+
+  if (!selectedNodeId || !selectedNode) {
     return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Select a section to edit settings.</div>;
   }
 
-  const node = query.node(selected).get();
-  const nodeProps = (node.data.props ?? {}) as Record<string, unknown>;
-  const sectionType = String(node.data.custom?.sectionType ?? "") as BuilderSectionType;
-  const registry = dearBodySectionRegistry[sectionType];
+  const resolvedSection = resolveInspectableSection(selectedNodeId, selectedNode, dearBodySectionRegistry);
+  if (!resolvedSection) {
+    return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Selected node is not an editable storefront section.</div>;
+  }
 
-  if (!registry) return null;
-
+  const { sectionType, registryEntry: registry, editableSchema, nodeProps } = resolvedSection;
   const rules = {
     removable: registry.removable,
     movable: registry.movable,
     duplicatable: registry.duplicatable,
   };
+
+  const groupedFields = new Map<string, Array<[string, EditableField]>>();
+  for (const entry of Object.entries(editableSchema)) {
+    const [keyName, field] = entry;
+    const groupName = inferInspectorGroup(keyName, field);
+    const groupItems = groupedFields.get(groupName) ?? [];
+    groupItems.push(entry);
+    groupedFields.set(groupName, groupItems);
+  }
 
   return (
     <div className="space-y-3">
@@ -144,94 +670,50 @@ function InspectorPanel() {
 
       <label className="flex items-center justify-between text-sm border border-gray-200 rounded-lg px-3 py-2">
         <span>Visible</span>
-        <input type="checkbox" checked={Boolean(nodeProps.enabled ?? true)} onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => { props.enabled = event.target.checked; })} />
+        <input type="checkbox" checked={Boolean(nodeProps.enabled ?? true)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.enabled = event.target.checked; })} />
       </label>
 
-      {Object.entries(registry.editableSchema).map(([key, field]) => {
-        const value = nodeProps[key];
+      {INSPECTOR_GROUP_ORDER.map((groupName) => {
+        const fields = groupedFields.get(groupName) ?? [];
+        if (fields.length === 0) return null;
 
-        if (sectionType === "featured_products" && key === "mode") {
-          return (
-            <div key={key}>
-              <label className="block text-xs text-gray-500 mb-1">Mode</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["latest", "featured", "manual"] as const).map((option) => (
-                  <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "latest") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selected, (props: Record<string, unknown>) => { props.mode = option; })}>{option}</button>
-                ))}
+        return (
+          <section key={groupName} className="border border-gray-200 rounded-lg p-3 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{groupName}</h4>
+            {fields.map(([keyName, field]) => (
+              <div key={keyName}>
+                <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
+                {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken })}
               </div>
-            </div>
-          );
-        }
-
-        if (sectionType === "featured_products" && key === "productIds" && nodeProps.mode === "manual") {
-          const selectedIds = Array.isArray(value) ? value.map(String) : [];
-          return (
-            <div key={key}>
-              <label className="block text-xs text-gray-500 mb-1">Manual products</label>
-              <div className="max-h-36 overflow-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                {products.slice(0, 40).map((product) => {
-                  const checked = selectedIds.includes(product.id);
-                  return (
-                    <label key={product.id} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => {
-                          const next = new Set(Array.isArray(props.productIds) ? props.productIds.map(String) : []);
-                          if (event.target.checked) next.add(product.id); else next.delete(product.id);
-                          props.productIds = [...next];
-                        })}
-                      />
-                      <span>{product.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        if (field.type === "textarea") {
-          return <div key={key}><label className="block text-xs text-gray-500 mb-1">{field.label}</label><textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-20" value={String(value ?? "")} onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = event.target.value; })} /></div>;
-        }
-
-        if (field.type === "select") {
-          return <div key={key}><label className="block text-xs text-gray-500 mb-1">{field.label}</label><div className="grid grid-cols-2 gap-2">{(field.options ?? []).map((option) => <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = option; })}>{option}</button>)}</div></div>;
-        }
-
-        if (field.type === "number") {
-          return <div key={key}><label className="block text-xs text-gray-500 mb-1">{field.label}</label><input type="number" min={field.min} max={field.max} value={Number(value ?? 0)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = Number(event.target.value); })} /></div>;
-        }
-
-        if (field.type === "image") {
-          const imageValue = String(value ?? "");
-          const safe = isSafeImageUrl(imageValue);
-          return (
-            <div key={key}>
-              <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
-              {imageValue ? <img src={imageValue} alt={field.label} className="w-full h-24 rounded-lg border border-gray-200 object-cover mb-2" /> : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
-              <input type="text" className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`} value={imageValue} onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = event.target.value; })} />
-              {!safe ? <p className="text-xs text-red-600 mt-1">Use only relative or https image URLs.</p> : null}
-              <button type="button" className="mt-2 text-xs px-2 py-1 rounded border border-gray-300" onClick={() => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = ""; })}>Clear image</button>
-            </div>
-          );
-        }
-
-        return <div key={key}><label className="block text-xs text-gray-500 mb-1">{field.label}</label><input type="text" value={String(value ?? "")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selected, (props: Record<string, unknown>) => { props[key] = event.target.value; })} /></div>;
+            ))}
+          </section>
+        );
       })}
 
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => {
-          if (!isActionAllowed(rules, "duplicate")) return toast.error(actionBlockedMessage("duplicate"));
-          const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
-          const duplicated = duplicateSectionInContent(content, String(node.data.props.sectionId ?? selected));
-          actions.deserialize(pageContentToCraftNodes(duplicated));
-        }} className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"><Copy size={14} /> Duplicate</button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!isActionAllowed(rules, "duplicate")) return toast.error(actionBlockedMessage("duplicate"));
+            const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+            const sourceSectionId = String(nodeProps.sectionId ?? selectedNodeId);
+            const index = content.sections.findIndex((section) => section.id === sourceSectionId);
+            const nextSections = duplicateSection(content.sections, sourceSectionId);
+            const cloned = index >= 0 ? nextSections[index + 1] : null;
+            actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
+            if (cloned) actions.selectNode(cloned.id);
+          }}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"
+        ><Copy size={14} /> Duplicate</button>
 
-        <button type="button" onClick={() => {
-          if (!isActionAllowed(rules, "remove")) return toast.error(actionBlockedMessage("remove"));
-          actions.delete(selected);
-        }} className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"><Trash2 size={14} /> Delete</button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!isActionAllowed(rules, "remove")) return toast.error(actionBlockedMessage("remove"));
+            actions.delete(selectedNodeId);
+          }}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"
+        ><Trash2 size={14} /> Delete</button>
       </div>
     </div>
   );
@@ -277,7 +759,7 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   );
 }
 
-function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version }: {
+function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken }: {
   initialData: SerializedNodes;
   viewport: "desktop" | "tablet" | "mobile";
   products: Product[];
@@ -289,6 +771,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   updatedAt?: string | null;
   publishedAt?: string | null;
   version?: number | null;
+  accessToken?: string;
 }) {
   const widthClass = viewport === "mobile" ? "max-w-[390px]" : viewport === "tablet" ? "max-w-[820px]" : "max-w-[1200px]";
 
@@ -303,10 +786,19 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
         }}
       >
         <BuilderTopActions status={status} onSave={onSave} onPublish={onPublish} onDiscard={onDiscard} updatedAt={updatedAt} publishedAt={publishedAt} version={version} />
-        <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[300px_1fr_340px] gap-3">
-          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Section Presets (drag onto canvas)</p><SectionToolbox /></aside>
+        <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr_360px] gap-3">
+          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 mb-3">Section / Preset Library</p>
+              <SectionLibrary />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900 mb-3">Section Tree</p>
+              <SectionList />
+            </div>
+          </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto"><div className={`mx-auto ${widthClass}`}><div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><Frame data={initialData}><Element is={BuilderCanvas} canvas /></Frame></div></div></main>
-          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p><InspectorPanel /></aside>
+          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p><SelectedSectionInspector accessToken={accessToken} /></aside>
         </div>
       </Editor>
     </CraftProductsContext.Provider>
@@ -338,9 +830,19 @@ export default function AdminBuilderHome() {
       setLoading(true);
       setError(null);
       const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
+      builderDebugLog("loaded draft content", {
+        heroImageUrl: page.draftContent.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+      });
+      builderDebugLog("before pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setProducts(productsResponse);
       setSavedSnapshot(page.draftContent);
-      setSerialized(pageContentToCraftNodes(page.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -358,9 +860,22 @@ export default function AdminBuilderHome() {
     try {
       setStatus("saving");
       const content = craftNodesToPageContent(nodes);
+      builderDebugLog("saving draft content", {
+        heroImageUrl: content.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+      });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
+      builderDebugLog("save draft response content", {
+        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
+      });
+      builderDebugLog("before pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(saved.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(saved.draftContent);
-      setSerialized(pageContentToCraftNodes(saved.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -376,10 +891,21 @@ export default function AdminBuilderHome() {
     try {
       setStatus("publishing");
       const content = craftNodesToPageContent(nodes);
+      builderDebugLog("publish save payload content", {
+        heroImageUrl: extractHeroImageUrlFromContent(content),
+      });
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
+      builderDebugLog("publish response draft/published content", {
+        draftHeroImageUrl: extractHeroImageUrlFromContent(published.draftContent),
+        publishedHeroImageUrl: extractHeroImageUrlFromContent(published.publishedContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(published.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(published.draftContent);
-      setSerialized(pageContentToCraftNodes(published.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
       setEditorVersion((v) => v + 1);
@@ -396,8 +922,15 @@ export default function AdminBuilderHome() {
     try {
       setStatus("saving");
       const page = await discardBuilderDraft("home", session.accessToken);
+      builderDebugLog("discard response content", {
+        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
+      });
+      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      builderDebugLog("after pageContentToCraftNodes", {
+        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
+      });
       setSavedSnapshot(page.draftContent);
-      setSerialized(pageContentToCraftNodes(page.draftContent));
+      setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -420,7 +953,7 @@ export default function AdminBuilderHome() {
           <button className={`px-2 py-1 rounded border ${viewport === "tablet" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("tablet")}><Tablet size={14} /></button>
           <button className={`px-2 py-1 rounded border ${viewport === "mobile" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("mobile")}><Smartphone size={14} /></button>
         </div>
-        <span className="text-xs text-gray-500">Drag presets from toolbox onto the canvas.</span>
+        <span className="text-xs text-gray-500">Drag presets into canvas, manage sections from the tree, then edit fields in Inspector.</span>
       </div>
 
       <CraftWorkspace
@@ -436,6 +969,7 @@ export default function AdminBuilderHome() {
         updatedAt={meta.updatedAt}
         publishedAt={meta.publishedAt}
         version={meta.version}
+        accessToken={session?.accessToken}
       />
     </div>
   );

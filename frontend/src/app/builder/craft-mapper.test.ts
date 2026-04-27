@@ -55,3 +55,30 @@ test("duplicateSectionInContent inserts copy after source", () => {
   assert.equal(duplicated.sections[1]?.type, "hero_banner");
   assert.notEqual(duplicated.sections[1]?.id, "hero_1");
 });
+
+test("pageContentToCraftNodes does not preserve original hero upload URL in node props", () => {
+  const serialized = pageContentToCraftNodes({
+    sections: [{ id: "hero_1", type: "hero_banner", enabled: true, props: { imageUrl: "https://cdn.example.com/local-upload/uploads/a/huge-source.jpg" } }],
+  });
+
+  assert.equal((serialized.hero_1 as any)?.props?.imageUrl, null);
+});
+
+test("pageContentToCraftNodes preserves safe hero variant URL in node props", () => {
+  const serialized = pageContentToCraftNodes({
+    sections: [{ id: "hero_1", type: "hero_banner", enabled: true, props: { imageUrl: "https://cdn.example.com/local-upload/variants/uploads/a/hero_desktop.webp?X-Amz-Signature=abc" } }],
+  });
+
+  assert.equal((serialized.hero_1 as any)?.props?.imageUrl, "https://cdn.example.com/local-upload/variants/uploads/a/hero_desktop.webp?X-Amz-Signature=abc");
+});
+
+test("draft save/load round trip preserves safe hero imageUrl", () => {
+  const input = {
+    sections: [{ id: "hero_1", type: "hero_banner", enabled: true, props: { imageUrl: "https://cdn.example.com/local-upload/variants/uploads/a/card.webp" } }],
+  } as any;
+
+  const serialized = pageContentToCraftNodes(input);
+  const restored = craftNodesToPageContent(serialized);
+
+  assert.equal(restored.sections[0]?.props?.imageUrl, "https://cdn.example.com/local-upload/variants/uploads/a/card.webp");
+});

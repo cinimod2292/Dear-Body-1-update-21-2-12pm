@@ -58,7 +58,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const { pageKey } = request.params as { pageKey: string };
     const page = await getStoreBuilderPage(pageKey);
     if (!page) return reply.send({ data: null });
-    reply.header("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600, stale-if-error=86400");
+    reply.header("Cache-Control", "no-store, max-age=0");
     return reply.send({ data: page });
   });
 }

@@ -5,12 +5,11 @@ import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { resolveHeroImageConfig } from "../lib/hero-image-config";
-import heroImageFallback from "../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
 import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
 import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent } from "../builder/types";
-
-const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
+import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
+import { sanitizeBuilderImageUrl } from "../builder/media-url";
 
 interface HomeSection {
   id: string;
@@ -90,16 +89,13 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
 
   const renderSection = (section: HomeSection) => {
     if (section.type === "hero") {
-      const heroImage = resolveHeroImageConfig(section.content, {
-        pngFallbackUrl: heroImageFallback,
-        optimizedFallbackUrl: HERO_IMAGE_OPTIMIZED_PATH,
-      });
-      const heroMobileUrl = String(section.content.backgroundImageMobileUrl || "");
-      const heroSrcSet = String(section.content.backgroundImageSrcSet || "");
+      const heroImage = resolveHeroImageConfig(section.content);
+      const heroMobileUrl = sanitizeBuilderImageUrl(section.content.backgroundImageMobileUrl, { isHero: true }) ?? "";
+      const heroSrcSet = sanitizeBuilderImageUrl(section.content.backgroundImageSrcSet, { isHero: true }) ?? "";
       return (
         <section key={section.id} className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
           <div className="absolute inset-0">
-            {heroImage.useCmsImage ? (
+            {heroImage.imageUrl ? (
               <picture>
                 {heroMobileUrl ? <source media="(max-width: 767px)" srcSet={heroMobileUrl} /> : null}
                 {heroSrcSet ? <source srcSet={heroSrcSet} /> : null}
@@ -113,22 +109,7 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
                   className="w-full h-full object-cover opacity-60"
                 />
               </picture>
-            ) : (
-              <picture>
-                <source srcSet={heroImage.optimizedFallbackUrl} type="image/webp" />
-                <img
-                  src={heroImage.pngFallbackUrl}
-                  alt={section.title || "Hero"}
-                  fetchPriority="high"
-                  loading="eager"
-                  decoding="async"
-                  sizes="100vw"
-                  width={1217}
-                  height={797}
-                  className="w-full h-full object-cover opacity-60"
-                />
-              </picture>
-            )}
+            ) : null}
             <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent" />
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
@@ -153,7 +134,7 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
             <h2 className="text-3xl font-black text-gray-900 mb-2">{section.title || "Featured Products"}</h2>
             <p className="text-gray-500 mb-8">{section.subtitle}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product, index) => <ProductCard key={product.id} product={product} prioritizeImage={index < 2} />)}
+              {featuredProducts.slice(0, Number(section.content.limit || 8)).map((product) => <ProductCard key={product.id} product={product} prioritizeImage={false} />)}
             </div>
           </div>
         </section>
@@ -192,40 +173,101 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
+  const [builderResolved, setBuilderResolved] = useState(false);
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    fetchStoreProducts()
-      .then((items) => setProducts(items))
-      .catch(() => setProducts([]));
-  }, []);
-
-  useEffect(() => {
+    let cancelled = false;
     const isPreview = searchParams.get("preview") === "builder";
     if (isPreview) {
       const adminRaw = localStorage.getItem("dear-body-admin-session");
       const token = adminRaw ? (JSON.parse(adminRaw) as { accessToken?: string }).accessToken : undefined;
-      if (!token) return;
+      if (!token) {
+        setBuilderContent(null);
+        setBuilderResolved(true);
+        return;
+      }
       fetchAdminBuilderPage("home", token)
-        .then((page) => setBuilderContent(page.draftContent))
-        .catch(() => setBuilderContent(null));
-      return;
+        .then((page) => {
+          if (cancelled) return;
+          setBuilderContent(page.draftContent);
+          setBuilderResolved(true);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setBuilderContent(null);
+          setBuilderResolved(true);
+        });
+      return () => { cancelled = true; };
     }
 
     fetchStoreBuilderPage("home")
       .then((page) => {
+        if (cancelled) return;
         if (!page?.content?.sections?.length) {
           setBuilderContent(null);
+          setBuilderResolved(true);
           return;
         }
         setBuilderContent(page.content);
+        setBuilderResolved(true);
       })
-      .catch(() => setBuilderContent(null));
+      .catch(() => {
+        if (cancelled) return;
+        setBuilderContent(null);
+        setBuilderResolved(true);
+      });
+    return () => { cancelled = true; };
   }, [searchParams]);
+
+  const needsProducts = useMemo(() => {
+    if (!builderResolved) return false;
+    if (!builderContent) return true;
+    return builderContent.sections.some((section) => section.enabled !== false && section.type === "featured_products");
+  }, [builderResolved, builderContent]);
+
+  useEffect(() => {
+    if (!needsProducts) {
+      setProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchStoreProducts()
+      .then((items) => {
+        if (cancelled) return;
+        setProducts(items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProducts([]);
+      });
+    return () => { cancelled = true; };
+  }, [needsProducts]);
+
+  const heroPreloadUrl = useMemo(() => getBuilderHeroImageUrl(builderContent), [builderContent]);
+
+  useEffect(() => {
+    if (!heroPreloadUrl) return;
+    const descriptor = heroPreloadDescriptor(heroPreloadUrl);
+    const existing = document.head.querySelector<HTMLLinkElement>('link[data-builder-hero-preload="true"]');
+    const link = existing ?? document.createElement("link");
+    link.setAttribute("data-builder-hero-preload", "true");
+    link.rel = descriptor.rel;
+    link.as = descriptor.as;
+    link.href = descriptor.href;
+    link.setAttribute("imagesizes", descriptor.imagesizes);
+    if (!existing) document.head.appendChild(link);
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
+  }, [heroPreloadUrl]);
 
   return (
     <div className="min-h-screen">
-      {builderContent
+      {!builderResolved
+        ? null
+        : builderContent
         ? <BuilderPageRenderer content={builderContent} products={products} />
         : <LegacyHomeContent products={products} />}
 

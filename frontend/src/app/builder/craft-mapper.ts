@@ -1,5 +1,6 @@
 import type { SerializedNode, SerializedNodes } from "@craftjs/core";
 import { BuilderPageContent, BuilderSection, BuilderSectionType } from "./types";
+import { sanitizeBuilderImageUrl } from "./media-url";
 
 const TYPE_TO_RESOLVED_NAME: Record<BuilderSectionType, string> = {
   hero_banner: "HeroCraftSection",
@@ -43,7 +44,7 @@ export function pageContentToCraftNodes(content: BuilderPageContent): Serialized
       type: { resolvedName },
       isCanvas: false,
       props: {
-        ...section.props,
+        ...sanitizeSectionPropsForCraft(section),
         sectionId: section.id,
         enabled: section.enabled,
       },
@@ -59,6 +60,15 @@ export function pageContentToCraftNodes(content: BuilderPageContent): Serialized
   }
 
   return nodes;
+}
+
+function sanitizeSectionPropsForCraft(section: BuilderSection): Record<string, unknown> {
+  const props = { ...(section.props ?? {}) };
+  for (const [key, value] of Object.entries(props)) {
+    if (!key.toLowerCase().includes("image")) continue;
+    props[key] = sanitizeBuilderImageUrl(value, { isHero: section.type === "hero_banner" || key.toLowerCase().includes("hero") });
+  }
+  return props;
 }
 
 function normalizeSection(section: BuilderSection): BuilderSection {

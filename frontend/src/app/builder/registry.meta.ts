@@ -44,6 +44,7 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       secondaryButtonText: { type: "text", label: "Secondary button text" },
       secondaryButtonHref: { type: "url", label: "Secondary button link" },
       layout: { type: "select", label: "Layout", options: ["image_right", "image_left", "centered"] },
+      tone: { type: "select", label: "Tone", options: ["soft", "clean", "warm", "bold"] },
     },
   },
   featured_products: {
@@ -96,6 +97,7 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       buttonText: { type: "text", label: "Button text" },
       buttonHref: { type: "url", label: "Button link" },
       layout: { type: "select", label: "Layout", options: ["image_left", "image_right"] },
+      tone: { type: "select", label: "Tone", options: ["soft", "clean", "warm", "bold"] },
     },
   },
   benefit_icons: {
@@ -140,6 +142,7 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       text: { type: "text", label: "Text", required: true },
       buttonText: { type: "text", label: "Button text" },
       buttonHref: { type: "url", label: "Button link" },
+      tone: { type: "select", label: "Tone", options: ["soft", "clean", "warm", "bold"] },
     },
   },
 };

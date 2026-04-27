@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSafeImageUrl } from "./media-url";
+import { isLikelyOriginalUploadUrl, isOptimizedVariantUrl, isSafeImageUrl, sanitizeBuilderImageUrl } from "./media-url";
 
 test("isSafeImageUrl allows optimized variant and https URLs", () => {
   assert.equal(isSafeImageUrl("/api/media/public/variants/asset_1/hero_desktop.webp"), true);
@@ -12,4 +12,31 @@ test("isSafeImageUrl rejects unsafe URL schemes", () => {
   assert.equal(isSafeImageUrl("data:image/png;base64,abc"), false);
   assert.equal(isSafeImageUrl("http://example.com/a.jpg"), false);
   assert.equal(isSafeImageUrl("/uploads/source.jpg"), false);
+});
+
+test("variant/original heuristics detect optimized and original upload URLs", () => {
+  assert.equal(isOptimizedVariantUrl("https://cdn.example.com/local-upload/variants/uploads/a/hero_desktop.webp"), true);
+  assert.equal(isLikelyOriginalUploadUrl("https://cdn.example.com/local-upload/uploads/a/huge-source.jpg"), true);
+});
+
+test("sanitizeBuilderImageUrl rejects likely original upload URL for hero preview", () => {
+  assert.equal(
+    sanitizeBuilderImageUrl("https://cdn.example.com/local-upload/uploads/a/huge-source.jpg", { isHero: true }),
+    null,
+  );
+});
+
+test("sanitizeBuilderImageUrl allows safe variant URLs (relative/signed/CDN)", () => {
+  assert.equal(
+    sanitizeBuilderImageUrl("/variants/uploads/a/hero_desktop.webp", { isHero: true }),
+    "/variants/uploads/a/hero_desktop.webp",
+  );
+  assert.equal(
+    sanitizeBuilderImageUrl("https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc", { isHero: true }),
+    "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc",
+  );
+  assert.equal(
+    sanitizeBuilderImageUrl("https://images.example.com/media/hero_desktop.webp", { isHero: true }),
+    "https://images.example.com/media/hero_desktop.webp",
+  );
 });

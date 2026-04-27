@@ -1,8 +1,6 @@
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
-import heroImageFallback from "../../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
-
-const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
+import { sanitizeBuilderImageUrl } from "../media-url";
 
 type HeroBannerProps = {
   eyebrow?: string;
@@ -15,22 +13,31 @@ type HeroBannerProps = {
   secondaryButtonText?: string;
   secondaryButtonHref?: string;
   layout?: "image_right" | "image_left" | "centered";
+  tone?: "soft" | "clean" | "warm" | "bold";
 };
 
 export function HeroBannerSection(props: HeroBannerProps) {
-  const titleAlign = props.layout === "centered" ? "text-center mx-auto" : "";
-  const imageUrl = props.imageUrl?.trim() || "";
+  const titleAlign = props.layout === "centered"
+    ? "text-center mx-auto"
+    : props.layout === "image_left"
+      ? "text-right ml-auto"
+      : "";
+  const imageUrl = sanitizeBuilderImageUrl(props.imageUrl, { isHero: true }) ?? "";
+  const overlayClass = props.tone === "clean"
+    ? "bg-gradient-to-r from-gray-900/80 via-gray-900/40 to-transparent"
+    : props.tone === "warm"
+      ? "bg-gradient-to-r from-orange-900/70 via-pink-900/50 to-transparent"
+      : props.tone === "bold"
+        ? "bg-gradient-to-r from-black/90 via-fuchsia-900/60 to-transparent"
+        : "bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent";
 
   return (
     <section className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
       <div className="absolute inset-0">
         {imageUrl
-          ? <img src={imageUrl} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" />
-          : <picture>
-            <source srcSet={HERO_IMAGE_OPTIMIZED_PATH} type="image/webp" />
-            <img src={heroImageFallback} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" />
-          </picture>}
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent" />
+          ? <img src={imageUrl} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" sizes="100vw" width={1217} height={797} />
+          : null}
+        <div className={`absolute inset-0 ${overlayClass}`} />
       </div>
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 w-full">
         <div className={`max-w-2xl text-white ${titleAlign}`}>

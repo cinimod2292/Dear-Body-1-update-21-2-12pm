@@ -169,9 +169,9 @@ function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-amber-900">Internal Maintenance: Backfill Media Variants</h3>
+        <h3 className="text-sm font-semibold text-amber-900">Bulk maintenance: Backfill Media Variants</h3>
         <p className="text-xs text-amber-800">
-          Warning: this is an internal admin action that regenerates image variants for existing media.
+          Optional bulk operation for many assets. This is not required for single-image homepage hero assignment.
         </p>
       </div>
 
@@ -839,6 +839,7 @@ export default function AdminMedia() {
   const [uploading, setUploading] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+  const [detailsMediaId, setDetailsMediaId] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
   const [heroAssignmentDebug, setHeroAssignmentDebug] = useState<HeroAssignmentDebug | null>(null);
   const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
@@ -1056,7 +1057,7 @@ export default function AdminMedia() {
   };
 
   const assignSelectedAsHero = async () => {
-    if (!session?.accessToken || !selectedMediaId) return;
+    if (!session?.accessToken || !selectedMediaId || !selectedAsset) return;
     try {
       setConfigSaving(true);
       const mediaByIdResponse = await apiRequest<{ data: MediaAssetWithVariants[] }>("/admin/media/by-ids", {
@@ -1140,9 +1141,9 @@ export default function AdminMedia() {
         onImported={loadMedia}
       />
       <MediaDetailsModal
-        mediaId={selectedMediaId}
+        mediaId={detailsMediaId}
         accessToken={session?.accessToken}
-        onClose={() => setSelectedMediaId(null)}
+        onClose={() => setDetailsMediaId(null)}
         onChanged={loadMedia}
       />
 
@@ -1239,20 +1240,20 @@ export default function AdminMedia() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={assignSelectedAsHero}
-            disabled={!selectedMediaId || configSaving}
+            disabled={!canAssignSelectedAsset(selectedAsset, configSaving)}
             className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm disabled:opacity-50"
           >
             {configSaving ? "Saving..." : "Use selected image as homepage hero"}
           </button>
           <button
             onClick={assignSelectedAsLogo}
-            disabled={!selectedMediaId || configSaving}
+            disabled={!canAssignSelectedAsset(selectedAsset, configSaving)}
             className="rounded-lg border border-blue-300 bg-white text-blue-900 px-3 py-2 text-sm disabled:opacity-50"
           >
             Use selected image as site logo
           </button>
           <span className="text-xs text-blue-700">
-            Selected asset: {selectedMediaId ?? "none"}
+            Selected asset: {selectedAssetLabel(selectedAsset)}
           </span>
         </div>
         {heroAssignmentDebug ? (
@@ -1302,10 +1303,24 @@ export default function AdminMedia() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {payload.items.map((asset) => (
-            <button
+            <div
               key={asset.id}
-              onClick={() => setSelectedMediaId(asset.id)}
-              className="text-left rounded-xl border border-gray-200 bg-white p-2 hover:border-gray-300"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedMediaId((current) => resolveNextSelectedMediaId(current, asset.id))}
+              onDoubleClick={() => setDetailsMediaId(asset.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedMediaId(asset.id);
+                }
+                if (event.key.toLowerCase() === "d") {
+                  event.preventDefault();
+                  setDetailsMediaId(asset.id);
+                }
+              }}
+              aria-pressed={selectedMediaId === asset.id}
+              className={`text-left rounded-xl border bg-white p-2 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-300 ${selectedMediaId === asset.id ? "border-pink-500 ring-2 ring-pink-200" : "border-gray-200"}`}
             >
               <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center">
                 {asset.publicUrl && asset.mimeType.startsWith("image") ? (
@@ -1317,7 +1332,25 @@ export default function AdminMedia() {
               <p className="mt-2 text-xs font-medium text-gray-700 truncate" title={asset.filename}>{asset.filename}</p>
               <p className="text-[11px] text-gray-500">{asset.kind}</p>
               <p className="text-[11px] text-gray-400">{Math.round(asset.byteSize / 1024)} KB</p>
-            </button>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 truncate">{asset.id}</span>
+                <span
+                  className={`text-[10px] font-semibold ${selectedMediaId === asset.id ? "text-pink-700" : "text-gray-400"}`}
+                >
+                  {selectedMediaId === asset.id ? "Selected" : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDetailsMediaId(asset.id);
+                }}
+                className="mt-2 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+              >
+                Open details
+              </button>
+            </div>
           ))}
         </div>
       )}

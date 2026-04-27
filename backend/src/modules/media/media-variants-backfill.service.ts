@@ -6,6 +6,7 @@ export type MediaVariantsBackfillOptions = {
   productId?: string;
   all?: boolean;
   force?: boolean;
+  maxAssets?: number;
 };
 
 export type MediaVariantsBackfillResult = {
@@ -15,8 +16,9 @@ export type MediaVariantsBackfillResult = {
   generated: number;
   skipped: number;
   failed: number;
-  failures: Array<{ assetId: string; generated: number; skipped: number; failed: number }>;
+  failures: Array<{ assetId: string; generated: number; skipped: number; failed: number; errors?: string[] }>;
   sharpAvailable: boolean;
+  truncated: boolean;
 };
 
 export function resolveBackfillMode(options: MediaVariantsBackfillOptions): "all" | "product" | "asset" {
@@ -56,43 +58,56 @@ export async function runMediaVariantsBackfill(
     throw new Error("Media variant transformer unavailable: sharp dependency is not available in this runtime.");
   }
   const assetIds = await resolveBackfillAssetIds(options);
+  const maxAssets = Math.max(1, options.maxAssets ?? assetIds.length);
+  const scopedAssetIds = assetIds.slice(0, maxAssets);
+  const truncated = scopedAssetIds.length < assetIds.length;
 
   let generated = 0;
   let skipped = 0;
   let failed = 0;
   const failures: MediaVariantsBackfillResult["failures"] = [];
 
-  for (const assetId of assetIds) {
-    const outcome = await generateMediaVariantsForAsset(assetId, { force: options.force });
-    generated += outcome.generated;
-    skipped += outcome.skipped;
-    failed += outcome.failed;
+  for (const assetId of scopedAssetIds) {
+    try {
+      const outcome = await generateMediaVariantsForAsset(assetId, { force: options.force });
+      generated += outcome.generated;
+      skipped += outcome.skipped;
+      failed += outcome.failed;
 
-    log("media variant asset processed", {
-      assetId,
-      generated: outcome.generated,
-      skipped: outcome.skipped,
-      failed: outcome.failed,
-    });
-
-    if (outcome.failed > 0) {
-      failures.push({
+      log("media variant asset processed", {
         assetId,
         generated: outcome.generated,
         skipped: outcome.skipped,
         failed: outcome.failed,
+        errors: outcome.errors,
       });
+
+      if (outcome.failed > 0) {
+        failures.push({
+          assetId,
+          generated: outcome.generated,
+          skipped: outcome.skipped,
+          failed: outcome.failed,
+          errors: outcome.errors,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failed += 1;
+      failures.push({ assetId, generated: 0, skipped: 0, failed: 1, errors: [message] });
+      log("media variant asset failed unexpectedly", { assetId, error: message });
     }
   }
 
   return {
     mode,
-    assetIds,
-    assetsProcessed: assetIds.length,
+    assetIds: scopedAssetIds,
+    assetsProcessed: scopedAssetIds.length,
     generated,
     skipped,
     failed,
     failures,
     sharpAvailable,
+    truncated,
   };
 }

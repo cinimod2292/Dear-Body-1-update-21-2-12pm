@@ -12,6 +12,64 @@ import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 import { regenerateVariantsForMediaIds } from "./media-variants-batch.js";
 import { toPickerMediaItem } from "./media-picker.js";
 
+type FinalizeVariantGenerationResult = {
+  variantsPending: boolean;
+  variantErrors: string[];
+};
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export async function __testOnly__attemptVariantGenerationOnFinalize(
+  generate: () => Promise<unknown>,
+  logger: Pick<FastifyInstance["log"], "info" | "warn" | "error">,
+  options?: { timeoutMs?: number; mediaAssetId?: string },
+): Promise<FinalizeVariantGenerationResult> {
+  const timeoutMs = Math.max(250, options?.timeoutMs ?? 4000);
+  const mediaAssetId = options?.mediaAssetId ?? "unknown";
+
+  const generationPromise = generate()
+    .then((generation) => ({ status: "ok" as const, generation }))
+    .catch((error) => ({ status: "error" as const, error }));
+  const timeoutPromise = new Promise<{ status: "timeout" }>((resolve) => {
+    setTimeout(() => resolve({ status: "timeout" }), timeoutMs);
+  });
+
+  const outcome = await Promise.race([generationPromise, timeoutPromise]);
+
+  if (outcome.status === "ok") {
+    const generation = outcome.generation as { failed?: number; errors?: string[] } | undefined;
+    const variantErrors = Array.isArray(generation?.errors) ? generation.errors : [];
+    if ((generation?.failed ?? 0) > 0 || variantErrors.length > 0) {
+      logger.warn({ mediaAssetId, generation, variantErrors }, "Media variant generation completed with errors on finalize");
+      return { variantsPending: false, variantErrors };
+    }
+    logger.info({ mediaAssetId, generation: outcome.generation }, "Generated media variants on finalize");
+    return { variantsPending: false, variantErrors: [] };
+  }
+  if (outcome.status === "error") {
+    const message = toErrorMessage(outcome.error);
+    logger.error({ mediaAssetId, err: outcome.error, message }, "Failed to generate media variants on finalize");
+    return { variantsPending: false, variantErrors: [message] };
+  }
+
+  logger.warn({ mediaAssetId, timeoutMs }, "Media variants still processing after finalize timeout");
+  generationPromise
+    .then((result) => {
+      if (result.status === "ok") {
+        logger.info({ mediaAssetId, generation: result.generation }, "Generated media variants after finalize response");
+        return;
+      }
+      logger.error({ mediaAssetId, err: result.error, message: toErrorMessage(result.error) }, "Media variants failed after finalize response");
+    })
+    .catch((error) => {
+      logger.error({ mediaAssetId, err: error, message: toErrorMessage(error) }, "Unexpected variant generation rejection");
+    });
+  return { variantsPending: true, variantErrors: [] };
+}
+
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
   const executeBackfill = async (
@@ -149,6 +207,12 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const body = finalizeUploadSchema.parse(request.body);
+      request.log.info({
+        storageKey: body.storageKey,
+        kind: body.kind ?? null,
+        mimeType: body.metadata?.mimeType ?? null,
+        byteSize: body.metadata?.byteSize ?? null,
+      }, "Finalize upload payload received");
       const cfg = await resolveUploadConfig();
       const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey, cfg);
 
@@ -207,87 +271,68 @@ export async function mediaRoutes(app: FastifyInstance) {
         mediaAssetId: asset.id,
         storageKey: asset.storageKey,
         publicUrl: asset.publicUrl,
+        kind: asset.kind,
       }, "Media upload finalized");
 
+      let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };
       if (asset.kind === "IMAGE") {
-        try {
-          const generation = await generateMediaVariantsForAsset(asset.id);
-          request.log.info({ mediaAssetId: asset.id, generation }, "Generated media variants on finalize");
-        } catch (error) {
-          request.log.error({ err: error, mediaAssetId: asset.id }, "Failed to generate media variants");
-        }
+        request.log.info({ mediaAssetId: asset.id }, "Starting media variant generation on finalize");
+        variantStatus = await __testOnly__attemptVariantGenerationOnFinalize(
+          () => generateMediaVariantsForAsset(asset.id),
+          request.log,
+          { mediaAssetId: asset.id },
+        );
       }
       const assetWithVariants = await prisma.mediaAsset.findUnique({
         where: { id: asset.id },
         include: { variants: true },
       });
-      return reply.send({ data: assetWithVariants ?? asset });
-    },
-  );
-
-  app.get(
-    "/admin/media/assets/:assetId/debug",
-    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
-    async (request, reply) => {
-      const { assetId } = request.params as { assetId: string };
-      const asset = await prisma.mediaAsset.findUnique({
-        where: { id: assetId },
-        include: { variants: true },
+      request.log.info({
+        mediaAssetId: asset.id,
+        variantsPending: variantStatus.variantsPending,
+        variantErrors: variantStatus.variantErrors,
+      }, "Finalize upload response path");
+      return reply.send({
+        data: assetWithVariants ?? asset,
+        variantsPending: variantStatus.variantsPending,
+        variantErrors: variantStatus.variantErrors,
       });
-      if (!asset) return reply.status(404).send({ error: { message: "Media asset not found" } });
-
-      const variants = asset.variants.map((variant) => ({
-        key: variant.key,
-        publicUrl: variant.publicUrl,
-        storageKey: variant.storageKey,
-        byteSize: variant.byteSize,
-      }));
-
-      const payload = {
-        assetId: asset.id,
-        originalPublicUrl: asset.publicUrl,
-        originalByteSize: asset.byteSize,
-        variants,
-        hasHeroDesktop: variants.some((variant) => variant.key === "hero_desktop"),
-        hasCard: variants.some((variant) => variant.key === "card"),
-        hasThumb: variants.some((variant) => variant.key === "thumb"),
-      };
-      request.log.info(payload, "Admin media debug payload");
-      return reply.send({ data: payload });
     },
   );
 
-  app.get(
-    "/admin/media/assets/:assetId/debug",
-    { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
-    async (request, reply) => {
-      const { assetId } = request.params as { assetId: string };
-      const asset = await prisma.mediaAsset.findUnique({
-        where: { id: assetId },
-        include: { variants: true },
-      });
-      if (!asset) return reply.status(404).send({ error: { message: "Media asset not found" } });
+  if (process.env.NODE_ENV !== "production") {
+    app.get(
+      "/admin/media/assets/:assetId/debug",
+      { preHandler: [app.verifyAdmin, app.requirePermission("media:read")] },
+      async (request, reply) => {
+        const { assetId } = request.params as { assetId: string };
+        const asset = await prisma.mediaAsset.findUnique({
+          where: { id: assetId },
+          include: { variants: true },
+        });
+        if (!asset) return reply.status(404).send({ error: { message: "Media asset not found" } });
 
-      const variants = asset.variants.map((variant) => ({
-        key: variant.key,
-        publicUrl: variant.publicUrl,
-        storageKey: variant.storageKey,
-        byteSize: variant.byteSize,
-      }));
+        const variants = asset.variants.map((variant) => ({
+          key: variant.key,
+          publicUrl: variant.publicUrl,
+          storageKey: variant.storageKey,
+          byteSize: variant.byteSize,
+        }));
 
-      const payload = {
-        assetId: asset.id,
-        originalPublicUrl: asset.publicUrl,
-        originalByteSize: asset.byteSize,
-        variants,
-        hasHeroDesktop: variants.some((variant) => variant.key === "hero_desktop"),
-        hasCard: variants.some((variant) => variant.key === "card"),
-        hasThumb: variants.some((variant) => variant.key === "thumb"),
-      };
-      request.log.info(payload, "Admin media debug payload");
-      return reply.send({ data: payload });
-    },
-  );
+        const payload = {
+          assetId: asset.id,
+          originalPublicUrl: asset.publicUrl,
+          originalByteSize: asset.byteSize,
+          variants,
+          hasHeroDesktop: variants.some((variant) => variant.key === "hero_desktop"),
+          hasCard: variants.some((variant) => variant.key === "card"),
+          hasThumb: variants.some((variant) => variant.key === "thumb"),
+        };
+        request.log.info(payload, "Admin media debug payload");
+        return reply.send({ data: payload });
+      },
+    );
+  }
 
   app.get(
     "/admin/media/local-upload/diagnostics",

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mapSelectedMediaToFieldValue, mapSelectedMediaVariantToFieldValue, mediaAssetToImageUrl, resolveNextImageValue } from "./media-picker";
+import { isHeroImageField, mapSelectedMediaToFieldValue, mapSelectedMediaVariantToFieldValue, mediaAssetToImageUrl, resolveHeroImageSelection, resolveNextImageValue } from "./media-picker";
 
 test("mediaAssetToImageUrl extracts safe media URL", () => {
   assert.equal(mediaAssetToImageUrl({ publicUrl: "https://cdn.example.com/a.jpg" } as any), "https://cdn.example.com/a.jpg");
@@ -36,4 +36,41 @@ test("mapSelectedMediaVariantToFieldValue does not fallback to original for hero
     } as any, ["hero_desktop", "card"], { allowOriginalFallback: false }),
     "https://cdn.example.com/current.webp",
   );
+});
+
+test("mapSelectedMediaVariantToFieldValue keeps stable optimized variant URL", () => {
+  assert.equal(
+    mapSelectedMediaVariantToFieldValue("", {
+      publicUrl: "https://cdn.example.com/local-upload/uploads/a/original.jpg",
+      variants: [
+        { key: "card", publicUrl: "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc" },
+        { key: "thumb", publicUrl: "https://cdn.example.com/local-upload/variants/uploads/a/thumb.webp?X-Amz-Signature=abc" },
+      ],
+    } as any, ["hero_desktop", "card", "thumb"], { allowOriginalFallback: false }),
+    "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc",
+  );
+});
+
+test("isHeroImageField identifies hero banner imageUrl as hero field", () => {
+  assert.equal(isHeroImageField("hero_banner", "imageUrl"), true);
+  assert.equal(isHeroImageField("image_text", "imageUrl"), false);
+});
+
+test("hero media selection with no variants preserves existing imageUrl and returns warning", () => {
+  const result = resolveHeroImageSelection("https://cdn.example.com/local-upload/variants/uploads/a/card.webp", {
+    publicUrl: "https://cdn.example.com/local-upload/uploads/a/original.jpg",
+    variants: [],
+  } as any, ["hero_desktop", "card", "thumb"]);
+  assert.equal(result.shouldUpdate, false);
+  assert.equal(result.nextValue, "https://cdn.example.com/local-upload/variants/uploads/a/card.webp");
+  assert.match(result.warning ?? "", /not finished optimizing/i);
+});
+
+test("hero media selection with variants returns selected optimized URL", () => {
+  const result = resolveHeroImageSelection("", {
+    variants: [{ key: "card", publicUrl: "https://cdn.example.com/local-upload/variants/uploads/a/card.webp" }],
+  } as any, ["hero_desktop", "card", "thumb"]);
+  assert.equal(result.shouldUpdate, true);
+  assert.equal(result.nextValue, "https://cdn.example.com/local-upload/variants/uploads/a/card.webp");
+  assert.equal(result.warning, null);
 });

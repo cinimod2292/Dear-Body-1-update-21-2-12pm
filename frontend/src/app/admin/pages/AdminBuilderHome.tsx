@@ -24,7 +24,7 @@ import { duplicateSection, moveSection, removeSection } from "./builder/editor-s
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
-import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
+import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -448,7 +448,21 @@ function InspectorImageField({
         previousImageUrl: imageValue,
         variantsPending: finalized.variantsPending ?? false,
       });
-      setFieldValue(next);
+      if (isHeroField) {
+        const variantKeys = finalized.data.variants?.map((variant) => variant.key) ?? [];
+        if (finalized.variantsPending || variantKeys.length === 0) {
+          toast.warning("Image uploaded. Optimizing variants — please wait, then choose it again.");
+          return;
+        }
+        const heroSelection = resolveHeroImageSelection(imageValue, finalized.data, preferredKeys);
+        if (!heroSelection.shouldUpdate) {
+          toast.warning(heroSelection.warning);
+          return;
+        }
+        setFieldValue(heroSelection.nextValue);
+      } else {
+        setFieldValue(next);
+      }
       if (!allowOriginalFallback && next === imageValue) {
         toast.info("Optimizing image… hero variant not ready yet.");
       }
@@ -496,7 +510,16 @@ function InspectorImageField({
             variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
             chosenImageUrl: next,
           });
-          setFieldValue(next);
+          if (isHeroField) {
+            const heroSelection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+            if (!heroSelection.shouldUpdate) {
+              toast.warning(heroSelection.warning);
+              return;
+            }
+            setFieldValue(heroSelection.nextValue);
+          } else {
+            setFieldValue(next);
+          }
           setShowLibrary(false);
         }}
       />

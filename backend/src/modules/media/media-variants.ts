@@ -216,7 +216,7 @@ export async function generateMediaVariantsForAsset(
   options: { force?: boolean; variantKeys?: VariantKey[] } = {},
 ) {
   const asset = await mediaVariantDeps.findAssetWithVariants(mediaAssetId);
-  if (!asset || asset.kind !== "IMAGE") return { generated: 0, skipped: 0, failed: 0 };
+  if (!asset || asset.kind !== "IMAGE") return { generated: 0, skipped: 0, failed: 0, errors: [] as string[] };
 
   const cfg = await mediaVariantDeps.resolveUploadConfig();
   const original = await mediaVariantDeps.readStorageObjectBuffer(asset.storageKey, cfg);
@@ -227,6 +227,7 @@ export async function generateMediaVariantsForAsset(
   let generated = 0;
   let skipped = 0;
   let failed = 0;
+  const errors: string[] = [];
 
   for (const spec of requestedSpecs) {
     const existing = asset.variants.find((variant) => variant.key === spec.key);
@@ -270,12 +271,14 @@ export async function generateMediaVariantsForAsset(
         },
       });
       generated += 1;
-    } catch {
+    } catch (error) {
       failed += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${spec.key}: ${message}`);
     }
   }
 
-  return { generated, skipped, failed };
+  return { generated, skipped, failed, errors };
 }
 
 export const MEDIA_VARIANT_FORMAT_POLICY = {

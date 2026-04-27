@@ -42,6 +42,17 @@ test("finalize variant generation returns warning status when generation throws"
   assert.deepEqual(result.variantErrors, ["sharp unavailable"]);
 });
 
+test("finalize variant generation surfaces per-variant errors from generation result", async () => {
+  const { logger } = buildLogger();
+  const result = await __testOnly__attemptVariantGenerationOnFinalize(
+    async () => ({ generated: 0, skipped: 0, failed: 2, errors: ["thumb: sharp missing", "card: sharp missing"] }),
+    logger,
+    { timeoutMs: 1000, mediaAssetId: "asset_partial_fail" },
+  );
+  assert.equal(result.variantsPending, false);
+  assert.deepEqual(result.variantErrors, ["thumb: sharp missing", "card: sharp missing"]);
+});
+
 test("finalize variant generation returns variantsPending on timeout", async () => {
   const { logger } = buildLogger();
   const result = await __testOnly__attemptVariantGenerationOnFinalize(

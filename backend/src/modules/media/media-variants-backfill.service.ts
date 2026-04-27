@@ -15,7 +15,7 @@ export type MediaVariantsBackfillResult = {
   generated: number;
   skipped: number;
   failed: number;
-  failures: Array<{ assetId: string; generated: number; skipped: number; failed: number }>;
+  failures: Array<{ assetId: string; generated: number; skipped: number; failed: number; errors?: string[] }>;
   sharpAvailable: boolean;
 };
 
@@ -73,6 +73,7 @@ export async function runMediaVariantsBackfill(
       generated: outcome.generated,
       skipped: outcome.skipped,
       failed: outcome.failed,
+      errors: outcome.errors,
     });
 
     if (outcome.failed > 0) {
@@ -81,6 +82,7 @@ export async function runMediaVariantsBackfill(
         generated: outcome.generated,
         skipped: outcome.skipped,
         failed: outcome.failed,
+        errors: outcome.errors,
       });
     }
   }

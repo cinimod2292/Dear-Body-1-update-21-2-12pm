@@ -7,6 +7,7 @@ export type MediaVariantBatchResult = {
   skipped: number;
   failed: number;
   error?: string;
+  errors?: string[];
 };
 
 async function runWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> {
@@ -30,7 +31,7 @@ export async function regenerateVariantsForMediaIds(
   mediaIds: string[],
   options: {
     concurrency?: number;
-    runSingle?: (mediaId: string) => Promise<{ generated: number; skipped: number; failed: number }>;
+    runSingle?: (mediaId: string) => Promise<{ generated: number; skipped: number; failed: number; errors?: string[] }>;
   } = {},
 ): Promise<{ results: MediaVariantBatchResult[]; summary: { total: number; ok: number; failed: number; noop: number } }> {
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 3, 6));
@@ -46,6 +47,7 @@ export async function regenerateVariantsForMediaIds(
           generated: outcome.generated,
           skipped: outcome.skipped,
           failed: outcome.failed,
+          errors: outcome.errors,
         };
       }
       if (outcome.failed > 0) {
@@ -56,6 +58,7 @@ export async function regenerateVariantsForMediaIds(
           skipped: outcome.skipped,
           failed: outcome.failed,
           error: "Variant generation failed for all requested variants",
+          errors: outcome.errors,
         };
       }
       return {

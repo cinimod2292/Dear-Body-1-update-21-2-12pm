@@ -40,6 +40,12 @@ export async function __testOnly__attemptVariantGenerationOnFinalize(
   const outcome = await Promise.race([generationPromise, timeoutPromise]);
 
   if (outcome.status === "ok") {
+    const generation = outcome.generation as { failed?: number; errors?: string[] } | undefined;
+    const variantErrors = Array.isArray(generation?.errors) ? generation.errors : [];
+    if ((generation?.failed ?? 0) > 0 || variantErrors.length > 0) {
+      logger.warn({ mediaAssetId, generation, variantErrors }, "Media variant generation completed with errors on finalize");
+      return { variantsPending: false, variantErrors };
+    }
     logger.info({ mediaAssetId, generation: outcome.generation }, "Generated media variants on finalize");
     return { variantsPending: false, variantErrors: [] };
   }

@@ -1,6 +1,6 @@
 import { MediaAsset } from "../types/admin";
 
-const HERO_VARIANT_PREFERENCE = ["hero_desktop", "hero_mobile", "lightbox", "gallery_main_2x", "gallery_main", "card_2x", "card"] as const;
+const HERO_VARIANT_PREFERENCE = ["hero_desktop", "card", "thumb"] as const;
 
 export function resolveNextSelectedMediaId(current: string | null, clickedId: string): string {
   if (!clickedId.trim()) return current ?? "";

@@ -139,9 +139,9 @@ function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-amber-900">Internal Maintenance: Backfill Media Variants</h3>
+        <h3 className="text-sm font-semibold text-amber-900">Bulk maintenance: Backfill Media Variants</h3>
         <p className="text-xs text-amber-800">
-          Warning: this is an internal admin action that regenerates image variants for existing media.
+          Optional bulk operation for many assets. This is not required for single-image homepage hero assignment.
         </p>
       </div>
 
@@ -1034,6 +1034,8 @@ export default function AdminMedia() {
     if (!session?.accessToken || !selectedMediaId || !selectedAsset) return;
     try {
       setConfigSaving(true);
+      console.info("[admin-media] hero assignment selected asset", { selectedMediaId });
+      toast.info(`Selected asset: ${selectedMediaId}`);
       const validation = validateHeroAssignmentAsset(selectedAsset);
       if (!validation.ok) {
         toast.error("reason" in validation ? validation.reason : "Selected image cannot be assigned.");
@@ -1043,19 +1045,27 @@ export default function AdminMedia() {
       const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/assets/${selectedMediaId}/regenerate-variants`, {
         method: "POST",
       }, session.accessToken);
+      console.info("[admin-media] regenerate variants response", { selectedMediaId, variantKeys: regen.data.variantKeys, variantErrors: regen.data.variantErrors });
+      toast.info(`Regenerated variants: ${regen.data.variantKeys.join(", ") || "none"}`);
       if (regen.data.variantErrors.length > 0) {
         toast.warning(`Some variants failed: ${regen.data.variantErrors.join("; ")}`);
       }
 
-      const refreshedAsset: MediaAsset = {
-        ...selectedAsset,
-        variants: regen.data.variants.map((variant) => ({
-          key: variant.key,
-          publicUrl: variant.publicUrl,
-          width: variant.width ?? null,
-          height: variant.height ?? null,
-        })),
-      };
+      const refreshedAssetResponse = await apiRequest<MediaDetailResponse>(`/admin/media/${selectedMediaId}`, {}, session.accessToken);
+      const refreshedAsset: MediaAsset = refreshedAssetResponse.data;
+      console.info("[admin-media] refreshed asset variants", {
+        selectedMediaId,
+        variantKeys: (refreshedAsset.variants ?? []).map((variant) => variant.key),
+      });
+      toast.info(`Refreshed asset variants: ${(refreshedAsset.variants ?? []).map((variant) => variant.key).join(", ") || "none"}`);
+      setPayload((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) => (item.id === refreshedAsset.id ? { ...item, ...refreshedAsset } : item)),
+        };
+      });
+
       const chosenHeroVariant = pickOptimizedHeroVariant(refreshedAsset);
       if (!chosenHeroVariant) {
         throw new Error("Selected image has no optimized hero-safe variant. Original upload will not be assigned.");
@@ -1104,7 +1114,12 @@ export default function AdminMedia() {
       } catch {
         // Best effort: legacy CMS sections remain updated even if builder draft endpoint is unavailable.
       }
-      toast.success(`Homepage hero assigned using optimized variant (${chosenHeroVariant.key})`);
+      console.info("[admin-media] assigned hero variant", {
+        selectedMediaId,
+        assignedVariantKey: chosenHeroVariant.key,
+        assignedHeroUrl: chosenHeroVariant.url,
+      });
+      toast.success(`Homepage hero assigned: ${chosenHeroVariant.key} → ${chosenHeroVariant.url}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
     } finally {

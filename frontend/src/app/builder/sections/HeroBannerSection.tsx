@@ -1,9 +1,6 @@
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
-import heroImageFallback from "../../../assets/909142a9f8349273030b1d771262f7d833d21920.png";
 import { sanitizeBuilderImageUrl } from "../media-url";
-
-const HERO_IMAGE_OPTIMIZED_PATH = "/assets/home-hero-optimized.webp";
 
 type HeroBannerProps = {
   eyebrow?: string;
@@ -39,10 +36,7 @@ export function HeroBannerSection(props: HeroBannerProps) {
       <div className="absolute inset-0">
         {imageUrl
           ? <img src={imageUrl} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" sizes="100vw" width={1217} height={797} />
-          : <picture>
-            <source srcSet={HERO_IMAGE_OPTIMIZED_PATH} type="image/webp" />
-            <img src={heroImageFallback} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" />
-          </picture>}
+          : null}
         <div className={`absolute inset-0 ${overlayClass}`} />
       </div>
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 w-full">

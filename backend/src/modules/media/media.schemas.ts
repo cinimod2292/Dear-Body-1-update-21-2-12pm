@@ -51,6 +51,7 @@ export const runMediaBackfillSchema = z.object({
   productId: z.string().cuid().optional(),
   assetId: z.string().cuid().optional(),
   force: z.boolean().optional().default(false),
+  maxAssets: z.number().int().min(1).max(250).optional(),
 });
 
 export const regenerateVariantsBatchSchema = z.object({

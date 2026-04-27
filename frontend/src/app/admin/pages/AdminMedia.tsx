@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
 import { isMissingProductRowBusy, MissingProductUploadState, setMissingProductRowState, validateVariantBatchBeforeAttach } from "../lib/missing-product-upload-state";
+import { canAssignSelectedAsset, pickOptimizedHeroVariant, resolveNextSelectedMediaId, selectedAssetLabel, validateHeroAssignmentAsset } from "./media-assignment";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -30,7 +31,16 @@ interface MissingProductsResponse {
   data: MissingProductImageRow[];
 }
 interface RegenerateVariantsResponse {
-  data: { generated: number; skipped: number; failed: number };
+  data: {
+    mediaId: string;
+    generated: number;
+    skipped: number;
+    failed: number;
+    variantKeys: string[];
+    variants: Array<{ key: string; publicUrl: string | null; width?: number | null; height?: number | null }>;
+    variantErrors: string[];
+    variantsPending?: boolean;
+  };
 }
 interface RegenerateVariantsBatchResponse {
   data: {
@@ -129,9 +139,9 @@ function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-amber-900">Internal Maintenance: Backfill Media Variants</h3>
+        <h3 className="text-sm font-semibold text-amber-900">Bulk maintenance: Backfill Media Variants</h3>
         <p className="text-xs text-amber-800">
-          Warning: this is an internal admin action that regenerates image variants for existing media.
+          Optional bulk operation for many assets. This is not required for single-image homepage hero assignment.
         </p>
       </div>
 
@@ -799,6 +809,7 @@ export default function AdminMedia() {
   const [uploading, setUploading] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+  const [detailsMediaId, setDetailsMediaId] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
   const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
   const [loadingMissingImageProducts, setLoadingMissingImageProducts] = useState(false);
@@ -845,6 +856,11 @@ export default function AdminMedia() {
   useEffect(() => {
     loadMissingImageProducts();
   }, [session?.accessToken]);
+
+  const selectedAsset = useMemo(
+    () => payload?.items.find((asset) => asset.id === selectedMediaId) ?? null,
+    [payload?.items, selectedMediaId],
+  );
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -897,10 +913,10 @@ export default function AdminMedia() {
         }, session.accessToken);
 
         if (kind === "IMAGE") {
-          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
+          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/assets/${finalized.data.id}/regenerate-variants`, {
             method: "POST",
           }, session.accessToken);
-          if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
+          if (regen.data.variantKeys.length === 0 || (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0)) {
             throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
           }
         }
@@ -1015,9 +1031,46 @@ export default function AdminMedia() {
   };
 
   const assignSelectedAsHero = async () => {
-    if (!session?.accessToken || !selectedMediaId) return;
+    if (!session?.accessToken || !selectedMediaId || !selectedAsset) return;
     try {
       setConfigSaving(true);
+      console.info("[admin-media] hero assignment selected asset", { selectedMediaId });
+      toast.info(`Selected asset: ${selectedMediaId}`);
+      const validation = validateHeroAssignmentAsset(selectedAsset);
+      if (!validation.ok) {
+        toast.error("reason" in validation ? validation.reason : "Selected image cannot be assigned.");
+        return;
+      }
+
+      const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/assets/${selectedMediaId}/regenerate-variants`, {
+        method: "POST",
+      }, session.accessToken);
+      console.info("[admin-media] regenerate variants response", { selectedMediaId, variantKeys: regen.data.variantKeys, variantErrors: regen.data.variantErrors });
+      toast.info(`Regenerated variants: ${regen.data.variantKeys.join(", ") || "none"}`);
+      if (regen.data.variantErrors.length > 0) {
+        toast.warning(`Some variants failed: ${regen.data.variantErrors.join("; ")}`);
+      }
+
+      const refreshedAssetResponse = await apiRequest<MediaDetailResponse>(`/admin/media/${selectedMediaId}`, {}, session.accessToken);
+      const refreshedAsset: MediaAsset = refreshedAssetResponse.data;
+      console.info("[admin-media] refreshed asset variants", {
+        selectedMediaId,
+        variantKeys: (refreshedAsset.variants ?? []).map((variant) => variant.key),
+      });
+      toast.info(`Refreshed asset variants: ${(refreshedAsset.variants ?? []).map((variant) => variant.key).join(", ") || "none"}`);
+      setPayload((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) => (item.id === refreshedAsset.id ? { ...item, ...refreshedAsset } : item)),
+        };
+      });
+
+      const chosenHeroVariant = pickOptimizedHeroVariant(refreshedAsset);
+      if (!chosenHeroVariant) {
+        throw new Error("Selected image has no optimized hero-safe variant. Original upload will not be assigned.");
+      }
+
       const sectionsRes = await apiRequest<{ data: Array<{ id: string; type: string; title?: string; subtitle?: string; content: Record<string, unknown>; enabled: boolean; order: number; status: "draft" | "published" }> }>(
         "/admin/cms/home-sections",
         {},
@@ -1030,6 +1083,8 @@ export default function AdminMedia() {
             content: {
               ...section.content,
               backgroundMediaAssetId: selectedMediaId,
+              backgroundImageUrl: chosenHeroVariant.url,
+              backgroundImageMobileUrl: chosenHeroVariant.url,
             },
           }
           : section
@@ -1038,7 +1093,33 @@ export default function AdminMedia() {
         method: "PUT",
         body: JSON.stringify({ sections: nextSections }),
       }, session.accessToken);
-      toast.success("Homepage hero image assigned to selected media asset");
+      try {
+        const builderPage = await apiRequest<{ data: { draftContent?: { sections?: Array<{ type: string; props: Record<string, unknown> }> } } }>(
+          "/admin/builder/pages/home",
+          {},
+          session.accessToken,
+        );
+        const draftSections = builderPage.data?.draftContent?.sections;
+        if (Array.isArray(draftSections) && draftSections.some((section) => section.type === "hero_banner")) {
+          const nextBuilderSections = draftSections.map((section) => (
+            section.type === "hero_banner"
+              ? { ...section, props: { ...section.props, imageUrl: chosenHeroVariant.url } }
+              : section
+          ));
+          await apiRequest("/admin/builder/pages/home/draft", {
+            method: "PUT",
+            body: JSON.stringify({ content: { sections: nextBuilderSections } }),
+          }, session.accessToken);
+        }
+      } catch {
+        // Best effort: legacy CMS sections remain updated even if builder draft endpoint is unavailable.
+      }
+      console.info("[admin-media] assigned hero variant", {
+        selectedMediaId,
+        assignedVariantKey: chosenHeroVariant.key,
+        assignedHeroUrl: chosenHeroVariant.url,
+      });
+      toast.success(`Homepage hero assigned: ${chosenHeroVariant.key} → ${chosenHeroVariant.url}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
     } finally {
@@ -1086,9 +1167,9 @@ export default function AdminMedia() {
         onImported={loadMedia}
       />
       <MediaDetailsModal
-        mediaId={selectedMediaId}
+        mediaId={detailsMediaId}
         accessToken={session?.accessToken}
-        onClose={() => setSelectedMediaId(null)}
+        onClose={() => setDetailsMediaId(null)}
         onChanged={loadMedia}
       />
 
@@ -1185,20 +1266,20 @@ export default function AdminMedia() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={assignSelectedAsHero}
-            disabled={!selectedMediaId || configSaving}
+            disabled={!canAssignSelectedAsset(selectedAsset, configSaving)}
             className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm disabled:opacity-50"
           >
             {configSaving ? "Saving..." : "Use selected image as homepage hero"}
           </button>
           <button
             onClick={assignSelectedAsLogo}
-            disabled={!selectedMediaId || configSaving}
+            disabled={!canAssignSelectedAsset(selectedAsset, configSaving)}
             className="rounded-lg border border-blue-300 bg-white text-blue-900 px-3 py-2 text-sm disabled:opacity-50"
           >
             Use selected image as site logo
           </button>
           <span className="text-xs text-blue-700">
-            Selected asset: {selectedMediaId ?? "none"}
+            Selected asset: {selectedAssetLabel(selectedAsset)}
           </span>
         </div>
       </div>
@@ -1239,10 +1320,24 @@ export default function AdminMedia() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {payload.items.map((asset) => (
-            <button
+            <div
               key={asset.id}
-              onClick={() => setSelectedMediaId(asset.id)}
-              className="text-left rounded-xl border border-gray-200 bg-white p-2 hover:border-gray-300"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedMediaId((current) => resolveNextSelectedMediaId(current, asset.id))}
+              onDoubleClick={() => setDetailsMediaId(asset.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedMediaId(asset.id);
+                }
+                if (event.key.toLowerCase() === "d") {
+                  event.preventDefault();
+                  setDetailsMediaId(asset.id);
+                }
+              }}
+              aria-pressed={selectedMediaId === asset.id}
+              className={`text-left rounded-xl border bg-white p-2 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-300 ${selectedMediaId === asset.id ? "border-pink-500 ring-2 ring-pink-200" : "border-gray-200"}`}
             >
               <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center">
                 {asset.publicUrl && asset.mimeType.startsWith("image") ? (
@@ -1254,7 +1349,25 @@ export default function AdminMedia() {
               <p className="mt-2 text-xs font-medium text-gray-700 truncate" title={asset.filename}>{asset.filename}</p>
               <p className="text-[11px] text-gray-500">{asset.kind}</p>
               <p className="text-[11px] text-gray-400">{Math.round(asset.byteSize / 1024)} KB</p>
-            </button>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 truncate">{asset.id}</span>
+                <span
+                  className={`text-[10px] font-semibold ${selectedMediaId === asset.id ? "text-pink-700" : "text-gray-400"}`}
+                >
+                  {selectedMediaId === asset.id ? "Selected" : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDetailsMediaId(asset.id);
+                }}
+                className="mt-2 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+              >
+                Open details
+              </button>
+            </div>
           ))}
         </div>
       )}

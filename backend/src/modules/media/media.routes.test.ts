@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { __testOnly__attemptVariantGenerationOnFinalize } from "./media.routes.js";
+import { __testOnly__attemptVariantGenerationOnFinalize, __testOnly__regenerateSingleAssetVariants } from "./media.routes.js";
 
 function buildLogger() {
   const calls: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
@@ -62,4 +62,24 @@ test("finalize variant generation returns variantsPending on timeout", async () 
   );
   assert.equal(result.variantsPending, true);
   assert.deepEqual(result.variantErrors, []);
+});
+
+test("single-asset regenerate returns variant records with per-variant errors", async () => {
+  const result = await __testOnly__regenerateSingleAssetVariants("asset_123", {
+    runGeneration: async () => ({ generated: 1, skipped: 0, failed: 1, errors: ["card: sharp unavailable"] }),
+    loadVariantRecords: async () => ({
+      mediaId: "asset_123",
+      variants: [
+        { key: "hero_desktop", storageKey: "variants/asset_123/hero_desktop.webp", width: 1920, height: 1080, mimeType: "image/webp" },
+        { key: "card", storageKey: "variants/asset_123/card.webp", width: 700, height: 700, mimeType: "image/webp" },
+      ],
+    }),
+    resolveVariantPublicUrl: (storageKey) => `https://cdn.test/${storageKey}`,
+  });
+  assert.equal(result.mediaId, "asset_123");
+  assert.equal(result.generated, 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.variantErrors, ["card: sharp unavailable"]);
+  assert.deepEqual(result.variantKeys, ["hero_desktop", "card"]);
+  assert.equal(result.variants[0]?.publicUrl, "https://cdn.test/variants/asset_123/hero_desktop.webp");
 });

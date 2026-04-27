@@ -17,9 +17,67 @@ type FinalizeVariantGenerationResult = {
   variantErrors: string[];
 };
 
+type SingleAssetVariantResponse = {
+  mediaId: string;
+  generated: number;
+  skipped: number;
+  failed: number;
+  variantErrors: string[];
+  variantKeys: string[];
+  variants: Array<{ key: string; publicUrl: string | null; width: number | null; height: number | null; mimeType: string | null }>;
+  variantsPending: boolean;
+};
+
+type SingleAssetVariantRecord = { key: string; storageKey: string; width: number | null; height: number | null; mimeType: string | null };
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+export async function __testOnly__regenerateSingleAssetVariants(
+  assetId: string,
+  deps: {
+    force?: boolean;
+    timeoutMs?: number;
+    runGeneration: (mediaId: string, options: { force?: boolean }) => Promise<{ generated?: number; skipped?: number; failed?: number; errors?: string[] }>;
+    loadVariantRecords: (mediaId: string) => Promise<{ mediaId: string; variants: SingleAssetVariantRecord[] } | null>;
+    resolveVariantPublicUrl: (storageKey: string) => string;
+  },
+): Promise<SingleAssetVariantResponse> {
+  const timeoutMs = Math.max(500, deps.timeoutMs ?? 6000);
+  const generationPromise = deps.runGeneration(assetId, { force: deps.force })
+    .then((generation) => ({ status: "ok" as const, generation }))
+    .catch((error) => ({ status: "error" as const, error }));
+  const timeoutPromise = new Promise<{ status: "timeout" }>((resolve) => {
+    setTimeout(() => resolve({ status: "timeout" }), timeoutMs);
+  });
+  const generationResult = await Promise.race([generationPromise, timeoutPromise]);
+
+  const loaded = await deps.loadVariantRecords(assetId);
+  if (!loaded) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
+  const variants = loaded.variants.map((variant) => ({
+    key: variant.key,
+    publicUrl: deps.resolveVariantPublicUrl(variant.storageKey),
+    width: variant.width ?? null,
+    height: variant.height ?? null,
+    mimeType: variant.mimeType ?? null,
+  }));
+
+  return {
+    mediaId: loaded.mediaId,
+    generated: generationResult.status === "ok" ? (generationResult.generation.generated ?? 0) : 0,
+    skipped: generationResult.status === "ok" ? (generationResult.generation.skipped ?? 0) : 0,
+    failed: generationResult.status === "ok" ? (generationResult.generation.failed ?? 0) : generationResult.status === "error" ? 1 : 0,
+    variantErrors: generationResult.status === "ok"
+      ? (Array.isArray(generationResult.generation.errors) ? generationResult.generation.errors : [])
+      : generationResult.status === "error"
+        ? [toErrorMessage(generationResult.error)]
+        : [`Variant generation still running after ${timeoutMs}ms. Please retry in a few seconds.`],
+    variantKeys: variants.map((variant) => variant.key),
+    variants,
+    variantsPending: generationResult.status === "timeout",
+  };
 }
 
 export async function __testOnly__attemptVariantGenerationOnFinalize(
@@ -101,6 +159,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         productId: body.productId,
         assetId: body.assetId,
         force: body.force,
+        maxAssets: body.maxAssets ?? (mode === "all" ? 100 : undefined),
       }, (message, meta) => {
         request.log.info({ ...meta }, message);
       });
@@ -115,6 +174,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         skipped: result.skipped,
         failed: result.failed,
         sharpAvailable: result.sharpAvailable,
+        truncated: result.truncated,
         force: body.force,
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
@@ -133,6 +193,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
         sharpAvailable: result.sharpAvailable,
+        truncated: result.truncated,
       });
     } catch (error) {
       request.log.error({ err: error, mode, force: body.force, assetId: body.assetId ?? null, productId: body.productId ?? null }, "Media variant backfill failed");
@@ -158,15 +219,14 @@ export async function mediaRoutes(app: FastifyInstance) {
     "/admin/media/run-backfill",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
-      if (!env.MEDIA_BACKFILL_TOKEN) {
-        request.log.error("MEDIA_BACKFILL_TOKEN is not configured; refusing to run media backfill endpoint");
-        return reply.status(503).send({ error: { message: "Backfill endpoint is not configured" } });
-      }
-
-      const token = request.headers["x-internal-token"];
-      const suppliedToken = Array.isArray(token) ? token[0] : token;
-      if (suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
-        return reply.status(403).send({ error: { message: "Invalid internal token" } });
+      if (env.MEDIA_BACKFILL_TOKEN) {
+        const token = request.headers["x-internal-token"];
+        const suppliedToken = Array.isArray(token) ? token[0] : token;
+        if (suppliedToken !== env.MEDIA_BACKFILL_TOKEN) {
+          return reply.status(403).send({ error: { message: "Invalid internal token" } });
+        }
+      } else {
+        request.log.warn("MEDIA_BACKFILL_TOKEN is not configured; falling back to authenticated admin-only access");
       }
 
       return executeBackfill(request, reply);
@@ -527,13 +587,39 @@ export async function mediaRoutes(app: FastifyInstance) {
   );
 
   app.post(
+    "/admin/media/assets/:assetId/regenerate-variants",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { assetId } = request.params as { assetId: string };
+      const query = request.query as { force?: string };
+      const cfg = await resolveUploadConfig();
+      const response = await __testOnly__regenerateSingleAssetVariants(assetId, {
+        force: query.force === "true",
+        timeoutMs: 6000,
+        runGeneration: (mediaId, options) => generateMediaVariantsForAsset(mediaId, options),
+        loadVariantRecords: async (mediaId) => {
+          const asset = await prisma.mediaAsset.findUnique({
+            where: { id: mediaId },
+            select: {
+              id: true,
+              variants: { select: { key: true, storageKey: true, width: true, height: true, mimeType: true }, orderBy: { key: "asc" } },
+            },
+          });
+          if (!asset) return null;
+          return { mediaId: asset.id, variants: asset.variants };
+        },
+        resolveVariantPublicUrl: (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg),
+      });
+      return reply.send({ data: response });
+    },
+  );
+
+  app.post(
     "/admin/media/:mediaId/regenerate-variants",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
-      const query = request.query as { force?: string };
-      const result = await generateMediaVariantsForAsset(mediaId, { force: query.force === "true" });
-      return reply.send({ data: result });
+      return reply.redirect(`/admin/media/assets/${mediaId}/regenerate-variants`, 307);
     },
   );
 

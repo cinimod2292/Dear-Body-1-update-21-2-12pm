@@ -179,7 +179,7 @@ export async function getCmsBootstrap() {
     if (!heroAssetId) return section;
     const heroAsset = mediaById.get(heroAssetId);
     if (!heroAsset) return section;
-    const desktop = pickVariantUrl(heroAsset, ["hero_desktop", "lightbox", "gallery_main_2x", "gallery_main"]) ?? heroAsset.publicUrl ?? "";
+    const desktop = pickVariantUrl(heroAsset, ["hero_desktop", "lightbox", "gallery_main_2x", "gallery_main"]) ?? "";
     const desktop2x = pickVariantUrl(heroAsset, ["hero_desktop_2x", "lightbox_2x", "lightbox", "gallery_main_2x"]);
     const mobile = pickVariantUrl(heroAsset, ["hero_mobile", "card_2x", "card", "gallery_main"]) ?? desktop;
 

@@ -7,7 +7,6 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
 import { isMissingProductRowBusy, MissingProductUploadState, setMissingProductRowState, validateVariantBatchBeforeAttach } from "../lib/missing-product-upload-state";
-import { canAssignSelectedAsset, pickOptimizedHeroVariant, resolveNextSelectedMediaId, selectedAssetLabel, validateHeroAssignmentAsset } from "./media-assignment";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -31,16 +30,7 @@ interface MissingProductsResponse {
   data: MissingProductImageRow[];
 }
 interface RegenerateVariantsResponse {
-  data: {
-    mediaId: string;
-    generated: number;
-    skipped: number;
-    failed: number;
-    variantKeys: string[];
-    variants: Array<{ key: string; publicUrl: string | null; width?: number | null; height?: number | null }>;
-    variantErrors: string[];
-    variantsPending?: boolean;
-  };
+  data: { generated: number; skipped: number; failed: number };
 }
 interface RegenerateVariantsBatchResponse {
   data: {
@@ -54,6 +44,46 @@ interface RegenerateVariantsBatchResponse {
     }>;
     summary: { total: number; ok: number; failed: number; noop: number };
   };
+}
+
+type BuilderSection = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  props: Record<string, unknown>;
+};
+
+type BuilderPageContent = {
+  sections: BuilderSection[];
+};
+
+type BuilderPageRecord = {
+  draftContent: BuilderPageContent;
+};
+
+type MediaVariant = { key?: string | null; publicUrl?: string | null };
+type MediaAssetWithVariants = MediaAsset & { variants?: MediaVariant[] };
+
+type HeroAssignmentDebug = {
+  selectedAssetId: string;
+  chosenUrl: string;
+  savedUrl: string;
+  loadedUrl: string;
+};
+
+function readHeroImageUrl(content: BuilderPageContent): string {
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return typeof hero?.props?.imageUrl === "string" ? hero.props.imageUrl : "";
+}
+
+function chooseOptimizedHeroUrl(asset: MediaAssetWithVariants): string | null {
+  const variants = Array.isArray(asset.variants) ? asset.variants : [];
+  const preferredKeys = ["hero_desktop", "hero_desktop_2x", "lightbox", "gallery_main_2x", "gallery_main", "card_2x", "card", "thumb"];
+  for (const key of preferredKeys) {
+    const url = variants.find((variant) => String(variant?.key ?? "") === key)?.publicUrl?.trim();
+    if (url) return url;
+  }
+  return null;
 }
 
 type BackfillMode = "all" | "product" | "asset";
@@ -811,6 +841,7 @@ export default function AdminMedia() {
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [detailsMediaId, setDetailsMediaId] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
+  const [heroAssignmentDebug, setHeroAssignmentDebug] = useState<HeroAssignmentDebug | null>(null);
   const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
   const [loadingMissingImageProducts, setLoadingMissingImageProducts] = useState(false);
   const [missingUploadStates, setMissingUploadStates] = useState<Record<string, MissingProductUploadState>>({});
@@ -856,11 +887,6 @@ export default function AdminMedia() {
   useEffect(() => {
     loadMissingImageProducts();
   }, [session?.accessToken]);
-
-  const selectedAsset = useMemo(
-    () => payload?.items.find((asset) => asset.id === selectedMediaId) ?? null,
-    [payload?.items, selectedMediaId],
-  );
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -913,10 +939,10 @@ export default function AdminMedia() {
         }, session.accessToken);
 
         if (kind === "IMAGE") {
-          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/assets/${finalized.data.id}/regenerate-variants`, {
+          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
             method: "POST",
           }, session.accessToken);
-          if (regen.data.variantKeys.length === 0 || (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0)) {
+          if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
             throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
           }
         }
@@ -1034,92 +1060,40 @@ export default function AdminMedia() {
     if (!session?.accessToken || !selectedMediaId || !selectedAsset) return;
     try {
       setConfigSaving(true);
-      console.info("[admin-media] hero assignment selected asset", { selectedMediaId });
-      toast.info(`Selected asset: ${selectedMediaId}`);
-      const validation = validateHeroAssignmentAsset(selectedAsset);
-      if (!validation.ok) {
-        toast.error("reason" in validation ? validation.reason : "Selected image cannot be assigned.");
-        return;
-      }
-
-      const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/assets/${selectedMediaId}/regenerate-variants`, {
+      const mediaByIdResponse = await apiRequest<{ data: MediaAssetWithVariants[] }>("/admin/media/by-ids", {
         method: "POST",
+        body: JSON.stringify({ ids: [selectedMediaId] }),
       }, session.accessToken);
-      console.info("[admin-media] regenerate variants response", { selectedMediaId, variantKeys: regen.data.variantKeys, variantErrors: regen.data.variantErrors });
-      toast.info(`Regenerated variants: ${regen.data.variantKeys.join(", ") || "none"}`);
-      if (regen.data.variantErrors.length > 0) {
-        toast.warning(`Some variants failed: ${regen.data.variantErrors.join("; ")}`);
+      const selectedAsset = mediaByIdResponse.data[0];
+      if (!selectedAsset) throw new Error("Selected media asset could not be loaded.");
+
+      const chosenUrl = chooseOptimizedHeroUrl(selectedAsset);
+      if (!chosenUrl) {
+        throw new Error("No optimized variant URL found for this media asset. Generate variants first, then assign hero.");
       }
 
-      const refreshedAssetResponse = await apiRequest<MediaDetailResponse>(`/admin/media/${selectedMediaId}`, {}, session.accessToken);
-      const refreshedAsset: MediaAsset = refreshedAssetResponse.data;
-      console.info("[admin-media] refreshed asset variants", {
-        selectedMediaId,
-        variantKeys: (refreshedAsset.variants ?? []).map((variant) => variant.key),
-      });
-      toast.info(`Refreshed asset variants: ${(refreshedAsset.variants ?? []).map((variant) => variant.key).join(", ") || "none"}`);
-      setPayload((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          items: current.items.map((item) => (item.id === refreshedAsset.id ? { ...item, ...refreshedAsset } : item)),
-        };
-      });
+      const page = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home", {}, session.accessToken);
+      const heroIndex = page.data.draftContent.sections.findIndex((section) => section.type === "hero_banner");
+      if (heroIndex < 0) throw new Error("Homepage builder has no hero_banner section to assign.");
 
-      const chosenHeroVariant = pickOptimizedHeroVariant(refreshedAsset);
-      if (!chosenHeroVariant) {
-        throw new Error("Selected image has no optimized hero-safe variant. Original upload will not be assigned.");
-      }
+      const nextContent: BuilderPageContent = {
+        sections: page.data.draftContent.sections.map((section, index) => (
+          index === heroIndex
+            ? { ...section, props: { ...section.props, imageUrl: chosenUrl } }
+            : section
+        )),
+      };
 
-      const sectionsRes = await apiRequest<{ data: Array<{ id: string; type: string; title?: string; subtitle?: string; content: Record<string, unknown>; enabled: boolean; order: number; status: "draft" | "published" }> }>(
-        "/admin/cms/home-sections",
-        {},
-        session.accessToken,
-      );
-      const nextSections = sectionsRes.data.map((section) => (
-        section.type === "hero"
-          ? {
-            ...section,
-            content: {
-              ...section.content,
-              backgroundMediaAssetId: selectedMediaId,
-              backgroundImageUrl: chosenHeroVariant.url,
-              backgroundImageMobileUrl: chosenHeroVariant.url,
-            },
-          }
-          : section
-      ));
-      await apiRequest("/admin/cms/home-sections", {
+      const saved = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home/draft", {
         method: "PUT",
-        body: JSON.stringify({ sections: nextSections }),
+        body: JSON.stringify({ content: nextContent }),
       }, session.accessToken);
-      try {
-        const builderPage = await apiRequest<{ data: { draftContent?: { sections?: Array<{ type: string; props: Record<string, unknown> }> } } }>(
-          "/admin/builder/pages/home",
-          {},
-          session.accessToken,
-        );
-        const draftSections = builderPage.data?.draftContent?.sections;
-        if (Array.isArray(draftSections) && draftSections.some((section) => section.type === "hero_banner")) {
-          const nextBuilderSections = draftSections.map((section) => (
-            section.type === "hero_banner"
-              ? { ...section, props: { ...section.props, imageUrl: chosenHeroVariant.url } }
-              : section
-          ));
-          await apiRequest("/admin/builder/pages/home/draft", {
-            method: "PUT",
-            body: JSON.stringify({ content: { sections: nextBuilderSections } }),
-          }, session.accessToken);
-        }
-      } catch {
-        // Best effort: legacy CMS sections remain updated even if builder draft endpoint is unavailable.
-      }
-      console.info("[admin-media] assigned hero variant", {
-        selectedMediaId,
-        assignedVariantKey: chosenHeroVariant.key,
-        assignedHeroUrl: chosenHeroVariant.url,
-      });
-      toast.success(`Homepage hero assigned: ${chosenHeroVariant.key} → ${chosenHeroVariant.url}`);
+
+      const loaded = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home", {}, session.accessToken);
+      const savedUrl = readHeroImageUrl(saved.data.draftContent);
+      const loadedUrl = readHeroImageUrl(loaded.data.draftContent);
+      setHeroAssignmentDebug({ selectedAssetId: selectedMediaId, chosenUrl, savedUrl, loadedUrl });
+      toast.success(`Hero assigned. selected=${selectedMediaId} chosen=${chosenUrl} saved=${savedUrl} loaded=${loadedUrl}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
     } finally {
@@ -1261,7 +1235,7 @@ export default function AdminMedia() {
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-2">
         <h3 className="text-sm font-semibold text-blue-900">Brand / Home Image Assignments</h3>
         <p className="text-xs text-blue-800">
-          Select a media image, then assign it as the homepage hero or site logo. Variants are generated by the existing media pipeline.
+          Hero assignment writes one optimized URL directly to the Builder home hero `imageUrl` and does not rewrite it.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -1282,6 +1256,15 @@ export default function AdminMedia() {
             Selected asset: {selectedAssetLabel(selectedAsset)}
           </span>
         </div>
+        {heroAssignmentDebug ? (
+          <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 text-xs text-blue-900 space-y-1">
+            <p><strong>Hero Debug</strong></p>
+            <p>selected asset id: {heroAssignmentDebug.selectedAssetId}</p>
+            <p>chosen URL: {heroAssignmentDebug.chosenUrl}</p>
+            <p>saved URL: {heroAssignmentDebug.savedUrl}</p>
+            <p>loaded URL: {heroAssignmentDebug.loadedUrl}</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-3">

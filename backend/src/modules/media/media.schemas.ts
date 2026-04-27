@@ -63,3 +63,13 @@ export const mediaByIdsSchema = z.object({
   ids: z.array(z.string().cuid()).min(1).max(200),
   view: z.enum(["full", "picker"]).optional().default("picker"),
 });
+
+export const regenerateVariantsBatchSchema = z.object({
+  mediaIds: z.array(z.string().cuid()).min(1).max(50),
+  concurrency: z.number().int().min(1).max(6).optional(),
+});
+
+export const mediaByIdsSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(200),
+  view: z.enum(["full", "picker"]).optional().default("picker"),
+});

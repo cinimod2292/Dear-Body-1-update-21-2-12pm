@@ -5,6 +5,8 @@ import { MediaAsset, PaginatedResult } from "../types/admin";
 import { AdminPagination } from "../components/AdminPagination";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
+import { isMissingProductRowBusy, MissingProductUploadState, setMissingProductRowState, validateVariantBatchBeforeAttach } from "../lib/missing-product-upload-state";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -23,6 +25,65 @@ interface MediaDetailResponse {
 
 interface MediaUpdateResponse {
   data: MediaAsset;
+}
+interface MissingProductsResponse {
+  data: MissingProductImageRow[];
+}
+interface RegenerateVariantsResponse {
+  data: { generated: number; skipped: number; failed: number };
+}
+interface RegenerateVariantsBatchResponse {
+  data: {
+    results: Array<{
+      mediaId: string;
+      status: "ok" | "failed" | "noop";
+      generated: number;
+      skipped: number;
+      failed: number;
+      error?: string;
+    }>;
+    summary: { total: number; ok: number; failed: number; noop: number };
+  };
+}
+
+type BuilderSection = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  props: Record<string, unknown>;
+};
+
+type BuilderPageContent = {
+  sections: BuilderSection[];
+};
+
+type BuilderPageRecord = {
+  draftContent: BuilderPageContent;
+};
+
+type MediaVariant = { key?: string | null; publicUrl?: string | null };
+type MediaAssetWithVariants = MediaAsset & { variants?: MediaVariant[] };
+
+type HeroAssignmentDebug = {
+  selectedAssetId: string;
+  chosenUrl: string;
+  savedUrl: string;
+  loadedUrl: string;
+};
+
+function readHeroImageUrl(content: BuilderPageContent): string {
+  const hero = content.sections.find((section) => section.type === "hero_banner");
+  return typeof hero?.props?.imageUrl === "string" ? hero.props.imageUrl : "";
+}
+
+function chooseOptimizedHeroUrl(asset: MediaAssetWithVariants): string | null {
+  const variants = Array.isArray(asset.variants) ? asset.variants : [];
+  const preferredKeys = ["hero_desktop", "hero_desktop_2x", "lightbox", "gallery_main_2x", "gallery_main", "card_2x", "card", "thumb"];
+  for (const key of preferredKeys) {
+    const url = variants.find((variant) => String(variant?.key ?? "") === key)?.publicUrl?.trim();
+    if (url) return url;
+  }
+  return null;
 }
 
 type BackfillMode = "all" | "product" | "asset";
@@ -779,6 +840,10 @@ export default function AdminMedia() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
+  const [heroAssignmentDebug, setHeroAssignmentDebug] = useState<HeroAssignmentDebug | null>(null);
+  const [missingImageProducts, setMissingImageProducts] = useState<MissingProductImageRow[]>([]);
+  const [loadingMissingImageProducts, setLoadingMissingImageProducts] = useState(false);
+  const [missingUploadStates, setMissingUploadStates] = useState<Record<string, MissingProductUploadState>>({});
 
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "18", sortBy: "createdAt", sortDir });
@@ -801,9 +866,26 @@ export default function AdminMedia() {
     }
   };
 
+  const loadMissingImageProducts = async () => {
+    if (!session?.accessToken) return;
+    try {
+      setLoadingMissingImageProducts(true);
+      const response = await apiRequest<MissingProductsResponse>("/admin/products/missing-images", {}, session.accessToken);
+      setMissingImageProducts(response.data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load products missing images");
+    } finally {
+      setLoadingMissingImageProducts(false);
+    }
+  };
+
   useEffect(() => {
     loadMedia();
   }, [session?.accessToken, params]);
+
+  useEffect(() => {
+    loadMissingImageProducts();
+  }, [session?.accessToken]);
 
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -844,7 +926,7 @@ export default function AdminMedia() {
           throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
         }
 
-        await apiRequest("/admin/media/uploads/finalize", {
+        const finalized = await apiRequest<{ data: { id: string } }>("/admin/media/uploads/finalize", {
           method: "POST",
           body: JSON.stringify({
             storageKey: prep.data.storageKey,
@@ -854,6 +936,15 @@ export default function AdminMedia() {
             altText: file.name,
           }),
         }, session.accessToken);
+
+        if (kind === "IMAGE") {
+          const regen = await apiRequest<RegenerateVariantsResponse>(`/admin/media/${finalized.data.id}/regenerate-variants`, {
+            method: "POST",
+          }, session.accessToken);
+          if (regen.data.generated === 0 && regen.data.skipped === 0 && regen.data.failed > 0) {
+            throw new Error(`Image optimization failed for ${file.name}. Please retry or run media backfill.`);
+          }
+        }
         uploadedCount += 1;
       }
 
@@ -867,31 +958,141 @@ export default function AdminMedia() {
     }
   };
 
+  const uploadMissingProductPhotos = async (product: MissingProductImageRow, files: FileList | null) => {
+    if (!session?.accessToken) return;
+    const selectedFiles = Array.from(files ?? []);
+    const validationError = validateProductImageFiles(selectedFiles);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const setRowState = (state: MissingProductUploadState) => {
+      setMissingUploadStates((current) => setMissingProductRowState(current, product.id, state));
+    };
+
+    const runWithConcurrency = async <T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> => {
+      const results: R[] = new Array(items.length);
+      let nextIndex = 0;
+      const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (true) {
+          const currentIndex = nextIndex;
+          nextIndex += 1;
+          if (currentIndex >= items.length) return;
+          results[currentIndex] = await worker(items[currentIndex]);
+        }
+      });
+      await Promise.all(runners);
+      return results;
+    };
+
+    try {
+      setRowState({ phase: "uploading", message: "Uploading…" });
+      const uploadedMediaAssetIds = await runWithConcurrency(selectedFiles, 3, async (file) => {
+        const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
+          "/admin/media/uploads/prepare",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              byteSize: file.size,
+              kind: "IMAGE",
+            }),
+          },
+          session.accessToken,
+        );
+
+        const uploadResponse = await fetch(prep.data.uploadUrl, {
+          method: prep.data.method,
+          headers: prep.data.headers,
+          body: file,
+        });
+        if (!uploadResponse.ok) throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);
+
+        const finalized = await apiRequest<{ data: { id: string } }>("/admin/media/uploads/finalize", {
+          method: "POST",
+          body: JSON.stringify({
+            storageKey: prep.data.storageKey,
+            publicUrl: prep.data.publicUrl,
+            kind: "IMAGE",
+            metadata: { byteSize: file.size, mimeType: file.type || "application/octet-stream" },
+            altText: `${product.name} - ${file.name}`,
+          }),
+        }, session.accessToken);
+
+        return finalized.data.id;
+      });
+
+      setRowState({ phase: "processing", message: "Processing images…" });
+      const regen = await apiRequest<RegenerateVariantsBatchResponse>("/admin/media/variants/regenerate", {
+        method: "POST",
+        body: JSON.stringify({
+          mediaIds: uploadedMediaAssetIds,
+          concurrency: 3,
+        }),
+      }, session.accessToken);
+      const optimizationCheck = validateVariantBatchBeforeAttach(regen.data.results);
+      if (optimizationCheck.ok === false) {
+        throw new Error(optimizationCheck.message);
+      }
+
+      setRowState({ phase: "attaching", message: "Attaching images…" });
+      await apiRequest(`/admin/products/${product.id}/images/attach`, {
+        method: "POST",
+        body: JSON.stringify({
+          mediaAssetIds: uploadedMediaAssetIds,
+        }),
+      }, session.accessToken);
+
+      setMissingImageProducts((current) => removeUploadedProductFromMissingList(current, product.id));
+      setRowState({ phase: "success", message: "Attached successfully" });
+      toast.success(`Uploaded ${uploadedMediaAssetIds.length} image${uploadedMediaAssetIds.length === 1 ? "" : "s"} for ${product.name}`);
+      await loadMedia();
+    } catch (err) {
+      setRowState({ phase: "error", message: err instanceof Error ? err.message : `Failed to upload images for ${product.name}` });
+      toast.error(err instanceof Error ? err.message : `Failed to upload images for ${product.name}`);
+    }
+  };
+
   const assignSelectedAsHero = async () => {
     if (!session?.accessToken || !selectedMediaId) return;
     try {
       setConfigSaving(true);
-      const sectionsRes = await apiRequest<{ data: Array<{ id: string; type: string; title?: string; subtitle?: string; content: Record<string, unknown>; enabled: boolean; order: number; status: "draft" | "published" }> }>(
-        "/admin/cms/home-sections",
-        {},
-        session.accessToken,
-      );
-      const nextSections = sectionsRes.data.map((section) => (
-        section.type === "hero"
-          ? {
-            ...section,
-            content: {
-              ...section.content,
-              backgroundMediaAssetId: selectedMediaId,
-            },
-          }
-          : section
-      ));
-      await apiRequest("/admin/cms/home-sections", {
-        method: "PUT",
-        body: JSON.stringify({ sections: nextSections }),
+      const mediaByIdResponse = await apiRequest<{ data: MediaAssetWithVariants[] }>("/admin/media/by-ids", {
+        method: "POST",
+        body: JSON.stringify({ ids: [selectedMediaId] }),
       }, session.accessToken);
-      toast.success("Homepage hero image assigned to selected media asset");
+      const selectedAsset = mediaByIdResponse.data[0];
+      if (!selectedAsset) throw new Error("Selected media asset could not be loaded.");
+
+      const chosenUrl = chooseOptimizedHeroUrl(selectedAsset);
+      if (!chosenUrl) {
+        throw new Error("No optimized variant URL found for this media asset. Generate variants first, then assign hero.");
+      }
+
+      const page = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home", {}, session.accessToken);
+      const heroIndex = page.data.draftContent.sections.findIndex((section) => section.type === "hero_banner");
+      if (heroIndex < 0) throw new Error("Homepage builder has no hero_banner section to assign.");
+
+      const nextContent: BuilderPageContent = {
+        sections: page.data.draftContent.sections.map((section, index) => (
+          index === heroIndex
+            ? { ...section, props: { ...section.props, imageUrl: chosenUrl } }
+            : section
+        )),
+      };
+
+      const saved = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home/draft", {
+        method: "PUT",
+        body: JSON.stringify({ content: nextContent }),
+      }, session.accessToken);
+
+      const loaded = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home", {}, session.accessToken);
+      const savedUrl = readHeroImageUrl(saved.data.draftContent);
+      const loadedUrl = readHeroImageUrl(loaded.data.draftContent);
+      setHeroAssignmentDebug({ selectedAssetId: selectedMediaId, chosenUrl, savedUrl, loadedUrl });
+      toast.success(`Hero assigned. selected=${selectedMediaId} chosen=${chosenUrl} saved=${savedUrl} loaded=${loadedUrl}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
     } finally {
@@ -961,10 +1162,79 @@ export default function AdminMedia() {
 
       <MediaBackfillTool accessToken={session?.accessToken} />
 
+      <div className="rounded-xl border border-rose-200 bg-rose-50/30 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-rose-900">Products missing images</h3>
+          <p className="text-xs text-rose-800">Upload one or more images directly from this list to quickly complete product media.</p>
+        </div>
+        {loadingMissingImageProducts ? (
+          <p className="text-sm text-gray-500">Loading products…</p>
+        ) : missingImageProducts.length === 0 ? (
+          <p className="text-sm text-gray-500">All products currently have at least one image.</p>
+        ) : (
+          <div className="rounded-lg border border-rose-100 bg-white overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-rose-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Product</th>
+                  <th className="px-3 py-2 text-left">SKU / Handle / ID</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Visibility</th>
+                  <th className="px-3 py-2 text-left">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missingImageProducts.map((product) => (
+                  <tr key={product.id} className="border-t border-rose-50">
+                    <td className="px-3 py-2 font-medium text-gray-900">{product.name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
+                      <div>SKU: {product.sku ?? "—"}</div>
+                      <div>Handle: {product.slug}</div>
+                      <div>ID: {product.id}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-700">{product.status ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-gray-700">{product.visibility ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      <div className="space-y-1">
+                        {missingUploadStates[product.id]?.message ? (
+                          <p className={`text-[11px] ${missingUploadStates[product.id]?.phase === "error" ? "text-red-600" : "text-gray-600"}`}>
+                            {missingUploadStates[product.id]?.phase === "error" ? `Failed: ${missingUploadStates[product.id]?.message}` : missingUploadStates[product.id]?.message}
+                          </p>
+                        ) : null}
+                      <label className="inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-700 text-white text-xs cursor-pointer disabled:opacity-50">
+                        {missingUploadStates[product.id]?.phase === "uploading"
+                          ? "Uploading..."
+                          : missingUploadStates[product.id]?.phase === "processing"
+                            ? "Processing..."
+                            : missingUploadStates[product.id]?.phase === "attaching"
+                              ? "Attaching..."
+                              : "Upload photos"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          disabled={isMissingProductRowBusy(missingUploadStates[product.id])}
+                          onChange={(event) => {
+                            void uploadMissingProductPhotos(product, event.target.files);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-2">
         <h3 className="text-sm font-semibold text-blue-900">Brand / Home Image Assignments</h3>
         <p className="text-xs text-blue-800">
-          Select a media image, then assign it as the homepage hero or site logo. Variants are generated by the existing media pipeline.
+          Hero assignment writes one optimized URL directly to the Builder home hero `imageUrl` and does not rewrite it.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -985,6 +1255,15 @@ export default function AdminMedia() {
             Selected asset: {selectedMediaId ?? "none"}
           </span>
         </div>
+        {heroAssignmentDebug ? (
+          <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 text-xs text-blue-900 space-y-1">
+            <p><strong>Hero Debug</strong></p>
+            <p>selected asset id: {heroAssignmentDebug.selectedAssetId}</p>
+            <p>chosen URL: {heroAssignmentDebug.chosenUrl}</p>
+            <p>saved URL: {heroAssignmentDebug.savedUrl}</p>
+            <p>loaded URL: {heroAssignmentDebug.loadedUrl}</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-3">

@@ -1,4 +1,5 @@
 import { MediaAsset } from "../types/admin";
+import { findVariantByKey, normalizeVariants } from "../lib/media-variants";
 
 const HERO_VARIANT_PREFERENCE = ["heroDesktop", "hero_desktop", "card", "thumbnail", "thumb"] as const;
 
@@ -17,22 +18,11 @@ export function canAssignSelectedAsset(selectedAsset: MediaAsset | null, saving:
 }
 
 export function pickOptimizedHeroVariant(asset: MediaAsset | null): { key: string; url: string } | null {
-  const variants = asset?.variants;
-  if (!variants) return null;
-
-  if (!Array.isArray(variants)) {
-    for (const key of HERO_VARIANT_PREFERENCE) {
-      const candidate = variants[key as keyof typeof variants] as any;
-      const url = String(candidate?.url ?? candidate?.publicUrl ?? "").trim();
-      if (url) return { key, url };
-    }
-  }
-
-  if (Array.isArray(variants)) {
-    for (const key of HERO_VARIANT_PREFERENCE) {
-      const variantUrl = variants.find((variant) => variant.key === key)?.publicUrl?.trim();
-      if (variantUrl) return { key, url: variantUrl };
-    }
+  const variants = normalizeVariants(asset?.variants);
+  for (const key of HERO_VARIANT_PREFERENCE) {
+    const found = findVariantByKey(variants, [key]);
+    const url = String(found?.url ?? found?.publicUrl ?? "").trim();
+    if (url) return { key, url };
   }
   return null;
 }

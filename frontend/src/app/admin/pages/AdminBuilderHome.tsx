@@ -25,6 +25,7 @@ import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
+import { variantKeys } from "../lib/media-variants";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -364,9 +365,7 @@ function InspectorImageField({
     chosenHeroUrl?: string;
     reason: string;
   }) => {
-    const variants = Array.isArray(params.asset.variants)
-      ? params.asset.variants.map((variant: any) => String(variant.key ?? "")).filter(Boolean)
-      : Object.keys((params.asset.variants ?? {}) as Record<string, unknown>);
+    const variants = variantKeys(params.asset.variants);
     setHeroDebug({
       selectedAssetId: params.asset.id,
       sourceEndpoint: params.sourceEndpoint,
@@ -489,7 +488,7 @@ function InspectorImageField({
         keyName,
         mediaId: finalized.data.id,
         publicUrl: finalized.data.publicUrl,
-        variants: Array.isArray(finalized.data.variants) ? finalized.data.variants.map((variant: any) => variant.key) : Object.keys((finalized.data.variants ?? {}) as Record<string, unknown>),
+        variants: variantKeys(finalized.data.variants),
         variantsPending: finalized.variantsPending ?? false,
         variantErrors: finalized.variantErrors ?? [],
       });
@@ -564,7 +563,7 @@ function InspectorImageField({
             keyName,
             mediaId: resolvedAsset.id,
             mediaPublicUrl: resolvedAsset.publicUrl,
-            variantKeys: Array.isArray(resolvedAsset.variants) ? resolvedAsset.variants.map((variant: any) => variant.key) : Object.keys((resolvedAsset.variants ?? {}) as Record<string, unknown>),
+            variantKeys: variantKeys(resolvedAsset.variants),
             chosenImageUrl: next,
           });
           if (isHeroField) {

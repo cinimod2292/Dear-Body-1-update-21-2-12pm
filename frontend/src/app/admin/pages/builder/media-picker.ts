@@ -1,20 +1,10 @@
 import { MediaAsset } from "../../types/admin";
 import { isSafeImageUrl } from "../../../builder/media-url";
 import { BuilderSectionType } from "../../../builder/types";
+import { findVariantByKey, normalizeVariants } from "../../lib/media-variants";
 
 function pickVariantUrl(asset: Pick<MediaAsset, "variants"> | null | undefined, preferredKeys: string[]) {
-  const variants = asset?.variants;
-  if (!variants) return null;
-
-  if (!Array.isArray(variants)) {
-    for (const key of preferredKeys) {
-      const record = variants[key as keyof typeof variants] as any;
-      const candidate = String(record?.url ?? record?.publicUrl ?? "").trim();
-      if (candidate && isSafeImageUrl(candidate, { isHero: preferredKeys.includes("heroDesktop") })) return candidate;
-    }
-  }
-
-  const list = Array.isArray(variants) ? variants : [];
+  const variants = normalizeVariants(asset?.variants);
   const keyAliases: Record<string, string[]> = {
     thumbnail: ["thumbnail", "thumb", "gallery_thumb"],
     gallery: ["gallery", "gallery_main"],
@@ -24,10 +14,9 @@ function pickVariantUrl(asset: Pick<MediaAsset, "variants"> | null | undefined, 
 
   for (const key of preferredKeys) {
     const aliases = keyAliases[key] ?? [key];
-    for (const alias of aliases) {
-      const candidate = String(list.find((variant) => variant.key === alias)?.publicUrl ?? "").trim();
-      if (candidate && isSafeImageUrl(candidate, { isHero: preferredKeys.includes("heroDesktop") })) return candidate;
-    }
+    const found = findVariantByKey(variants, aliases);
+    const candidate = String(found?.url ?? found?.publicUrl ?? "").trim();
+    if (candidate && isSafeImageUrl(candidate, { isHero: preferredKeys.includes("heroDesktop") })) return candidate;
   }
   return null;
 }

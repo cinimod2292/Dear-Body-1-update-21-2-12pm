@@ -3,16 +3,37 @@ import { isSafeImageUrl } from "../../../builder/media-url";
 import { BuilderSectionType } from "../../../builder/types";
 
 function pickVariantUrl(asset: Pick<MediaAsset, "variants"> | null | undefined, preferredKeys: string[]) {
-  const variants = Array.isArray(asset?.variants) ? asset?.variants : [];
+  const variants = asset?.variants;
+  if (!variants) return null;
+
+  if (!Array.isArray(variants)) {
+    for (const key of preferredKeys) {
+      const record = variants[key as keyof typeof variants] as any;
+      const candidate = String(record?.url ?? record?.publicUrl ?? "").trim();
+      if (candidate && isSafeImageUrl(candidate, { isHero: preferredKeys.includes("heroDesktop") })) return candidate;
+    }
+  }
+
+  const list = Array.isArray(variants) ? variants : [];
+  const keyAliases: Record<string, string[]> = {
+    thumbnail: ["thumbnail", "thumb", "gallery_thumb"],
+    gallery: ["gallery", "gallery_main"],
+    heroDesktop: ["heroDesktop", "hero_desktop", "card"],
+    heroMobile: ["heroMobile", "hero_mobile", "card"],
+  };
+
   for (const key of preferredKeys) {
-    const candidate = String(variants.find((variant) => variant.key === key)?.publicUrl ?? "").trim();
-    if (candidate && isSafeImageUrl(candidate)) return candidate;
+    const aliases = keyAliases[key] ?? [key];
+    for (const alias of aliases) {
+      const candidate = String(list.find((variant) => variant.key === alias)?.publicUrl ?? "").trim();
+      if (candidate && isSafeImageUrl(candidate, { isHero: preferredKeys.includes("heroDesktop") })) return candidate;
+    }
   }
   return null;
 }
 
-export function mediaAssetToImageUrl(asset: Pick<MediaAsset, "publicUrl"> | null | undefined) {
-  const candidate = String(asset?.publicUrl ?? "").trim();
+export function mediaAssetToImageUrl(asset: Pick<MediaAsset, "publicUrl" | "originalUrl"> | null | undefined) {
+  const candidate = String(asset?.originalUrl ?? asset?.publicUrl ?? "").trim();
   if (!candidate) return null;
   return isSafeImageUrl(candidate) ? candidate : null;
 }
@@ -24,7 +45,7 @@ export function resolveNextImageValue(currentValue: string, nextCandidate: strin
   return candidate;
 }
 
-export function mapSelectedMediaToFieldValue(currentValue: string, asset: Pick<MediaAsset, "publicUrl"> | null | undefined) {
+export function mapSelectedMediaToFieldValue(currentValue: string, asset: Pick<MediaAsset, "publicUrl" | "originalUrl"> | null | undefined) {
   const url = mediaAssetToImageUrl(asset);
   if (!url) return currentValue;
   return url;
@@ -32,7 +53,7 @@ export function mapSelectedMediaToFieldValue(currentValue: string, asset: Pick<M
 
 export function mapSelectedMediaVariantToFieldValue(
   currentValue: string,
-  asset: Pick<MediaAsset, "publicUrl" | "variants"> | null | undefined,
+  asset: Pick<MediaAsset, "publicUrl" | "variants" | "originalUrl"> | null | undefined,
   preferredKeys: string[],
   options?: { allowOriginalFallback?: boolean },
 ) {
@@ -48,7 +69,7 @@ export function isHeroImageField(sectionType: BuilderSectionType, keyName: strin
 
 export function resolveHeroImageSelection(
   currentValue: string,
-  asset: Pick<MediaAsset, "publicUrl" | "variants"> | null | undefined,
+  asset: Pick<MediaAsset, "publicUrl" | "variants" | "originalUrl"> | null | undefined,
   preferredKeys: string[],
 ) {
   const variantUrl = pickVariantUrl(asset, preferredKeys);
@@ -56,7 +77,7 @@ export function resolveHeroImageSelection(
     return {
       shouldUpdate: false,
       nextValue: currentValue,
-      warning: "This image has not finished optimizing yet. Run media backfill or try again in a moment.",
+      warning: "This image has no Cloudflare delivery variant available yet.",
     } as const;
   }
   const next = mapSelectedMediaVariantToFieldValue(currentValue, asset, preferredKeys, { allowOriginalFallback: false });
@@ -65,7 +86,7 @@ export function resolveHeroImageSelection(
     return {
       shouldUpdate: false,
       nextValue: currentValue,
-      warning: "This image has not finished optimizing yet. Run media backfill or try again in a moment.",
+      warning: "This image has no Cloudflare delivery variant available yet.",
     } as const;
   }
   return {

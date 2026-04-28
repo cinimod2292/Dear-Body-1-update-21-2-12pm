@@ -338,12 +338,92 @@ function InspectorImageField({
   query: ReturnType<typeof useEditor>["query"];
   accessToken?: string;
 }) {
+  type HeroDebugInfo = {
+    selectedAssetId: string;
+    sourceEndpoint: string;
+    storageKey: string;
+    mimeType: string;
+    kind: string;
+    variantKeys: string[];
+    variantsCount: number;
+    chosenHeroUrl: string;
+    reason: string;
+  };
+
   const imageValue = toFieldValue(value);
   const safe = isSafeImageUrl(imageValue);
   const isHeroField = isHeroImageField(sectionType, keyName);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [heroDebug, setHeroDebug] = useState<HeroDebugInfo | null>(null);
+
+  const setHeroDebugInfo = (params: {
+    asset: MediaAsset;
+    sourceEndpoint: string;
+    chosenHeroUrl?: string;
+    reason: string;
+  }) => {
+    const variants = Array.isArray(params.asset.variants) ? params.asset.variants : [];
+    setHeroDebug({
+      selectedAssetId: params.asset.id,
+      sourceEndpoint: params.sourceEndpoint,
+      storageKey: String(params.asset.storageKey ?? ""),
+      mimeType: String(params.asset.mimeType ?? ""),
+      kind: String(params.asset.kind ?? ""),
+      variantKeys: variants.map((variant) => String(variant.key ?? "")).filter(Boolean),
+      variantsCount: variants.length,
+      chosenHeroUrl: String(params.chosenHeroUrl ?? ""),
+      reason: params.reason,
+    });
+  };
+
+  const loadFullAssetById = async (assetId: string, sourceEndpoint: string) => {
+    if (!accessToken) return null;
+    const response = await apiRequest<{ data: MediaAsset[] }>("/admin/media/by-ids", {
+      method: "POST",
+      body: JSON.stringify({ ids: [assetId], view: "full" }),
+    }, accessToken);
+    const fullAsset = response.data[0] ?? null;
+    if (fullAsset) {
+      setHeroDebugInfo({ asset: fullAsset, sourceEndpoint, reason: "loaded_full_asset" });
+    }
+    return fullAsset;
+  };
+
+  const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
+    const initial = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+    if (initial.shouldUpdate) {
+      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: initial.nextValue, reason: "optimized_variant_available" });
+      return initial;
+    }
+
+    if (!accessToken) {
+      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_access_token_for_regeneration" });
+      return initial;
+    }
+
+    const regen = await apiRequest<{
+      data: {
+        generated: number;
+        skipped: number;
+        failed: number;
+        variantErrors?: string[];
+      };
+    }>(`/admin/media/assets/${asset.id}/regenerate-variants`, { method: "POST" }, accessToken);
+
+    const refreshed = await loadFullAssetById(asset.id, "/admin/media/by-ids?view=full");
+    const nextSelection = resolveHeroImageSelection(imageValue, refreshed ?? asset, preferredKeys);
+    setHeroDebugInfo({
+      asset: refreshed ?? asset,
+      sourceEndpoint,
+      chosenHeroUrl: nextSelection.shouldUpdate ? nextSelection.nextValue : "",
+      reason: nextSelection.shouldUpdate
+        ? "regenerated_variants_for_hero"
+        : `no_usable_variant_after_regen generated=${regen.data.generated} skipped=${regen.data.skipped} failed=${regen.data.failed} errors=${(regen.data.variantErrors ?? []).join("|")}`,
+    });
+    return nextSelection;
+  };
 
   const setFieldValue = (next: string) => {
     const safeNext = resolveNextImageValue(imageValue, next);
@@ -449,12 +529,7 @@ function InspectorImageField({
         variantsPending: finalized.variantsPending ?? false,
       });
       if (isHeroField) {
-        const variantKeys = finalized.data.variants?.map((variant) => variant.key) ?? [];
-        if (finalized.variantsPending || variantKeys.length === 0) {
-          toast.warning("Image uploaded. Optimizing variants — please wait, then choose it again.");
-          return;
-        }
-        const heroSelection = resolveHeroImageSelection(imageValue, finalized.data, preferredKeys);
+        const heroSelection = await ensureHeroOptimizedAsset(finalized.data, "/admin/media/uploads/finalize", preferredKeys);
         if (!heroSelection.shouldUpdate) {
           toast.warning(heroSelection.warning);
           return;
@@ -497,21 +572,25 @@ function InspectorImageField({
         accessToken={accessToken}
         onClose={() => setShowLibrary(false)}
         onSelect={(asset) => {
+          void (async () => {
           const preferredKeys = isHeroField
             ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
             : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
-          const next = mapSelectedMediaVariantToFieldValue(imageValue, asset, preferredKeys, {
+          const fullAssetPromise = accessToken ? loadFullAssetById(asset.id, "/admin/media/by-ids?view=full") : Promise.resolve(null);
+          const fullAsset = await fullAssetPromise;
+          const resolvedAsset = fullAsset ?? asset;
+          const next = mapSelectedMediaVariantToFieldValue(imageValue, resolvedAsset, preferredKeys, {
             allowOriginalFallback: !isHeroField,
           });
           builderDebugLog("library selected image URL", {
             keyName,
-            mediaId: asset.id,
-            mediaPublicUrl: asset.publicUrl,
-            variantKeys: asset.variants?.map((variant) => variant.key) ?? [],
+            mediaId: resolvedAsset.id,
+            mediaPublicUrl: resolvedAsset.publicUrl,
+            variantKeys: resolvedAsset.variants?.map((variant) => variant.key) ?? [],
             chosenImageUrl: next,
           });
           if (isHeroField) {
-            const heroSelection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+            const heroSelection = await ensureHeroOptimizedAsset(resolvedAsset, "/admin/media/by-ids?view=full", preferredKeys);
             if (!heroSelection.shouldUpdate) {
               toast.warning(heroSelection.warning);
               return;
@@ -521,8 +600,23 @@ function InspectorImageField({
             setFieldValue(next);
           }
           setShowLibrary(false);
+          })();
         }}
       />
+      {isHeroField && heroDebug ? (
+        <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-900 space-y-0.5">
+          <p><strong>Hero image debug</strong></p>
+          <p>selected asset id: {heroDebug.selectedAssetId}</p>
+          <p>source endpoint: {heroDebug.sourceEndpoint}</p>
+          <p>storageKey: {heroDebug.storageKey || "n/a"}</p>
+          <p>mimeType: {heroDebug.mimeType || "n/a"}</p>
+          <p>kind: {heroDebug.kind || "n/a"}</p>
+          <p>variants count: {heroDebug.variantsCount}</p>
+          <p>variant keys: {heroDebug.variantKeys.join(", ") || "none"}</p>
+          <p>chosen hero URL: {heroDebug.chosenHeroUrl || "none"}</p>
+          <p>reason: {heroDebug.reason}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

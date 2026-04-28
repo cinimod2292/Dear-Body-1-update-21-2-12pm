@@ -351,8 +351,8 @@ function InspectorImageField({
   };
 
   const imageValue = toFieldValue(value);
-  const safe = isSafeImageUrl(imageValue);
   const isHeroField = isHeroImageField(sectionType, keyName);
+  const safe = isSafeImageUrl(imageValue, { isHero: isHeroField });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -364,14 +364,16 @@ function InspectorImageField({
     chosenHeroUrl?: string;
     reason: string;
   }) => {
-    const variants = Array.isArray(params.asset.variants) ? params.asset.variants : [];
+    const variants = Array.isArray(params.asset.variants)
+      ? params.asset.variants.map((variant: any) => String(variant.key ?? "")).filter(Boolean)
+      : Object.keys((params.asset.variants ?? {}) as Record<string, unknown>);
     setHeroDebug({
       selectedAssetId: params.asset.id,
       sourceEndpoint: params.sourceEndpoint,
       storageKey: String(params.asset.storageKey ?? ""),
       mimeType: String(params.asset.mimeType ?? ""),
       kind: String(params.asset.kind ?? ""),
-      variantKeys: variants.map((variant) => String(variant.key ?? "")).filter(Boolean),
+      variantKeys: variants,
       variantsCount: variants.length,
       chosenHeroUrl: String(params.chosenHeroUrl ?? ""),
       reason: params.reason,
@@ -392,45 +394,13 @@ function InspectorImageField({
   };
 
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
-    const initial = resolveHeroImageSelection(imageValue, asset, preferredKeys);
-    if (initial.shouldUpdate) {
-      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: initial.nextValue, reason: "optimized_variant_available" });
-      return initial;
+    const selection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+    if (!selection.shouldUpdate) {
+      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
+      return selection;
     }
-
-    if (!accessToken) {
-      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_access_token_for_regeneration" });
-      return initial;
-    }
-
-    const regen = await apiRequest<{
-      data: {
-        status: "queued" | "running" | "succeeded" | "failed";
-        assetId: string;
-        startedAt: number;
-        message?: string;
-      };
-    }>(`/admin/media/assets/${asset.id}/regenerate-variants`, { method: "POST" }, accessToken);
-
-    let refreshed: MediaAsset | null = null;
-    let nextSelection = initial;
-    const pollAttempts = 20;
-    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 750));
-      refreshed = await loadFullAssetById(asset.id, "/admin/media/by-ids?view=full");
-      nextSelection = resolveHeroImageSelection(imageValue, refreshed ?? asset, preferredKeys);
-      if (nextSelection.shouldUpdate) break;
-    }
-
-    setHeroDebugInfo({
-      asset: refreshed ?? asset,
-      sourceEndpoint,
-      chosenHeroUrl: nextSelection.shouldUpdate ? nextSelection.nextValue : "",
-      reason: nextSelection.shouldUpdate
-        ? "regenerated_variants_for_hero"
-        : `no_usable_variant_after_regen queueStatus=${regen.data.status} startedAt=${regen.data.startedAt} message=${regen.data.message ?? ""}`,
-    });
-    return nextSelection;
+    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: selection.nextValue, reason: "cloudflare_variant_available" });
+    return selection;
   };
 
   const setFieldValue = (next: string) => {
@@ -519,14 +489,14 @@ function InspectorImageField({
         keyName,
         mediaId: finalized.data.id,
         publicUrl: finalized.data.publicUrl,
-        variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
+        variants: Array.isArray(finalized.data.variants) ? finalized.data.variants.map((variant: any) => variant.key) : Object.keys((finalized.data.variants ?? {}) as Record<string, unknown>),
         variantsPending: finalized.variantsPending ?? false,
         variantErrors: finalized.variantErrors ?? [],
       });
 
       const preferredKeys = isHeroField
-        ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
-        : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+        ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
+        : ["gallery", "card", "thumbnail"];
       const allowOriginalFallback = !isHeroField;
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
       builderDebugLog("upload selected image URL", {
@@ -582,8 +552,8 @@ function InspectorImageField({
         onSelect={(asset) => {
           void (async () => {
           const preferredKeys = isHeroField
-            ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
-            : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+            ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
+            : ["gallery", "card", "thumbnail"];
           const fullAssetPromise = accessToken ? loadFullAssetById(asset.id, "/admin/media/by-ids?view=full") : Promise.resolve(null);
           const fullAsset = await fullAssetPromise;
           const resolvedAsset = fullAsset ?? asset;
@@ -594,7 +564,7 @@ function InspectorImageField({
             keyName,
             mediaId: resolvedAsset.id,
             mediaPublicUrl: resolvedAsset.publicUrl,
-            variantKeys: resolvedAsset.variants?.map((variant) => variant.key) ?? [],
+            variantKeys: Array.isArray(resolvedAsset.variants) ? resolvedAsset.variants.map((variant: any) => variant.key) : Object.keys((resolvedAsset.variants ?? {}) as Record<string, unknown>),
             chosenImageUrl: next,
           });
           if (isHeroField) {

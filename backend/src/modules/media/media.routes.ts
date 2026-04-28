@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
@@ -52,6 +53,13 @@ type RegenerateSingleAssetVariantsResult = {
   variantKeys: string[];
   variantErrors: string[];
 };
+
+function deriveEffectiveMediaKind(params: { requestedKind?: "IMAGE" | "VIDEO" | "FILE"; mimeType?: string | null }): "IMAGE" | "VIDEO" | "FILE" {
+  const normalizedMimeType = String(params.mimeType ?? "").toLowerCase();
+  const requestedKind = params.requestedKind ?? "FILE";
+  if (requestedKind === "IMAGE" || normalizedMimeType.startsWith("image/")) return "IMAGE";
+  return requestedKind;
+}
 
 async function attemptVariantGenerationOnFinalize(
   runGeneration: () => Promise<VariantGenerationOutcome>,
@@ -134,9 +142,12 @@ async function regenerateSingleAssetVariants(
 
 export const __testOnly__attemptVariantGenerationOnFinalize = attemptVariantGenerationOnFinalize;
 export const __testOnly__regenerateSingleAssetVariants = regenerateSingleAssetVariants;
+export const __testOnly__deriveEffectiveMediaKind = deriveEffectiveMediaKind;
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
+  const variantRegenJobs = new Map<string, { status: "queued" | "running" | "succeeded" | "failed"; startedAt: number; finishedAt?: number; error?: string }>();
+  const VARIANT_REGEN_MAX_MS = 25_000;
   const executeBackfill = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -187,15 +198,42 @@ export async function mediaRoutes(app: FastifyInstance) {
         productId: body.productId ?? null,
       }, "Media variant backfill completed");
 
+      const hasAlreadyOptimizedReason = result.diagnostics.some((item) => item.reason === "variants_already_exist");
+      if (result.generated === 0 && !hasAlreadyOptimizedReason) {
+        return reply.status(422).send({
+          status: "failed",
+          mode: result.mode,
+          scanned: result.scanned,
+          processed: result.assetsProcessed,
+          skippedAssets: result.skippedAssets,
+          created: result.generated,
+          skipped: result.skipped,
+          failed: result.failed,
+          message: "Media variant backfill finished with zero generated variants and no already-existing variants.",
+          succeededAssets: succeeded,
+          failedAssets: result.failures.length,
+          diagnostics: result.diagnostics,
+          force: body.force,
+          assetId: body.assetId ?? null,
+          productId: body.productId ?? null,
+          sharpAvailable: result.sharpAvailable,
+          truncated: result.truncated,
+        });
+      }
+
       return reply.send({
         status: "ok",
         mode: result.mode,
+        scanned: result.scanned,
         processed: result.assetsProcessed,
+        skippedAssets: result.skippedAssets,
         created: result.generated,
+        skipped: result.skipped,
         failed: result.failed,
         message: "Media variant backfill completed",
         succeededAssets: succeeded,
         failedAssets: result.failures.length,
+        diagnostics: result.diagnostics,
         force: body.force,
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
@@ -282,6 +320,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       }, "Finalize upload payload received");
       const cfg = await resolveUploadConfig();
       const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey, cfg);
+      const normalizedMimeType = String(body.metadata?.mimeType ?? "application/octet-stream").toLowerCase();
+      const requestedKind = body.kind ?? "FILE";
+      const effectiveKind = deriveEffectiveMediaKind({ requestedKind, mimeType: normalizedMimeType });
 
       if (cfg.provider === "local") {
         const localPath = resolveLocalUploadPath(body.storageKey);
@@ -323,9 +364,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: body.storageKey.split("/").pop() ?? body.storageKey,
-          mimeType: body.metadata?.mimeType as string ?? "application/octet-stream",
+          mimeType: normalizedMimeType,
           byteSize: Number(body.metadata?.byteSize ?? 0),
-          kind: body.kind ?? "FILE",
+          kind: effectiveKind,
           storageKey: body.storageKey,
           publicUrl: resolvedPublicUrl,
           altText: body.altText,
@@ -339,6 +380,9 @@ export async function mediaRoutes(app: FastifyInstance) {
         storageKey: asset.storageKey,
         publicUrl: asset.publicUrl,
         kind: asset.kind,
+        requestedKind,
+        effectiveKind,
+        mimeType: normalizedMimeType,
       }, "Media upload finalized");
 
       let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };
@@ -599,25 +643,90 @@ export async function mediaRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { assetId } = request.params as { assetId: string };
       const query = request.query as { force?: string };
-      const cfg = await resolveUploadConfig();
-      const response = await regenerateSingleAssetVariants(assetId, {
-        force: query.force === "true",
-        timeoutMs: 6000,
-        runGeneration: (mediaId, options) => generateMediaVariantsForAsset(mediaId, options),
-        loadVariantRecords: async (mediaId) => {
-          const asset = await prisma.mediaAsset.findUnique({
-            where: { id: mediaId },
-            select: {
-              id: true,
-              variants: { select: { key: true, storageKey: true, width: true, height: true, mimeType: true }, orderBy: { key: "asc" } },
-            },
+      const force = query.force === "true";
+      const existing = variantRegenJobs.get(assetId);
+      if (existing && (existing.status === "queued" || existing.status === "running")) {
+        return reply.status(202).send({
+          data: {
+            status: existing.status,
+            assetId,
+            startedAt: existing.startedAt,
+            message: "Variant regeneration already in progress",
+          },
+        });
+      }
+
+      const startedAt = Date.now();
+      variantRegenJobs.set(assetId, { status: "queued", startedAt });
+
+      void (async () => {
+        try {
+          variantRegenJobs.set(assetId, { status: "running", startedAt });
+          request.log.info({ assetId, force }, "Async variant regeneration started");
+
+          const media = await prisma.mediaAsset.findUnique({
+            where: { id: assetId },
+            select: { id: true, storageKey: true, kind: true, mimeType: true },
           });
-          if (!asset) return null;
-          return { mediaId: asset.id, variants: asset.variants };
+          if (!media) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
+
+          const cfg = await resolveUploadConfig();
+          if (cfg.provider === "local") {
+            const sourcePath = resolveLocalUploadPath(media.storageKey);
+            const sourceExists = existsSync(sourcePath);
+            request.log.info({ assetId, storageKey: media.storageKey, sourcePath, sourceExists }, "Variant regeneration local source check");
+            if (!sourceExists) {
+              throw new AppError(422, "source file missing", "MEDIA_VARIANT_SOURCE_MISSING", { assetId, storageKey: media.storageKey, sourcePath });
+            }
+          } else if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
+            try {
+              await assertS3ObjectExists(media.storageKey, cfg);
+            } catch (error) {
+              throw new AppError(422, "source file missing", "MEDIA_VARIANT_SOURCE_MISSING", { assetId, storageKey: media.storageKey, detail: error instanceof Error ? error.message : String(error) });
+            }
+          }
+
+          const generation = await Promise.race([
+            generateMediaVariantsForAsset(assetId, {
+              force,
+              logger: (event, meta) => request.log.info({ assetId, event, ...meta }, "Variant generation step"),
+            }),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new AppError(504, "Variant regeneration exceeded timeout window", "MEDIA_VARIANT_TIMEOUT", { assetId, timeoutMs: VARIANT_REGEN_MAX_MS })), VARIANT_REGEN_MAX_MS);
+            }),
+          ]);
+
+          const finishedAt = Date.now();
+          request.log.info({
+            assetId,
+            generated: generation.generated,
+            skipped: generation.skipped,
+            failed: generation.failed,
+            errors: generation.errors,
+            elapsedMs: finishedAt - startedAt,
+          }, "Async variant regeneration completed");
+          variantRegenJobs.set(assetId, { status: "succeeded", startedAt, finishedAt });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const finishedAt = Date.now();
+          request.log.error({ assetId, err: error, elapsedMs: finishedAt - startedAt }, "Async variant regeneration failed");
+          variantRegenJobs.set(assetId, { status: "failed", startedAt, finishedAt, error: message });
+        } finally {
+          setTimeout(() => {
+            const current = variantRegenJobs.get(assetId);
+            if (current?.finishedAt) variantRegenJobs.delete(assetId);
+          }, 5 * 60_000).unref?.();
+        }
+      })();
+
+      return reply.status(202).send({
+        data: {
+          status: "queued",
+          assetId,
+          startedAt,
+          message: "Variant regeneration queued",
         },
-        resolveVariantPublicUrl: (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg),
       });
-      return reply.send({ data: response });
     },
   );
 

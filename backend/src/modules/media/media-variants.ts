@@ -213,13 +213,16 @@ export function __resetMediaVariantDepsForTests() {
 
 export async function generateMediaVariantsForAsset(
   mediaAssetId: string,
-  options: { force?: boolean; variantKeys?: VariantKey[] } = {},
+  options: { force?: boolean; variantKeys?: VariantKey[]; logger?: (event: string, meta?: Record<string, unknown>) => void } = {},
 ) {
+  const log = options.logger ?? (() => {});
   const asset = await mediaVariantDeps.findAssetWithVariants(mediaAssetId);
   if (!asset || asset.kind !== "IMAGE") return { generated: 0, skipped: 0, failed: 0, errors: [] as string[] };
 
   const cfg = await mediaVariantDeps.resolveUploadConfig();
+  log("source_read_start", { storageKey: asset.storageKey, mimeType: asset.mimeType });
   const original = await mediaVariantDeps.readStorageObjectBuffer(asset.storageKey, cfg);
+  log("source_read_done", { storageKey: asset.storageKey, sourceBytes: original.byteLength });
   const requestedSpecs = options.variantKeys?.length
     ? MEDIA_VARIANT_SPECS.filter((spec) => options.variantKeys?.includes(spec.key))
     : MEDIA_VARIANT_SPECS;
@@ -237,6 +240,7 @@ export async function generateMediaVariantsForAsset(
     }
 
     try {
+      log("variant_transform_start", { variantKey: spec.key, maxWidth: spec.maxWidth, maxHeight: spec.maxHeight });
       const transformed = await transformImage({
         input: original,
         sourceMimeType: asset.mimeType,
@@ -247,6 +251,7 @@ export async function generateMediaVariantsForAsset(
 
       const extension = transformed.mimeType === "image/png" ? "png" : transformed.mimeType === "image/webp" ? "webp" : "bin";
       const storageKey = `variants/${asset.id}/${spec.key}.${extension}`;
+      log("variant_write_start", { variantKey: spec.key, storageKey, mimeType: transformed.mimeType });
       await mediaVariantDeps.writeStorageObjectBuffer(storageKey, transformed.buffer, transformed.mimeType, cfg);
 
       await mediaVariantDeps.upsertVariant({
@@ -271,10 +276,12 @@ export async function generateMediaVariantsForAsset(
         },
       });
       generated += 1;
+      log("variant_done", { variantKey: spec.key, storageKey, width: transformed.width, height: transformed.height, byteSize: transformed.buffer.byteLength });
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${spec.key}: ${message}`);
+      log("variant_failed", { variantKey: spec.key, error: message });
     }
   }
 

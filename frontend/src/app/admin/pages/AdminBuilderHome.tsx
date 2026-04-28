@@ -405,22 +405,30 @@ function InspectorImageField({
 
     const regen = await apiRequest<{
       data: {
-        generated: number;
-        skipped: number;
-        failed: number;
-        variantErrors?: string[];
+        status: "queued" | "running" | "succeeded" | "failed";
+        assetId: string;
+        startedAt: number;
+        message?: string;
       };
     }>(`/admin/media/assets/${asset.id}/regenerate-variants`, { method: "POST" }, accessToken);
 
-    const refreshed = await loadFullAssetById(asset.id, "/admin/media/by-ids?view=full");
-    const nextSelection = resolveHeroImageSelection(imageValue, refreshed ?? asset, preferredKeys);
+    let refreshed: MediaAsset | null = null;
+    let nextSelection = initial;
+    const pollAttempts = 20;
+    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      refreshed = await loadFullAssetById(asset.id, "/admin/media/by-ids?view=full");
+      nextSelection = resolveHeroImageSelection(imageValue, refreshed ?? asset, preferredKeys);
+      if (nextSelection.shouldUpdate) break;
+    }
+
     setHeroDebugInfo({
       asset: refreshed ?? asset,
       sourceEndpoint,
       chosenHeroUrl: nextSelection.shouldUpdate ? nextSelection.nextValue : "",
       reason: nextSelection.shouldUpdate
         ? "regenerated_variants_for_hero"
-        : `no_usable_variant_after_regen generated=${regen.data.generated} skipped=${regen.data.skipped} failed=${regen.data.failed} errors=${(regen.data.variantErrors ?? []).join("|")}`,
+        : `no_usable_variant_after_regen queueStatus=${regen.data.status} startedAt=${regen.data.startedAt} message=${regen.data.message ?? ""}`,
     });
     return nextSelection;
   };

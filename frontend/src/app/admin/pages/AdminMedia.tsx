@@ -98,6 +98,9 @@ interface MediaBackfillResponse {
     failed: number;
     reason: string;
     errors?: string[];
+    storageKey?: string;
+    mimeType?: string;
+    variantsCount?: number;
   }>;
 }
 
@@ -238,7 +241,7 @@ function MediaBackfillTool({ accessToken, onBackfillComplete }: { accessToken?: 
             <div className="mt-2 max-h-40 overflow-auto rounded border border-green-200 bg-white/80 p-2 font-mono text-[11px]">
               {result.diagnostics.slice(0, 20).map((item) => (
                 <p key={`${item.assetId}-${item.reason}`}>
-                  {item.status} asset={item.assetId} reason={item.reason} generated={item.generated} skipped={item.skipped} failed={item.failed}
+                  {item.status} asset={item.assetId} storageKey={item.storageKey ?? "-"} mimeType={item.mimeType ?? "-"} variantsCount={item.variantsCount ?? 0} reason={item.reason} generated={item.generated} skipped={item.skipped} failed={item.failed}
                 </p>
               ))}
             </div>

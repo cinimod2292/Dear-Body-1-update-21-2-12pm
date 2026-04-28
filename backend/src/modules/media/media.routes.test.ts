@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { __testOnly__attemptVariantGenerationOnFinalize, __testOnly__regenerateSingleAssetVariants } from "./media.routes.js";
+import { __testOnly__attemptVariantGenerationOnFinalize, __testOnly__deriveEffectiveMediaKind, __testOnly__regenerateSingleAssetVariants } from "./media.routes.js";
 
 function buildLogger() {
   const calls: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
@@ -82,4 +82,10 @@ test("single-asset regenerate returns variant records with per-variant errors", 
   assert.deepEqual(result.variantErrors, ["card: sharp unavailable"]);
   assert.deepEqual(result.variantKeys, ["hero_desktop", "card"]);
   assert.equal(result.variants[0]?.publicUrl, "https://cdn.test/variants/asset_123/hero_desktop.webp");
+});
+
+test("deriveEffectiveMediaKind normalizes image mime uploads into IMAGE kind", () => {
+  assert.equal(__testOnly__deriveEffectiveMediaKind({ requestedKind: "FILE", mimeType: "image/jpeg" }), "IMAGE");
+  assert.equal(__testOnly__deriveEffectiveMediaKind({ requestedKind: "VIDEO", mimeType: "video/mp4" }), "VIDEO");
+  assert.equal(__testOnly__deriveEffectiveMediaKind({ requestedKind: "IMAGE", mimeType: "application/octet-stream" }), "IMAGE");
 });

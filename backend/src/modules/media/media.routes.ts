@@ -53,6 +53,13 @@ type RegenerateSingleAssetVariantsResult = {
   variantErrors: string[];
 };
 
+function deriveEffectiveMediaKind(params: { requestedKind?: "IMAGE" | "VIDEO" | "FILE"; mimeType?: string | null }): "IMAGE" | "VIDEO" | "FILE" {
+  const normalizedMimeType = String(params.mimeType ?? "").toLowerCase();
+  const requestedKind = params.requestedKind ?? "FILE";
+  if (requestedKind === "IMAGE" || normalizedMimeType.startsWith("image/")) return "IMAGE";
+  return requestedKind;
+}
+
 async function attemptVariantGenerationOnFinalize(
   runGeneration: () => Promise<VariantGenerationOutcome>,
   logger: LoggerLike,
@@ -134,6 +141,7 @@ async function regenerateSingleAssetVariants(
 
 export const __testOnly__attemptVariantGenerationOnFinalize = attemptVariantGenerationOnFinalize;
 export const __testOnly__regenerateSingleAssetVariants = regenerateSingleAssetVariants;
+export const __testOnly__deriveEffectiveMediaKind = deriveEffectiveMediaKind;
 
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
@@ -186,6 +194,29 @@ export async function mediaRoutes(app: FastifyInstance) {
         assetId: body.assetId ?? null,
         productId: body.productId ?? null,
       }, "Media variant backfill completed");
+
+      const hasAlreadyOptimizedReason = result.diagnostics.some((item) => item.reason === "variants_already_exist");
+      if (result.generated === 0 && !hasAlreadyOptimizedReason) {
+        return reply.status(422).send({
+          status: "failed",
+          mode: result.mode,
+          scanned: result.scanned,
+          processed: result.assetsProcessed,
+          skippedAssets: result.skippedAssets,
+          created: result.generated,
+          skipped: result.skipped,
+          failed: result.failed,
+          message: "Media variant backfill finished with zero generated variants and no already-existing variants.",
+          succeededAssets: succeeded,
+          failedAssets: result.failures.length,
+          diagnostics: result.diagnostics,
+          force: body.force,
+          assetId: body.assetId ?? null,
+          productId: body.productId ?? null,
+          sharpAvailable: result.sharpAvailable,
+          truncated: result.truncated,
+        });
+      }
 
       return reply.send({
         status: "ok",
@@ -286,6 +317,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       }, "Finalize upload payload received");
       const cfg = await resolveUploadConfig();
       const resolvedPublicUrl = resolvePublicUrlForStorageKey(body.storageKey, cfg);
+      const normalizedMimeType = String(body.metadata?.mimeType ?? "application/octet-stream").toLowerCase();
+      const requestedKind = body.kind ?? "FILE";
+      const effectiveKind = deriveEffectiveMediaKind({ requestedKind, mimeType: normalizedMimeType });
 
       if (cfg.provider === "local") {
         const localPath = resolveLocalUploadPath(body.storageKey);
@@ -327,9 +361,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: body.storageKey.split("/").pop() ?? body.storageKey,
-          mimeType: body.metadata?.mimeType as string ?? "application/octet-stream",
+          mimeType: normalizedMimeType,
           byteSize: Number(body.metadata?.byteSize ?? 0),
-          kind: body.kind ?? "FILE",
+          kind: effectiveKind,
           storageKey: body.storageKey,
           publicUrl: resolvedPublicUrl,
           altText: body.altText,
@@ -343,6 +377,9 @@ export async function mediaRoutes(app: FastifyInstance) {
         storageKey: asset.storageKey,
         publicUrl: asset.publicUrl,
         kind: asset.kind,
+        requestedKind,
+        effectiveKind,
+        mimeType: normalizedMimeType,
       }, "Media upload finalized");
 
       let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };

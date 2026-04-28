@@ -21,7 +21,13 @@ test("runMediaVariantsBackfill creates variants for image assets with no variant
   const originalFindMany = (prisma.mediaAsset as any).findMany;
   const originalFindUnique = (prisma.mediaAsset as any).findUnique;
   (prisma.mediaAsset as any).findMany = async () => [{ id: "asset_1" }];
-  (prisma.mediaAsset as any).findUnique = async () => ({ id: "asset_1", kind: "IMAGE" });
+  (prisma.mediaAsset as any).findUnique = async () => ({
+    id: "asset_1",
+    kind: "IMAGE",
+    mimeType: "image/jpeg",
+    storageKey: "uploads/2026-04-28/asset_1.jpg",
+    _count: { variants: 0 },
+  });
   t.after(() => {
     (prisma.mediaAsset as any).findMany = originalFindMany;
     (prisma.mediaAsset as any).findUnique = originalFindUnique;
@@ -47,7 +53,13 @@ test("runMediaVariantsBackfill reports per-asset failure reason when source file
   const originalFindMany = (prisma.mediaAsset as any).findMany;
   const originalFindUnique = (prisma.mediaAsset as any).findUnique;
   (prisma.mediaAsset as any).findMany = async () => [{ id: "asset_missing" }];
-  (prisma.mediaAsset as any).findUnique = async () => ({ id: "asset_missing", kind: "IMAGE" });
+  (prisma.mediaAsset as any).findUnique = async () => ({
+    id: "asset_missing",
+    kind: "IMAGE",
+    mimeType: "image/jpeg",
+    storageKey: "uploads/2026-04-28/asset_missing.jpg",
+    _count: { variants: 0 },
+  });
   t.after(() => {
     (prisma.mediaAsset as any).findMany = originalFindMany;
     (prisma.mediaAsset as any).findUnique = originalFindUnique;
@@ -60,4 +72,37 @@ test("runMediaVariantsBackfill reports per-asset failure reason when source file
   assert.equal(result.diagnostics[0]?.status, "failed");
   assert.equal(result.diagnostics[0]?.reason, "unexpected_error");
   assert.match(result.diagnostics[0]?.errors?.[0] ?? "", /Failed to read object/);
+});
+
+test("runMediaVariantsBackfill coerces image mime assets to IMAGE kind before generation", async (t) => {
+  __setMediaVariantsBackfillDepsForTests({
+    isSharpTransformerAvailable: async () => true,
+    generateMediaVariantsForAsset: async () => ({ generated: 1, skipped: 0, failed: 0, errors: [] }),
+  });
+  const originalFindMany = (prisma.mediaAsset as any).findMany;
+  const originalFindUnique = (prisma.mediaAsset as any).findUnique;
+  const originalUpdate = (prisma.mediaAsset as any).update;
+  (prisma.mediaAsset as any).findMany = async () => [{ id: "asset_file_image" }];
+  (prisma.mediaAsset as any).findUnique = async () => ({
+    id: "asset_file_image",
+    kind: "FILE",
+    mimeType: "image/png",
+    storageKey: "uploads/2026-04-28/asset_file_image.png",
+    _count: { variants: 0 },
+  });
+  let updatedKind: string | null = null;
+  (prisma.mediaAsset as any).update = async ({ data }: any) => {
+    updatedKind = data.kind;
+    return { id: "asset_file_image" };
+  };
+  t.after(() => {
+    (prisma.mediaAsset as any).findMany = originalFindMany;
+    (prisma.mediaAsset as any).findUnique = originalFindUnique;
+    (prisma.mediaAsset as any).update = originalUpdate;
+  });
+
+  const result = await runMediaVariantsBackfill({ all: true });
+  assert.equal(updatedKind, "IMAGE");
+  assert.equal(result.generated, 1);
+  assert.equal(result.diagnostics[0]?.status, "generated");
 });

@@ -7,6 +7,8 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { MissingProductImageRow, removeUploadedProductFromMissingList, validateProductImageFiles } from "../lib/missing-product-images";
 import { isMissingProductRowBusy, MissingProductUploadState, setMissingProductRowState, validateVariantBatchBeforeAttach } from "../lib/missing-product-upload-state";
+import { requireOptimizedHeroUrl } from "../lib/hero-media";
+import { canAssignSelectedAsset, resolveNextSelectedMediaId, selectedAssetLabel } from "./media-assignment";
 
 interface MediaResponse {
   data: PaginatedResult<MediaAsset>;
@@ -61,8 +63,8 @@ type BuilderPageRecord = {
   draftContent: BuilderPageContent;
 };
 
-type MediaVariant = { key?: string | null; publicUrl?: string | null };
-type MediaAssetWithVariants = MediaAsset & { variants?: MediaVariant[] };
+type MediaVariant = { key?: string | null; publicUrl?: string | null; url?: string | null };
+type MediaAssetWithVariants = MediaAsset & { variants?: MediaVariant[] | Record<string, MediaVariant | string | null | undefined> };
 
 type HeroAssignmentDebug = {
   selectedAssetId: string;
@@ -76,25 +78,27 @@ function readHeroImageUrl(content: BuilderPageContent): string {
   return typeof hero?.props?.imageUrl === "string" ? hero.props.imageUrl : "";
 }
 
-function chooseOptimizedHeroUrl(asset: MediaAssetWithVariants): string | null {
-  const variants = Array.isArray(asset.variants) ? asset.variants : [];
-  const preferredKeys = ["hero_desktop", "hero_desktop_2x", "lightbox", "gallery_main_2x", "gallery_main", "card_2x", "card", "thumb"];
-  for (const key of preferredKeys) {
-    const url = variants.find((variant) => String(variant?.key ?? "") === key)?.publicUrl?.trim();
-    if (url) return url;
-  }
-  return null;
-}
-
 type BackfillMode = "all" | "product" | "asset";
 
 interface MediaBackfillResponse {
   status: "ok";
   mode: BackfillMode;
+  scanned: number;
   processed: number;
+  skippedAssets: number;
   created: number;
+  skipped: number;
   failed: number;
   message: string;
+  diagnostics?: Array<{
+    assetId: string;
+    status: "generated" | "skipped" | "failed";
+    generated: number;
+    skipped: number;
+    failed: number;
+    reason: string;
+    errors?: string[];
+  }>;
 }
 
 interface ImageImportPreviewRow {
@@ -131,7 +135,7 @@ interface ImageImportCommitResponse {
 
 type ImportState = "idle" | "previewing" | "preview" | "importing" | "complete";
 
-function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
+function MediaBackfillTool({ accessToken, onBackfillComplete }: { accessToken?: string; onBackfillComplete?: () => Promise<void> }) {
   const [mode, setMode] = useState<BackfillMode>("all");
   const [productId, setProductId] = useState("");
   const [assetId, setAssetId] = useState("");
@@ -157,7 +161,13 @@ function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
       );
 
       setResult(response);
-      toast.success("Media variant backfill completed");
+      if (response.failed > 0 || (response.diagnostics ?? []).some((item) => item.status === "failed")) {
+        const firstFailure = (response.diagnostics ?? []).find((item) => item.status === "failed");
+        toast.error(`Backfill completed with failures. failed=${response.failed}${firstFailure?.reason ? ` first=${firstFailure.reason}` : ""}`);
+      } else {
+        toast.success("Media variant backfill completed");
+      }
+      await onBackfillComplete?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run media variant backfill");
       toast.error(err instanceof Error ? err.message : "Failed to run media variant backfill");
@@ -222,8 +232,17 @@ function MediaBackfillTool({ accessToken }: { accessToken?: string }) {
         <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
           <p className="font-medium">{result.message}</p>
           <p>
-            Mode: <strong>{result.mode}</strong> · Processed: <strong>{result.processed}</strong> · Created: <strong>{result.created}</strong> · Failed: <strong>{result.failed}</strong>
+            Mode: <strong>{result.mode}</strong> · Scanned: <strong>{result.scanned}</strong> · Processed: <strong>{result.processed}</strong> · Skipped assets: <strong>{result.skippedAssets}</strong> · Created: <strong>{result.created}</strong> · Variant skips: <strong>{result.skipped}</strong> · Failed: <strong>{result.failed}</strong>
           </p>
+          {result.diagnostics?.length ? (
+            <div className="mt-2 max-h-40 overflow-auto rounded border border-green-200 bg-white/80 p-2 font-mono text-[11px]">
+              {result.diagnostics.slice(0, 20).map((item) => (
+                <p key={`${item.assetId}-${item.reason}`}>
+                  {item.status} asset={item.assetId} reason={item.reason} generated={item.generated} skipped={item.skipped} failed={item.failed}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -888,6 +907,11 @@ export default function AdminMedia() {
     loadMissingImageProducts();
   }, [session?.accessToken]);
 
+  const selectedAsset = useMemo(
+    () => payload?.items.find((asset) => asset.id === selectedMediaId) ?? null,
+    [payload?.items, selectedMediaId],
+  );
+
   const onFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (!files.length || !session?.accessToken) return;
@@ -1062,15 +1086,12 @@ export default function AdminMedia() {
       setConfigSaving(true);
       const mediaByIdResponse = await apiRequest<{ data: MediaAssetWithVariants[] }>("/admin/media/by-ids", {
         method: "POST",
-        body: JSON.stringify({ ids: [selectedMediaId] }),
+        body: JSON.stringify({ ids: [selectedMediaId], view: "full" }),
       }, session.accessToken);
       const selectedAsset = mediaByIdResponse.data[0];
       if (!selectedAsset) throw new Error("Selected media asset could not be loaded.");
 
-      const chosenUrl = chooseOptimizedHeroUrl(selectedAsset);
-      if (!chosenUrl) {
-        throw new Error("No optimized variant URL found for this media asset. Generate variants first, then assign hero.");
-      }
+      const chosenUrl = requireOptimizedHeroUrl(selectedAsset);
 
       const page = await apiRequest<{ data: BuilderPageRecord }>("/admin/builder/pages/home", {}, session.accessToken);
       const heroIndex = page.data.draftContent.sections.findIndex((section) => section.type === "hero_banner");
@@ -1161,7 +1182,7 @@ export default function AdminMedia() {
         </div>
       </div>
 
-      <MediaBackfillTool accessToken={session?.accessToken} />
+      <MediaBackfillTool accessToken={session?.accessToken} onBackfillComplete={loadMedia} />
 
       <div className="rounded-xl border border-rose-200 bg-rose-50/30 p-4 space-y-3">
         <div>

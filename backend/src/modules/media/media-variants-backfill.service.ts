@@ -11,11 +11,14 @@ export type MediaVariantsBackfillOptions = {
 
 export type MediaVariantsBackfillResult = {
   mode: "all" | "product" | "asset";
+  scanned: number;
   assetIds: string[];
   assetsProcessed: number;
+  skippedAssets: number;
   generated: number;
   skipped: number;
   failed: number;
+  diagnostics: Array<{ assetId: string; status: "generated" | "skipped" | "failed"; generated: number; skipped: number; failed: number; reason: string; errors?: string[] }>;
   failures: Array<{ assetId: string; generated: number; skipped: number; failed: number; errors?: string[] }>;
   sharpAvailable: boolean;
   truncated: boolean;
@@ -25,6 +28,27 @@ export function resolveBackfillMode(options: MediaVariantsBackfillOptions): "all
   if (options.assetId) return "asset";
   if (options.productId) return "product";
   return "all";
+}
+
+type BackfillDeps = {
+  isSharpTransformerAvailable: typeof isSharpTransformerAvailable;
+  generateMediaVariantsForAsset: typeof generateMediaVariantsForAsset;
+};
+
+let backfillDeps: BackfillDeps = {
+  isSharpTransformerAvailable,
+  generateMediaVariantsForAsset,
+};
+
+export function __setMediaVariantsBackfillDepsForTests(overrides: Partial<BackfillDeps>) {
+  backfillDeps = { ...backfillDeps, ...overrides };
+}
+
+export function __resetMediaVariantsBackfillDepsForTests() {
+  backfillDeps = {
+    isSharpTransformerAvailable,
+    generateMediaVariantsForAsset,
+  };
 }
 
 export async function resolveBackfillAssetIds(filters: MediaVariantsBackfillOptions): Promise<string[]> {
@@ -51,7 +75,7 @@ export async function runMediaVariantsBackfill(
   log: (message: string, meta?: Record<string, unknown>) => void = () => {},
 ): Promise<MediaVariantsBackfillResult> {
   const mode = resolveBackfillMode(options);
-  const sharpAvailable = await isSharpTransformerAvailable();
+  const sharpAvailable = await backfillDeps.isSharpTransformerAvailable();
 
   if (!sharpAvailable) {
     log("media variant transformer unavailable", { sharpAvailable: false, mode });
@@ -62,20 +86,60 @@ export async function runMediaVariantsBackfill(
   const scopedAssetIds = assetIds.slice(0, maxAssets);
   const truncated = scopedAssetIds.length < assetIds.length;
 
+  let skippedAssets = 0;
   let generated = 0;
   let skipped = 0;
   let failed = 0;
+  const diagnostics: MediaVariantsBackfillResult["diagnostics"] = [];
   const failures: MediaVariantsBackfillResult["failures"] = [];
 
   for (const assetId of scopedAssetIds) {
     try {
-      const outcome = await generateMediaVariantsForAsset(assetId, { force: options.force });
+      const media = await prisma.mediaAsset.findUnique({
+        where: { id: assetId },
+        select: { id: true, kind: true },
+      });
+      if (!media) {
+        skippedAssets += 1;
+        diagnostics.push({ assetId, status: "skipped", generated: 0, skipped: 0, failed: 0, reason: "asset_not_found" });
+        log("media variant asset skipped", { assetId, reason: "asset_not_found" });
+        continue;
+      }
+      if (media.kind !== "IMAGE") {
+        skippedAssets += 1;
+        diagnostics.push({ assetId, status: "skipped", generated: 0, skipped: 0, failed: 0, reason: `unsupported_kind:${media.kind}` });
+        log("media variant asset skipped", { assetId, reason: "unsupported_kind", kind: media.kind });
+        continue;
+      }
+
+      const outcome = await backfillDeps.generateMediaVariantsForAsset(assetId, { force: options.force });
       generated += outcome.generated;
       skipped += outcome.skipped;
       failed += outcome.failed;
+      const status = outcome.failed > 0 ? "failed" : outcome.generated > 0 ? "generated" : "skipped";
+      const reason = outcome.failed > 0
+        ? "variant_generation_errors"
+        : outcome.generated > 0
+          ? "variants_generated"
+          : outcome.skipped > 0
+            ? "variants_already_exist"
+            : "no_variants_generated";
+      if (status === "skipped") skippedAssets += 1;
+
+      diagnostics.push({
+        assetId,
+        status,
+        generated: outcome.generated,
+        skipped: outcome.skipped,
+        failed: outcome.failed,
+        reason,
+        errors: outcome.errors,
+      });
 
       log("media variant asset processed", {
         assetId,
+        status,
+        reason,
         generated: outcome.generated,
         skipped: outcome.skipped,
         failed: outcome.failed,
@@ -94,6 +158,7 @@ export async function runMediaVariantsBackfill(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failed += 1;
+      diagnostics.push({ assetId, status: "failed", generated: 0, skipped: 0, failed: 1, reason: "unexpected_error", errors: [message] });
       failures.push({ assetId, generated: 0, skipped: 0, failed: 1, errors: [message] });
       log("media variant asset failed unexpectedly", { assetId, error: message });
     }
@@ -101,11 +166,14 @@ export async function runMediaVariantsBackfill(
 
   return {
     mode,
+    scanned: assetIds.length,
     assetIds: scopedAssetIds,
     assetsProcessed: scopedAssetIds.length,
+    skippedAssets,
     generated,
     skipped,
     failed,
+    diagnostics,
     failures,
     sharpAvailable,
     truncated,

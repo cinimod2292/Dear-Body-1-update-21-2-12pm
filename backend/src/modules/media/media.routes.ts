@@ -12,6 +12,129 @@ import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 import { regenerateVariantsForMediaIds } from "./media-variants-batch.js";
 import { toPickerMediaItem } from "./media-picker.js";
 
+type LoggerLike = {
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+};
+
+type VariantGenerationOutcome = {
+  generated?: number;
+  skipped?: number;
+  failed?: number;
+  errors?: string[];
+};
+
+type FinalizeVariantGenerationResult = {
+  variantsPending: boolean;
+  variantErrors: string[];
+  variants?: unknown[];
+  variantKeys?: string[];
+  generated?: number;
+  skipped?: number;
+  failed?: number;
+};
+
+type RegenerateSingleAssetVariantRecord = {
+  key: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  mimeType: string;
+};
+
+type RegenerateSingleAssetVariantsResult = {
+  mediaId: string;
+  generated: number;
+  skipped: number;
+  failed: number;
+  variants: Array<RegenerateSingleAssetVariantRecord & { publicUrl: string }>;
+  variantKeys: string[];
+  variantErrors: string[];
+};
+
+async function attemptVariantGenerationOnFinalize(
+  runGeneration: () => Promise<VariantGenerationOutcome>,
+  logger: LoggerLike,
+  options: { timeoutMs?: number; mediaAssetId: string },
+): Promise<FinalizeVariantGenerationResult> {
+  const timeoutMs = options.timeoutMs ?? 4000;
+
+  try {
+    const generationResult = await Promise.race<VariantGenerationOutcome | "timeout">([
+      runGeneration(),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+    ]);
+
+    if (generationResult === "timeout") {
+      logger.warn({ mediaAssetId: options.mediaAssetId, timeoutMs }, "Media variant generation did not complete before finalize timeout; returning pending status");
+      return { variantsPending: true, variantErrors: [] };
+    }
+
+    const variantErrors = generationResult.errors ?? [];
+    if (variantErrors.length > 0) {
+      logger.warn({ mediaAssetId: options.mediaAssetId, variantErrors }, "Media variant generation completed with per-variant errors");
+    }
+
+    return {
+      variantsPending: false,
+      variantErrors,
+      generated: generationResult.generated ?? 0,
+      skipped: generationResult.skipped ?? 0,
+      failed: generationResult.failed ?? 0,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Variant generation failed";
+    logger.warn({ mediaAssetId: options.mediaAssetId, err: error }, "Media variant generation failed during finalize");
+    return {
+      variantsPending: false,
+      variantErrors: [message],
+      failed: 1,
+    };
+  }
+}
+
+async function regenerateSingleAssetVariants(
+  mediaId: string,
+  options: {
+    force?: boolean;
+    timeoutMs?: number;
+    runGeneration: (mediaId: string, opts: { force?: boolean }) => Promise<VariantGenerationOutcome>;
+    loadVariantRecords: (mediaId: string) => Promise<{ mediaId: string; variants: RegenerateSingleAssetVariantRecord[] } | null>;
+    resolveVariantPublicUrl: (storageKey: string) => string;
+  },
+): Promise<RegenerateSingleAssetVariantsResult> {
+  const timeoutMs = options.timeoutMs ?? 6000;
+
+  const generationResult = await Promise.race<VariantGenerationOutcome | "timeout">([
+    options.runGeneration(mediaId, { force: options.force }),
+    new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+  ]);
+
+  if (generationResult === "timeout") {
+    throw new AppError(504, "Variant regeneration timed out", "MEDIA_VARIANT_TIMEOUT", { mediaId, timeoutMs });
+  }
+
+  const variantRecordPayload = await options.loadVariantRecords(mediaId);
+  const variants = (variantRecordPayload?.variants ?? []).map((variant) => ({
+    ...variant,
+    publicUrl: options.resolveVariantPublicUrl(variant.storageKey),
+  }));
+
+  return {
+    mediaId,
+    generated: generationResult.generated ?? 0,
+    skipped: generationResult.skipped ?? 0,
+    failed: generationResult.failed ?? 0,
+    variants,
+    variantKeys: variants.map((variant) => variant.key),
+    variantErrors: generationResult.errors ?? [],
+  };
+}
+
+export const __testOnly__attemptVariantGenerationOnFinalize = attemptVariantGenerationOnFinalize;
+export const __testOnly__regenerateSingleAssetVariants = regenerateSingleAssetVariants;
+
 export async function mediaRoutes(app: FastifyInstance) {
   let backfillInProgress = false;
   const executeBackfill = async (
@@ -221,7 +344,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };
       if (asset.kind === "IMAGE") {
         request.log.info({ mediaAssetId: asset.id }, "Starting media variant generation on finalize");
-        variantStatus = await __testOnly__attemptVariantGenerationOnFinalize(
+        variantStatus = await attemptVariantGenerationOnFinalize(
           () => generateMediaVariantsForAsset(asset.id),
           request.log,
           { mediaAssetId: asset.id },
@@ -477,7 +600,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       const { assetId } = request.params as { assetId: string };
       const query = request.query as { force?: string };
       const cfg = await resolveUploadConfig();
-      const response = await __testOnly__regenerateSingleAssetVariants(assetId, {
+      const response = await regenerateSingleAssetVariants(assetId, {
         force: query.force === "true",
         timeoutMs: 6000,
         runGeneration: (mediaId, options) => generateMediaVariantsForAsset(mediaId, options),
@@ -516,17 +639,6 @@ export async function mediaRoutes(app: FastifyInstance) {
       return reply.send({ data: result });
     },
   );
-
-  app.post(
-    "/admin/media/variants/regenerate",
-    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
-    async (request, reply) => {
-      const body = regenerateVariantsBatchSchema.parse(request.body);
-      const result = await regenerateVariantsForMediaIds(body.mediaIds, { concurrency: body.concurrency });
-      return reply.send({ data: result });
-    },
-  );
-
   app.post(
     "/admin/media/:mediaId/assign-product",
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },

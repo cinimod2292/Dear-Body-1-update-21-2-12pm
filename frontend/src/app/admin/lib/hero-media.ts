@@ -1,29 +1,24 @@
 import { isOptimizedVariantUrl } from "../../builder/media-url";
+import { findVariantByKey, normalizeVariants } from "./media-variants";
 
-type VariantLike = { key?: string | null; publicUrl?: string | null; url?: string | null };
-type AssetLike = { variants?: VariantLike[] | Record<string, VariantLike | string | null | undefined> | null };
+type AssetLike = { variants?: unknown };
 
-const PREFERRED_HERO_VARIANT_KEYS = ["hero_desktop", "hero_desktop_2x", "lightbox", "gallery_main_2x", "gallery_main", "card_2x", "card", "thumb"];
+const PREFERRED_HERO_VARIANT_KEYS = ["hero_desktop", "hero_desktop_2x", "heroDesktop", "lightbox", "gallery_main_2x", "gallery_main", "gallery", "card_2x", "card", "thumbnail", "thumb"];
 
-function toVariantArray(variants: AssetLike["variants"]): VariantLike[] {
-  if (Array.isArray(variants)) return variants;
-  if (!variants || typeof variants !== "object") return [];
-  return Object.entries(variants).map(([key, value]) => {
-    if (typeof value === "string") return { key, publicUrl: value };
-    if (!value || typeof value !== "object") return { key };
-    return { key, ...value };
-  });
-}
-
-function readVariantUrl(variant: VariantLike): string {
-  return String(variant.publicUrl ?? variant.url ?? "").trim();
+function readVariantUrl(variant: any): string {
+  return String(variant?.publicUrl ?? variant?.url ?? "").trim();
 }
 
 export function chooseOptimizedHeroUrl(asset: AssetLike): string | null {
-  const variants = toVariantArray(asset.variants);
+  const variants = normalizeVariants(asset.variants);
+  const debugKeys = ["thumbnail", "card", "gallery", "heroDesktop", "heroMobile", "original"] as const;
+  for (const dbgKey of debugKeys) {
+    const dbgVariant = findVariantByKey(variants, [dbgKey, dbgKey.toLowerCase(), dbgKey.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)]);
+    console.info("[hero-media] variant-url", { key: dbgKey, url: readVariantUrl(dbgVariant), publicUrl: String((dbgVariant as any)?.publicUrl ?? ""), rawUrl: String((dbgVariant as any)?.url ?? "") });
+  }
   for (const key of PREFERRED_HERO_VARIANT_KEYS) {
-    const variant = variants.find((entry) => String(entry?.key ?? "") === key);
-    const url = variant ? readVariantUrl(variant) : "";
+    const variant = findVariantByKey(variants, [key]);
+    const url = readVariantUrl(variant);
     if (url && isOptimizedVariantUrl(url)) return url;
   }
   return null;

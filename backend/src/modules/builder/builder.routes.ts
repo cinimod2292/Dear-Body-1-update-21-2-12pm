@@ -24,16 +24,11 @@ export async function builderRoutes(app: FastifyInstance) {
       const part = await request.file();
       if (!part) throw new AppError(400, "Image file is required.", "HERO_IMAGE_REQUIRED");
       if (!String(part.mimetype ?? "").startsWith("image/")) throw new AppError(400, "Only image files are allowed.", "HERO_IMAGE_INVALID_TYPE");
-      const MAX_BYTES = 15 * 1024 * 1024;
       const buffer = await part.toBuffer();
-      if (buffer.length > MAX_BYTES) throw new AppError(413, "Image exceeds 15MB size limit.", "HERO_IMAGE_TOO_LARGE");
       const storageKey = sanitizeStorageKey(`uploads/hero/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${(part.filename || "hero").replace(/[^a-zA-Z0-9._-]/g, "-")}`);
       await writeStorageObjectBuffer(storageKey, buffer, part.mimetype || "application/octet-stream", cfg);
       const originalUrl = resolvePublicUrlForStorageKey(storageKey, cfg);
-      const base = (cfg.publicBaseUrl || "").replace(/\/+$/, "");
-      const imageUrl = base ? `${base}/cdn-cgi/image/width=1920,fit=cover,format=auto,quality=85/${base}/${storageKey}` : `/cdn-cgi/image/width=1920,fit=cover,format=auto,quality=85/${originalUrl}`;
-      const imageMobileUrl = base ? `${base}/cdn-cgi/image/width=768,fit=cover,format=auto,quality=85/${base}/${storageKey}` : `/cdn-cgi/image/width=768,fit=cover,format=auto,quality=85/${originalUrl}`;
-      if (!imageUrl.includes("/cdn-cgi/image/") || !imageMobileUrl.includes("/cdn-cgi/image/")) throw new AppError(422, "Optimized Cloudflare URLs could not be created.", "HERO_IMAGE_OPTIMIZE_FAILED");
+      if (!originalUrl) throw new AppError(422, "Hero image upload did not return a public URL.", "HERO_IMAGE_UPLOAD_FAILED");
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: part.filename || "hero-image",
@@ -46,7 +41,7 @@ export async function builderRoutes(app: FastifyInstance) {
           metadata: { source: "builder-home-hero" },
         },
       });
-      return reply.send({ data: { imageAssetId: asset.id, imageUrl, imageMobileUrl, originalUrl, alt: asset.altText ?? "", storageKey, storageProvider: cfg.provider } });
+      return reply.send({ data: { imageAssetId: asset.id, imageUrl: originalUrl, imageMobileUrl: originalUrl, originalUrl, alt: asset.altText ?? "", storageKey, storageProvider: cfg.provider } });
     },
   );
   app.get(

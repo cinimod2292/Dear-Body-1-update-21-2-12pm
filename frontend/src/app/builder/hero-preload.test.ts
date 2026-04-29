@@ -20,13 +20,13 @@ test("getBuilderHeroImageUrl rejects unsafe URLs", () => {
   assert.equal(url, null);
 });
 
-test("getBuilderHeroImageUrl rejects original upload JPG URLs", () => {
+test("getBuilderHeroImageUrl allows original upload JPG URLs", () => {
   const url = getBuilderHeroImageUrl({
     sections: [
       { id: "hero", type: "hero_banner", enabled: true, props: { imageUrl: "https://api.example.com/local-upload/uploads/hero/01b39ccb-4318-4e0b-a99d-4fed6de0c025-DAX01-1-.jpg" } },
     ],
   } as any);
-  assert.equal(url, null);
+  assert.equal(url, "https://api.example.com/local-upload/uploads/hero/01b39ccb-4318-4e0b-a99d-4fed6de0c025-DAX01-1-.jpg");
 });
 
 test("heroPreloadDescriptor returns stable preload attributes", () => {

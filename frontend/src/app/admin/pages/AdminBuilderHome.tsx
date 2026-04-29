@@ -25,10 +25,9 @@ import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
-import { findVariantByKey, normalizeVariants, variantKeys } from "../lib/media-variants";
+import { variantKeys } from "../lib/media-variants";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
-import { HERO_UPLOAD_MAX_BYTES, isHeroUploadTooLarge } from "./builder/hero-upload";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -404,28 +403,6 @@ function InspectorImageField({
     return fullAsset;
   };
 
-  const resolveContractHeroUrls = (asset: MediaAsset) => {
-    const variants = normalizeVariants(asset.variants);
-    const desktop = String(findVariantByKey(variants, ["heroDesktop", "hero_desktop"])?.url ?? findVariantByKey(variants, ["heroDesktop", "hero_desktop"])?.publicUrl ?? "").trim();
-    const mobile = String(findVariantByKey(variants, ["heroMobile", "hero_mobile"])?.url ?? findVariantByKey(variants, ["heroMobile", "hero_mobile"])?.publicUrl ?? "").trim();
-    return { desktop, mobile };
-  };
-
-  const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
-    const { desktop, mobile } = resolveContractHeroUrls(asset);
-    builderDebugLog("hero contract variants", {
-      variantShape: Array.isArray(asset.variants) ? "array" : typeof asset.variants,
-      variantKeys: variantKeys(asset.variants),
-      heroDesktopUrl: desktop,
-      heroMobileUrl: mobile,
-    });
-    if (!desktop || !mobile) {
-      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
-      return { shouldUpdate: false, nextValue: imageValue, warning: "This image contract is missing heroDesktop/heroMobile optimized URLs." } as const;
-    }
-    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: desktop, reason: "cloudflare_variant_available" });
-    return { shouldUpdate: true, nextValue: desktop, warning: null, mobileUrl: mobile } as const;
-  };
 
   const setFieldValue = (next: string) => {
     const safeNext = resolveNextImageValue(imageValue, next);
@@ -463,11 +440,6 @@ function InspectorImageField({
       setUploadError("Only image files are allowed.");
       return;
     }
-    if (isHeroField && isHeroUploadTooLarge(file.size)) {
-      setUploadError("Hero image is too large. Max size is 15 MB.");
-      toast.error("Hero image is too large. Max size is 15 MB.");
-      return;
-    }
 
     try {
       setUploading(true);
@@ -484,7 +456,7 @@ function InspectorImageField({
           props.imageMobileUrl = data.imageMobileUrl;
           props.imageAlt = data.alt || file.name;
         });
-        setHeroDebug({ selectedAssetId: String(data.imageAssetId), sourceEndpoint: "/admin/builder/home/hero-image", storageKey: String(data.storageKey || ""), mimeType: file.type, kind: "IMAGE", variantKeys: ["heroDesktop","heroMobile"], variantsCount: 2, chosenHeroUrl: String(data.imageUrl || ""), reason: "dedicated_hero_upload" });
+        setHeroDebug({ selectedAssetId: String(data.imageAssetId), sourceEndpoint: "/admin/builder/home/hero-image", storageKey: String(data.storageKey || ""), mimeType: file.type, kind: "IMAGE", variantKeys: [], variantsCount: 0, chosenHeroUrl: String(data.imageUrl || ""), reason: "dedicated_hero_upload_original" });
         toast.success("Image uploaded");
         return;
       }
@@ -545,10 +517,8 @@ function InspectorImageField({
         variantErrors: finalized.variantErrors ?? [],
       });
 
-      const preferredKeys = isHeroField
-        ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
-        : ["gallery", "card", "thumbnail"];
-      const allowOriginalFallback = !isHeroField;
+      const preferredKeys = ["gallery", "card", "thumbnail"];
+      const allowOriginalFallback = true;
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
       builderDebugLog("upload selected image URL", {
         keyName,
@@ -558,22 +528,14 @@ function InspectorImageField({
         variantsPending: finalized.variantsPending ?? false,
       });
       if (isHeroField) {
-        const heroSelection = await ensureHeroOptimizedAsset(finalized.data, "/admin/media/uploads/finalize", preferredKeys);
-        if (!heroSelection.shouldUpdate) {
-          toast.warning(heroSelection.warning);
-          return;
-        }
         actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
           props.imageAssetId = finalized.data.id;
-          props.imageUrl = heroSelection.nextValue;
-          props.imageMobileUrl = (heroSelection as any).mobileUrl ?? heroSelection.nextValue;
+          props.imageUrl = finalized.data.publicUrl;
+          props.imageMobileUrl = finalized.data.publicUrl;
           builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
         });
       } else {
         setFieldValue(next);
-      }
-      if (!allowOriginalFallback && next === imageValue) {
-        toast.info("Optimizing image… hero variant not ready yet.");
       }
       toast.success("Image uploaded");
     } catch (err) {
@@ -601,16 +563,14 @@ function InspectorImageField({
         {!isHeroField ? <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button> : null}
         <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
       </div>
-      {isHeroField ? <p className="mt-1 text-[11px] text-gray-500">Hero upload limit: 15 MB. Recommended max width: 1920px.</p> : null}
+      {isHeroField ? <p className="mt-1 text-[11px] text-gray-500">Hero accepts JPG/PNG/WebP and standard image uploads.</p> : null}
       <MediaLibraryModal
         open={showLibrary}
         accessToken={accessToken}
         onClose={() => setShowLibrary(false)}
         onSelect={(asset) => {
           void (async () => {
-          const preferredKeys = isHeroField
-            ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
-            : ["gallery", "card", "thumbnail"];
+          const preferredKeys = ["gallery", "card", "thumbnail"];
           const fullAssetPromise = accessToken ? loadFullAssetById(asset.id, "/admin/media/by-ids?view=full") : Promise.resolve(null);
           const fullAsset = await fullAssetPromise;
           const resolvedAsset = fullAsset ?? asset;
@@ -626,15 +586,10 @@ function InspectorImageField({
             chosenImageUrl: next,
           });
           if (isHeroField) {
-            const heroSelection = await ensureHeroOptimizedAsset(resolvedAsset, "/admin/media/by-ids?view=full", preferredKeys);
-            if (!heroSelection.shouldUpdate) {
-              toast.warning(heroSelection.warning);
-              return;
-            }
             actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
               props.imageAssetId = resolvedAsset.id;
-              props.imageUrl = heroSelection.nextValue;
-              props.imageMobileUrl = (heroSelection as any).mobileUrl ?? heroSelection.nextValue;
+              props.imageUrl = resolvedAsset.publicUrl;
+              props.imageMobileUrl = resolvedAsset.publicUrl;
               builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
             });
           } else {

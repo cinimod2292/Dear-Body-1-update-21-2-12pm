@@ -72,4 +72,8 @@ test("synthesizes optimized hero variants when contract keys are raw originals",
 
   const picked = requireOptimizedHeroUrl({ variants: (repaired as any).variants });
   assert.match(picked, /\/cdn-cgi\/image\//);
+  assert.match(String((repaired as any).variants.heroDesktop?.url ?? ""), /\/cdn-cgi\/image\//);
+  assert.match(String((repaired as any).variants.card?.url ?? ""), /\/cdn-cgi\/image\//);
+  assert.match(String((repaired as any).variants.thumbnail?.url ?? ""), /\/cdn-cgi\/image\//);
+  assert.match(String((repaired as any).variants.original?.url ?? ""), /\/uploads\//);
 });

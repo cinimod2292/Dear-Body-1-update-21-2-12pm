@@ -412,6 +412,9 @@ function InspectorImageField({
       rawVariantKeys: variantKeys(asset.variants),
       repairedVariantShape: Array.isArray((repairedAsset as any).variants) ? "array" : typeof (repairedAsset as any).variants,
       repairedVariantKeys: variantKeys((repairedAsset as any).variants),
+      repairedVariantHeroDesktopUrl: String((repairedAsset as any)?.variants?.heroDesktop?.url ?? (repairedAsset as any)?.variants?.hero_desktop?.url ?? ""),
+      repairedVariantCardUrl: String((repairedAsset as any)?.variants?.card?.url ?? ""),
+      repairedVariantThumbnailUrl: String((repairedAsset as any)?.variants?.thumbnail?.url ?? (repairedAsset as any)?.variants?.thumb?.url ?? ""),
     });
     const selection = resolveHeroImageSelection(imageValue, repairedAsset, preferredKeys);
     try {

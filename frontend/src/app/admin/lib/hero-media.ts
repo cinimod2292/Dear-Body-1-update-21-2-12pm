@@ -52,18 +52,36 @@ export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; 
   if (!source) return asset;
   const map = new Map(variants.map((v) => [String((v as any).key ?? '').toLowerCase(), v as any]));
   map.set('original', { key: 'original', url: source });
-  const ensure = (key: string, width: number) => {
-    const current = map.get(key.toLowerCase());
-    const currentUrl = readVariantUrl(current);
-    if (isOptimizedVariantUrl(currentUrl)) return;
-    if (!currentUrl || isRawOriginalUrl(currentUrl)) {
-      map.set(key.toLowerCase(), { key, url: resizeUrlFromOriginal(source, width) });
+  const ensure = (keys: string[], width: number, fit: "cover" | "contain" = "cover") => {
+    const generated = resizeUrlFromOriginal(source, width).replace("fit=cover", `fit=${fit}`);
+    let foundOptimized = false;
+    for (const key of keys) {
+      const current = map.get(key.toLowerCase());
+      const currentUrl = readVariantUrl(current);
+      if (isOptimizedVariantUrl(currentUrl)) {
+        foundOptimized = true;
+        map.set(key.toLowerCase(), { key, url: currentUrl });
+      }
+    }
+    if (!foundOptimized) {
+      for (const key of keys) {
+        map.set(key.toLowerCase(), { key, url: generated });
+      }
+      return;
+    }
+    for (const key of keys) {
+      const current = map.get(key.toLowerCase());
+      const currentUrl = readVariantUrl(current);
+      if (!currentUrl || isRawOriginalUrl(currentUrl)) {
+        map.set(key.toLowerCase(), { key, url: generated });
+      }
     }
   };
-  ensure('heroDesktop', 1920);
-  ensure('heroMobile', 768);
-  ensure('card', 600);
-  ensure('thumbnail', 300);
+  ensure(['heroDesktop','hero_desktop'], 1920, 'cover');
+  ensure(['heroMobile','hero_mobile'], 768, 'cover');
+  ensure(['card','card_2x'], 600, 'cover');
+  ensure(['thumbnail','thumb','gallery_thumb'], 300, 'cover');
+  ensure(['gallery','gallery_main'], 1200, 'contain');
   const variantObject = Object.fromEntries(Array.from(map.values()).map((entry: any) => [String(entry?.key ?? ''), { url: readVariantUrl(entry) }]));
   return { ...asset, variants: variantObject };
 }

@@ -40,5 +40,5 @@ test("validateHeroAssignmentAsset rejects original-only image assets", () => {
     variants: [],
   } as any);
   assert.equal(result.ok, false);
-  assert.match((result as any).reason, /no optimized variants/i);
+  assert.match((result as any).reason, /cloudflare delivery variants/i);
 });

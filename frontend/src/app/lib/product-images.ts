@@ -33,6 +33,13 @@ export type ProductCardImageFields = {
 
 export const PRODUCT_CARD_IMAGE_SIZES = "(min-width: 1280px) 280px, (min-width: 1024px) 29vw, (min-width: 640px) 44vw, 92vw";
 
+
+function normalizeList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>) as T[];
+  return [];
+}
+
 export function extract2xUrl(srcSet?: string): string | undefined {
   if (!srcSet) return undefined;
   const second = srcSet.split(",")[1]?.trim();
@@ -46,7 +53,7 @@ export function normalizeProductImages(
     mediaAsset?: {
       publicUrl?: string | null;
       metadata?: Record<string, unknown> | null;
-      variants?: Array<{ key: string; publicUrl?: string | null; width?: number; height?: number }> | null;
+      variants?: Array<{ key: string; publicUrl?: string | null; width?: number; height?: number }> | Record<string, { url?: string | null; publicUrl?: string | null; width?: number; height?: number }> | null;
     } | null;
   }> | undefined,
 ): ProductGalleryImage[] {
@@ -67,18 +74,40 @@ export function normalizeProductImages(
       url: gallery.mediaAsset?.publicUrl?.trim() ?? "",
       width: parsePositiveNumber(gallery.mediaAsset?.metadata?.width),
       height: parsePositiveNumber(gallery.mediaAsset?.metadata?.height),
-      variants: Object.fromEntries(
-        (gallery.mediaAsset?.variants ?? [])
-          .filter((variant) => variant?.key && variant.publicUrl)
-          .map((variant) => [
-            variant.key,
-            {
-              url: String(variant.publicUrl),
-              width: parsePositiveNumber(variant.width),
-              height: parsePositiveNumber(variant.height),
-            },
-          ]),
-      ),
+      variants: (() => {
+        const rawVariants = gallery.mediaAsset?.variants;
+        console.info("[product-mapper] gallery.mediaAsset.variants", {
+          mediaAssetId: gallery.mediaAssetId ?? null,
+          valueType: typeof rawVariants,
+          isArray: Array.isArray(rawVariants),
+          keys: Object.keys((rawVariants ?? {}) as Record<string, unknown>),
+        });
+        const variantList = Array.isArray(rawVariants)
+          ? rawVariants.map((variant) => ({
+            key: String((variant as any)?.key ?? ""),
+            publicUrl: (variant as any)?.publicUrl ?? (variant as any)?.url,
+            width: (variant as any)?.width,
+            height: (variant as any)?.height,
+          }))
+          : Object.entries((rawVariants ?? {}) as Record<string, unknown>).map(([key, variant]) => ({
+            key,
+            publicUrl: (variant as any)?.publicUrl ?? (variant as any)?.url,
+            width: (variant as any)?.width,
+            height: (variant as any)?.height,
+          }));
+        return Object.fromEntries(
+          variantList
+            .filter((variant) => variant?.key && variant.publicUrl)
+            .map((variant) => [
+              variant.key,
+              {
+                url: String(variant.publicUrl),
+                width: parsePositiveNumber(variant.width),
+                height: parsePositiveNumber(variant.height),
+              },
+            ]),
+        );
+      })(),
     }))
     .filter((entry) => entry.mediaAssetId && entry.url);
 }

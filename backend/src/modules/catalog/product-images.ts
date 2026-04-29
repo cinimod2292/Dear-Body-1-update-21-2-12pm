@@ -40,8 +40,35 @@ type Media = {
   mimeType: string;
   storageKey?: string;
   publicUrl?: string | null;
-  variants?: Array<{ storageKey?: string; publicUrl?: string | null }>;
+  variants?: Array<{ key?: string; storageKey?: string; publicUrl?: string | null; width?: number; height?: number; mimeType?: string }>;
 };
+
+function variantObjectFromArray(media: Media, publicUrlForStorageKey: (storageKey: string) => string) {
+  const byKey = new Map((media.variants ?? []).map((variant) => [String(variant.key ?? ""), variant]));
+  const fromKey = (...keys: string[]) => {
+    for (const key of keys) {
+      const variant = byKey.get(key);
+      if (!variant) continue;
+      return {
+        url: variant.storageKey ? publicUrlForStorageKey(variant.storageKey) : String(variant.publicUrl ?? ""),
+        width: variant.width,
+        height: variant.height,
+        format: variant.mimeType?.split("/")[1] ?? "auto",
+      };
+    }
+    return null;
+  };
+
+  const originalUrl = media.storageKey ? publicUrlForStorageKey(media.storageKey) : String(media.publicUrl ?? "");
+  return {
+    thumbnail: fromKey("thumbnail", "thumb", "gallery_thumb") ?? { url: originalUrl },
+    card: fromKey("card", "card_2x") ?? { url: originalUrl },
+    gallery: fromKey("gallery", "gallery_main", "lightbox") ?? { url: originalUrl },
+    heroDesktop: fromKey("heroDesktop", "hero_desktop", "card") ?? { url: originalUrl },
+    heroMobile: fromKey("heroMobile", "hero_mobile", "card") ?? { url: originalUrl },
+    original: { url: originalUrl, format: media.mimeType?.split("/")[1] ?? "auto" },
+  };
+}
 
 export function withResolvedProductMediaUrls<T extends {
   galleries?: Array<{ mediaAsset?: Media | null }>;
@@ -52,13 +79,12 @@ export function withResolvedProductMediaUrls<T extends {
 ): T {
   const resolveMedia = (media?: Media | null) => {
     if (!media?.storageKey) return media;
+    const originalUrl = publicUrlForStorageKey(media.storageKey);
     return {
       ...media,
-      publicUrl: publicUrlForStorageKey(media.storageKey),
-      variants: media.variants?.map((variant) => ({
-        ...variant,
-        publicUrl: variant.storageKey ? publicUrlForStorageKey(variant.storageKey) : variant.publicUrl,
-      })),
+      publicUrl: originalUrl,
+      originalUrl,
+      variants: variantObjectFromArray(media, publicUrlForStorageKey),
     };
   };
 

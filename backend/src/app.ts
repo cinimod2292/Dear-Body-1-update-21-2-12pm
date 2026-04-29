@@ -37,7 +37,12 @@ export async function buildApp() {
   });
 
   await app.register(cors, {
-    origin: "https://dear-body-1-update-21-2-12pm.vercel.app",
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (/^https?:\/\/localhost(?::\d+)?$/i.test(origin)) return cb(null, true);
+      if (/\.vercel\.app$/i.test(origin)) return cb(null, true);
+      return cb(null, false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     preflight: true,

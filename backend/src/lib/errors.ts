@@ -20,6 +20,12 @@ export function assertOrThrow(condition: unknown, statusCode: number, message: s
 
 export function registerErrorHandler(app: { setErrorHandler: Function }) {
   app.setErrorHandler((error: unknown, request: FastifyRequest, reply: FastifyReply) => {
+    const statusCode = typeof (error as { statusCode?: unknown })?.statusCode === "number" ? Number((error as { statusCode: number }).statusCode) : null;
+    const errorCode = typeof (error as { code?: unknown })?.code === "string" ? String((error as { code: string }).code) : "";
+    if (statusCode === 413 || errorCode === "FST_REQ_FILE_TOO_LARGE") {
+      return reply.status(413).send({ error: "Hero image is too large. Max size is 15 MB." });
+    }
+
     if (
       typeof error === "object"
       && error !== null

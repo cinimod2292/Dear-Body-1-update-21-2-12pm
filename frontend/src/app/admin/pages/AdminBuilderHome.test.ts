@@ -5,6 +5,7 @@ import { removeSection } from "./builder/editor-state";
 import { pageContentToCraftNodes } from "../../builder/craft-mapper";
 import { normalizeLoadContent } from "./builder/load-normalize";
 import { resolveHeroSelectionUrl } from "./builder/hero-selection";
+import { isHeroUploadTooLarge } from "./builder/hero-upload";
 
 test("page builder media normalization handles Cloudflare contract object variants", () => {
   const cloudflareContractVariants = {
@@ -72,4 +73,9 @@ test("AdminBuilderHome hero flow uses repaired /cdn-cgi URL and keeps variant ob
   assert.equal(Array.isArray((result.repairedAsset as any).variants), false);
   assert.match(String((result.repairedAsset as any).variants.heroDesktop?.url ?? ""), /\/cdn-cgi\/image\//);
   assert.match(result.requiredUrl, /\/cdn-cgi\/image\//);
+});
+
+test("frontend blocks oversized hero upload before POST", () => {
+  assert.equal(isHeroUploadTooLarge(16 * 1024 * 1024), true);
+  assert.equal(isHeroUploadTooLarge(14 * 1024 * 1024), false);
 });

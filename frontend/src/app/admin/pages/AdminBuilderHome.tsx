@@ -28,6 +28,7 @@ import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImage
 import { findVariantByKey, normalizeVariants, variantKeys } from "../lib/media-variants";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
+import { HERO_UPLOAD_MAX_BYTES, isHeroUploadTooLarge } from "./builder/hero-upload";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -462,6 +463,11 @@ function InspectorImageField({
       setUploadError("Only image files are allowed.");
       return;
     }
+    if (isHeroField && isHeroUploadTooLarge(file.size)) {
+      setUploadError("Hero image is too large. Max size is 15 MB.");
+      toast.error("Hero image is too large. Max size is 15 MB.");
+      return;
+    }
 
     try {
       setUploading(true);
@@ -597,6 +603,7 @@ function InspectorImageField({
         {!isHeroField ? <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button> : null}
         <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
       </div>
+      {isHeroField ? <p className="mt-1 text-[11px] text-gray-500">Hero upload limit: 15 MB. Recommended max width: 1920px.</p> : null}
       <MediaLibraryModal
         open={showLibrary}
         accessToken={accessToken}

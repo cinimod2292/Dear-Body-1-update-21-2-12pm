@@ -26,6 +26,7 @@ import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector"
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
+import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -913,6 +914,10 @@ export default function AdminBuilderHome() {
   const unsaved = useMemo(() => JSON.stringify(craftNodesToPageContent(serialized)) !== JSON.stringify(savedSnapshot), [serialized, savedSnapshot]);
 
   useEffect(() => {
+    logBuildMarker("AdminBuilderHome:init");
+  }, []);
+
+  useEffect(() => {
     if (status === "saved" || status === "published" || status === "saving" || status === "publishing") return;
     setStatus(unsaved ? "unsaved" : "saved");
   }, [unsaved]);
@@ -942,6 +947,7 @@ export default function AdminBuilderHome() {
     try {
       setLoading(true);
       setError(null);
+      logBuildMarker("AdminBuilderHome:load");
       const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
       builderDebugLog("loaded draft content", {
         heroImageUrl: normalizeList<BuilderSection>((page.draftContent as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
@@ -1066,7 +1072,10 @@ export default function AdminBuilderHome() {
           <button className={`px-2 py-1 rounded border ${viewport === "tablet" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("tablet")}><Tablet size={14} /></button>
           <button className={`px-2 py-1 rounded border ${viewport === "mobile" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("mobile")}><Smartphone size={14} /></button>
         </div>
-        <span className="text-xs text-gray-500">Drag presets into canvas, manage sections from the tree, then edit fields in Inspector.</span>
+        <div className="text-right">
+          <span className="block text-xs text-gray-500">Drag presets into canvas, manage sections from the tree, then edit fields in Inspector.</span>
+          <span className="block text-[10px] text-gray-400">{BUILD_MARKER}</span>
+        </div>
       </div>
 
       <CraftWorkspace

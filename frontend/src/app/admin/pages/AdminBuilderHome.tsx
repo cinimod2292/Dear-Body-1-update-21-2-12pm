@@ -43,6 +43,24 @@ function builderDebugLog(message: string, payload: Record<string, unknown>) {
   console.info(`[builder-home] ${message}`, payload);
 }
 
+
+function normalizeList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>) as T[];
+  return [];
+}
+
+function logBuilderVariantDiagnostic(area: string, variants: unknown) {
+  const isArray = Array.isArray(variants);
+  const isObject = Boolean(variants && typeof variants === "object" && !isArray);
+  const keys = isObject ? Object.keys(variants as Record<string, unknown>) : [];
+  console.info("[builder-diagnostic] variant-shape", { area, valueType: typeof variants, isArray, isObject, keys });
+}
+
+export function __testOnly__normalizeList<T>(value: unknown): T[] {
+  return normalizeList<T>(value);
+}
+
 function BuilderCanvas({ children }: { children?: ReactNode }) {
   return <div className="space-y-3">{children}</div>;
 }
@@ -365,6 +383,7 @@ function InspectorImageField({
     chosenHeroUrl?: string;
     reason: string;
   }) => {
+    logBuilderVariantDiagnostic("InspectorImageField.setHeroDebugInfo", params.asset.variants);
     const variants = variantKeys(params.asset.variants);
     setHeroDebug({
       selectedAssetId: params.asset.id,
@@ -489,6 +508,7 @@ function InspectorImageField({
         mediaId: finalized.data.id,
         publicUrl: finalized.data.publicUrl,
         variants: variantKeys(finalized.data.variants),
+        variantShape: (Array.isArray(finalized.data.variants) ? "array" : typeof finalized.data.variants),
         variantsPending: finalized.variantsPending ?? false,
         variantErrors: finalized.variantErrors ?? [],
       });
@@ -564,6 +584,7 @@ function InspectorImageField({
             mediaId: resolvedAsset.id,
             mediaPublicUrl: resolvedAsset.publicUrl,
             variantKeys: variantKeys(resolvedAsset.variants),
+            variantShape: (Array.isArray(resolvedAsset.variants) ? "array" : typeof resolvedAsset.variants),
             chosenImageUrl: next,
           });
           if (isHeroField) {
@@ -683,7 +704,8 @@ function renderFieldControl(args: {
 }
 
 function extractHeroImageUrlFromContent(content: BuilderPageContent) {
-  const hero = content.sections.find((section) => section.type === "hero_banner");
+  const sections = normalizeList<BuilderSection>((content as any)?.sections);
+  const hero = sections.find((section) => section?.type === "hero_banner");
   return String(hero?.props?.imageUrl ?? "");
 }
 
@@ -894,6 +916,26 @@ export default function AdminBuilderHome() {
     if (status === "saved" || status === "published" || status === "saving" || status === "publishing") return;
     setStatus(unsaved ? "unsaved" : "saved");
   }, [unsaved]);
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      const message = String(event.error?.message ?? event.message ?? "");
+      if (!/filter is not a function/i.test(message)) return;
+      const snapshot = craftNodesToPageContent(serialized);
+      const sections = normalizeList<BuilderSection>((snapshot as any)?.sections);
+      const hero = sections.find((section) => section?.type === "hero_banner");
+      console.error("[builder-diagnostic] runtime-filter-crash", {
+        area: "AdminBuilderHome",
+        message,
+        sectionsType: typeof (snapshot as any)?.sections,
+        sectionsIsArray: Array.isArray((snapshot as any)?.sections),
+        sectionKeys: Object.keys(((snapshot as any)?.sections ?? {}) as Record<string, unknown>),
+        heroPropsKeys: Object.keys((hero?.props ?? {}) as Record<string, unknown>),
+      });
+    };
+    window.addEventListener("error", onError);
+    return () => window.removeEventListener("error", onError);
+  }, [serialized]);
+
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -902,7 +944,7 @@ export default function AdminBuilderHome() {
       setError(null);
       const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
       builderDebugLog("loaded draft content", {
-        heroImageUrl: page.draftContent.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroImageUrl: normalizeList<BuilderSection>((page.draftContent as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
       });
       builderDebugLog("before pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
@@ -912,7 +954,7 @@ export default function AdminBuilderHome() {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
       setProducts(productsResponse);
-      setSavedSnapshot(page.draftContent);
+      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
@@ -932,7 +974,7 @@ export default function AdminBuilderHome() {
       setStatus("saving");
       const content = craftNodesToPageContent(nodes);
       builderDebugLog("saving draft content", {
-        heroImageUrl: content.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroImageUrl: normalizeList<BuilderSection>((content as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
       });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
       builderDebugLog("save draft response content", {
@@ -945,7 +987,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(saved.draftContent);
+      setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
@@ -975,7 +1017,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(published.draftContent);
+      setSavedSnapshot({ ...published.draftContent, sections: normalizeList<BuilderSection>((published.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
@@ -1000,7 +1042,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(page.draftContent);
+      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");

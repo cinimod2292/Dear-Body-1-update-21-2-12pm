@@ -25,6 +25,7 @@ import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
+import { variantKeys } from "../lib/media-variants";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -40,6 +41,24 @@ function isBuilderDebugEnabled() {
 function builderDebugLog(message: string, payload: Record<string, unknown>) {
   if (!isBuilderDebugEnabled()) return;
   console.info(`[builder-home] ${message}`, payload);
+}
+
+
+function normalizeList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>) as T[];
+  return [];
+}
+
+function logBuilderVariantDiagnostic(area: string, variants: unknown) {
+  const isArray = Array.isArray(variants);
+  const isObject = Boolean(variants && typeof variants === "object" && !isArray);
+  const keys = isObject ? Object.keys(variants as Record<string, unknown>) : [];
+  console.info("[builder-diagnostic] variant-shape", { area, valueType: typeof variants, isArray, isObject, keys });
+}
+
+export function __testOnly__normalizeList<T>(value: unknown): T[] {
+  return normalizeList<T>(value);
 }
 
 function BuilderCanvas({ children }: { children?: ReactNode }) {
@@ -351,8 +370,8 @@ function InspectorImageField({
   };
 
   const imageValue = toFieldValue(value);
-  const safe = isSafeImageUrl(imageValue);
   const isHeroField = isHeroImageField(sectionType, keyName);
+  const safe = isSafeImageUrl(imageValue, { isHero: isHeroField });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -364,14 +383,15 @@ function InspectorImageField({
     chosenHeroUrl?: string;
     reason: string;
   }) => {
-    const variants = Array.isArray(params.asset.variants) ? params.asset.variants : [];
+    logBuilderVariantDiagnostic("InspectorImageField.setHeroDebugInfo", params.asset.variants);
+    const variants = variantKeys(params.asset.variants);
     setHeroDebug({
       selectedAssetId: params.asset.id,
       sourceEndpoint: params.sourceEndpoint,
       storageKey: String(params.asset.storageKey ?? ""),
       mimeType: String(params.asset.mimeType ?? ""),
       kind: String(params.asset.kind ?? ""),
-      variantKeys: variants.map((variant) => String(variant.key ?? "")).filter(Boolean),
+      variantKeys: variants,
       variantsCount: variants.length,
       chosenHeroUrl: String(params.chosenHeroUrl ?? ""),
       reason: params.reason,
@@ -392,45 +412,13 @@ function InspectorImageField({
   };
 
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
-    const initial = resolveHeroImageSelection(imageValue, asset, preferredKeys);
-    if (initial.shouldUpdate) {
-      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: initial.nextValue, reason: "optimized_variant_available" });
-      return initial;
+    const selection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+    if (!selection.shouldUpdate) {
+      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
+      return selection;
     }
-
-    if (!accessToken) {
-      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_access_token_for_regeneration" });
-      return initial;
-    }
-
-    const regen = await apiRequest<{
-      data: {
-        status: "queued" | "running" | "succeeded" | "failed";
-        assetId: string;
-        startedAt: number;
-        message?: string;
-      };
-    }>(`/admin/media/assets/${asset.id}/regenerate-variants`, { method: "POST" }, accessToken);
-
-    let refreshed: MediaAsset | null = null;
-    let nextSelection = initial;
-    const pollAttempts = 20;
-    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 750));
-      refreshed = await loadFullAssetById(asset.id, "/admin/media/by-ids?view=full");
-      nextSelection = resolveHeroImageSelection(imageValue, refreshed ?? asset, preferredKeys);
-      if (nextSelection.shouldUpdate) break;
-    }
-
-    setHeroDebugInfo({
-      asset: refreshed ?? asset,
-      sourceEndpoint,
-      chosenHeroUrl: nextSelection.shouldUpdate ? nextSelection.nextValue : "",
-      reason: nextSelection.shouldUpdate
-        ? "regenerated_variants_for_hero"
-        : `no_usable_variant_after_regen queueStatus=${regen.data.status} startedAt=${regen.data.startedAt} message=${regen.data.message ?? ""}`,
-    });
-    return nextSelection;
+    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: selection.nextValue, reason: "cloudflare_variant_available" });
+    return selection;
   };
 
   const setFieldValue = (next: string) => {
@@ -519,14 +507,15 @@ function InspectorImageField({
         keyName,
         mediaId: finalized.data.id,
         publicUrl: finalized.data.publicUrl,
-        variants: finalized.data.variants?.map((variant) => variant.key) ?? [],
+        variants: variantKeys(finalized.data.variants),
+        variantShape: (Array.isArray(finalized.data.variants) ? "array" : typeof finalized.data.variants),
         variantsPending: finalized.variantsPending ?? false,
         variantErrors: finalized.variantErrors ?? [],
       });
 
       const preferredKeys = isHeroField
-        ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
-        : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+        ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
+        : ["gallery", "card", "thumbnail"];
       const allowOriginalFallback = !isHeroField;
       const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
       builderDebugLog("upload selected image URL", {
@@ -582,8 +571,8 @@ function InspectorImageField({
         onSelect={(asset) => {
           void (async () => {
           const preferredKeys = isHeroField
-            ? ["hero_desktop", "gallery_main_2x", "gallery_main", "lightbox", "card_2x", "card", "thumb"]
-            : ["gallery_main", "gallery_main_2x", "card_2x", "card", "thumb", "lightbox"];
+            ? ["heroDesktop", "heroMobile", "card", "gallery", "thumbnail"]
+            : ["gallery", "card", "thumbnail"];
           const fullAssetPromise = accessToken ? loadFullAssetById(asset.id, "/admin/media/by-ids?view=full") : Promise.resolve(null);
           const fullAsset = await fullAssetPromise;
           const resolvedAsset = fullAsset ?? asset;
@@ -594,7 +583,8 @@ function InspectorImageField({
             keyName,
             mediaId: resolvedAsset.id,
             mediaPublicUrl: resolvedAsset.publicUrl,
-            variantKeys: resolvedAsset.variants?.map((variant) => variant.key) ?? [],
+            variantKeys: variantKeys(resolvedAsset.variants),
+            variantShape: (Array.isArray(resolvedAsset.variants) ? "array" : typeof resolvedAsset.variants),
             chosenImageUrl: next,
           });
           if (isHeroField) {
@@ -714,7 +704,8 @@ function renderFieldControl(args: {
 }
 
 function extractHeroImageUrlFromContent(content: BuilderPageContent) {
-  const hero = content.sections.find((section) => section.type === "hero_banner");
+  const sections = normalizeList<BuilderSection>((content as any)?.sections);
+  const hero = sections.find((section) => section?.type === "hero_banner");
   return String(hero?.props?.imageUrl ?? "");
 }
 
@@ -925,6 +916,26 @@ export default function AdminBuilderHome() {
     if (status === "saved" || status === "published" || status === "saving" || status === "publishing") return;
     setStatus(unsaved ? "unsaved" : "saved");
   }, [unsaved]);
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      const message = String(event.error?.message ?? event.message ?? "");
+      if (!/filter is not a function/i.test(message)) return;
+      const snapshot = craftNodesToPageContent(serialized);
+      const sections = normalizeList<BuilderSection>((snapshot as any)?.sections);
+      const hero = sections.find((section) => section?.type === "hero_banner");
+      console.error("[builder-diagnostic] runtime-filter-crash", {
+        area: "AdminBuilderHome",
+        message,
+        sectionsType: typeof (snapshot as any)?.sections,
+        sectionsIsArray: Array.isArray((snapshot as any)?.sections),
+        sectionKeys: Object.keys(((snapshot as any)?.sections ?? {}) as Record<string, unknown>),
+        heroPropsKeys: Object.keys((hero?.props ?? {}) as Record<string, unknown>),
+      });
+    };
+    window.addEventListener("error", onError);
+    return () => window.removeEventListener("error", onError);
+  }, [serialized]);
+
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -933,7 +944,7 @@ export default function AdminBuilderHome() {
       setError(null);
       const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
       builderDebugLog("loaded draft content", {
-        heroImageUrl: page.draftContent.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroImageUrl: normalizeList<BuilderSection>((page.draftContent as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
       });
       builderDebugLog("before pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
@@ -943,7 +954,7 @@ export default function AdminBuilderHome() {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
       setProducts(productsResponse);
-      setSavedSnapshot(page.draftContent);
+      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
@@ -963,7 +974,7 @@ export default function AdminBuilderHome() {
       setStatus("saving");
       const content = craftNodesToPageContent(nodes);
       builderDebugLog("saving draft content", {
-        heroImageUrl: content.sections.find((section) => section.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroImageUrl: normalizeList<BuilderSection>((content as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
       });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
       builderDebugLog("save draft response content", {
@@ -976,7 +987,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(saved.draftContent);
+      setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
@@ -1006,7 +1017,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(published.draftContent);
+      setSavedSnapshot({ ...published.draftContent, sections: normalizeList<BuilderSection>((published.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
@@ -1031,7 +1042,7 @@ export default function AdminBuilderHome() {
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setSavedSnapshot(page.draftContent);
+      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");

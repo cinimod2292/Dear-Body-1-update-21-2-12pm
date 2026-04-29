@@ -5,10 +5,10 @@ import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "./hero-preload";
 test("getBuilderHeroImageUrl prefers first enabled hero with safe URL", () => {
   const url = getBuilderHeroImageUrl({
     sections: [
-      { id: "hero", type: "hero_banner", enabled: true, props: { imageUrl: "https://cdn.example.com/hero.webp" } },
+      { id: "hero", type: "hero_banner", enabled: true, props: { imageUrl: "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg" } },
     ],
   } as any);
-  assert.equal(url, "https://cdn.example.com/hero.webp");
+  assert.equal(url, "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg");
 });
 
 test("getBuilderHeroImageUrl rejects unsafe URLs", () => {
@@ -30,10 +30,10 @@ test("getBuilderHeroImageUrl rejects original upload JPG URLs", () => {
 });
 
 test("heroPreloadDescriptor returns stable preload attributes", () => {
-  assert.deepEqual(heroPreloadDescriptor("https://cdn.example.com/hero.webp"), {
+  assert.deepEqual(heroPreloadDescriptor("https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg"), {
     rel: "preload",
     as: "image",
-    href: "https://cdn.example.com/hero.webp",
+    href: "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg",
     imagesizes: "100vw",
   });
 });

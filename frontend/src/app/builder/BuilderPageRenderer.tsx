@@ -26,7 +26,7 @@ export function BuilderPageRenderer({
   onSectionSelect,
   interactive = false,
 }: BuilderPageRendererProps) {
-  const sections = Array.isArray(content?.sections) ? content.sections : [];
+  const sections = Array.isArray(content?.sections) ? content.sections : Object.values((content?.sections ?? {}) as Record<string, BuilderSection>);
   return (
     <>
       {sections.filter((section) => section?.enabled !== false).map((section) => {

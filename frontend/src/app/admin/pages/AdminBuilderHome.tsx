@@ -27,6 +27,7 @@ import { extractSelectedNodeId, resolveInspectableSection } from "./builder/sect
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
 import { requireOptimizedHeroUrl, synthesizeOptimizedHeroVariants } from "../lib/hero-media";
+import { resolveHeroSelectionUrl } from "./builder/hero-selection";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
@@ -406,9 +407,17 @@ function InspectorImageField({
 
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
     const repairedAsset = synthesizeOptimizedHeroVariants(asset);
+    builderDebugLog("hero raw/repaired variants", {
+      rawVariantShape: Array.isArray(asset.variants) ? "array" : typeof asset.variants,
+      rawVariantKeys: variantKeys(asset.variants),
+      repairedVariantShape: Array.isArray((repairedAsset as any).variants) ? "array" : typeof (repairedAsset as any).variants,
+      repairedVariantKeys: variantKeys((repairedAsset as any).variants),
+    });
     const selection = resolveHeroImageSelection(imageValue, repairedAsset, preferredKeys);
     try {
-      const requiredUrl = requireOptimizedHeroUrl({ variants: repairedAsset.variants });
+      builderDebugLog("hero requireOptimizedHeroUrl input", { variantKeys: variantKeys((repairedAsset as any).variants) });
+      const resolved = resolveHeroSelectionUrl(asset, imageValue, preferredKeys);
+      const requiredUrl = resolved.requiredUrl;
       setHeroDebugInfo({ asset: repairedAsset as MediaAsset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
       return {
         shouldUpdate: true,
@@ -433,6 +442,7 @@ function InspectorImageField({
         builderDebugLog("selected hero chosenHeroUrl", { selectedNodeId, keyName, chosenHeroUrl: next, safeNext });
       }
       builderDebugLog("setProp image field", {
+        assignedImageUrl: safeNext,
         selectedNodeId,
         sectionType,
         keyName,

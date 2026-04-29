@@ -51,6 +51,7 @@ export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; 
   const source = String(asset.originalUrl ?? asset.publicUrl ?? '').trim();
   if (!source) return asset;
   const map = new Map(variants.map((v) => [String((v as any).key ?? '').toLowerCase(), v as any]));
+  map.set('original', { key: 'original', url: source });
   const ensure = (key: string, width: number) => {
     const current = map.get(key.toLowerCase());
     const currentUrl = readVariantUrl(current);
@@ -63,5 +64,6 @@ export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; 
   ensure('heroMobile', 768);
   ensure('card', 600);
   ensure('thumbnail', 300);
-  return { ...asset, variants: Array.from(map.values()) };
+  const variantObject = Object.fromEntries(Array.from(map.values()).map((entry: any) => [String(entry?.key ?? ''), { url: readVariantUrl(entry) }]));
+  return { ...asset, variants: variantObject };
 }

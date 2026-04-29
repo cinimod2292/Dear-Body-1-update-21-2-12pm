@@ -29,7 +29,8 @@ async function parseJsonSafe(res: Response) {
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const makeRequest = async (requestToken?: string) => {
     const headers = new Headers(options.headers);
-    if (options.body !== undefined && !headers.has("Content-Type")) {
+    const isFormDataBody = typeof FormData !== "undefined" && options.body instanceof FormData;
+    if (options.body !== undefined && !headers.has("Content-Type") && !isFormDataBody) {
       headers.set("Content-Type", "application/json");
     }
     if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);

@@ -26,9 +26,9 @@ import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector"
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { findVariantByKey, normalizeVariants, variantKeys } from "../lib/media-variants";
-import { requireOptimizedHeroUrl } from "../lib/hero-media";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
+import { HERO_UPLOAD_MAX_BYTES, isHeroUploadTooLarge } from "./builder/hero-upload";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -423,9 +423,8 @@ function InspectorImageField({
       setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
       return { shouldUpdate: false, nextValue: imageValue, warning: "This image contract is missing heroDesktop/heroMobile optimized URLs." } as const;
     }
-    const requiredUrl = requireOptimizedHeroUrl({ variants: asset.variants });
-    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
-    return { shouldUpdate: true, nextValue: requiredUrl, warning: null, mobileUrl: mobile } as const;
+    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: desktop, reason: "cloudflare_variant_available" });
+    return { shouldUpdate: true, nextValue: desktop, warning: null, mobileUrl: mobile } as const;
   };
 
   const setFieldValue = (next: string) => {
@@ -464,10 +463,32 @@ function InspectorImageField({
       setUploadError("Only image files are allowed.");
       return;
     }
+    if (isHeroField && isHeroUploadTooLarge(file.size)) {
+      setUploadError("Hero image is too large. Max size is 15 MB.");
+      toast.error("Hero image is too large. Max size is 15 MB.");
+      return;
+    }
 
     try {
       setUploading(true);
       setUploadError(null);
+      if (isHeroField) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("alt", file.name);
+        const payload = await apiRequest<{ data: any }>("/admin/builder/home/hero-image", { method: "POST", body: fd }, accessToken);
+        const data = payload.data as any;
+        actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+          props.imageAssetId = data.imageAssetId;
+          props.imageUrl = data.imageUrl;
+          props.imageMobileUrl = data.imageMobileUrl;
+          props.imageAlt = data.alt || file.name;
+        });
+        setHeroDebug({ selectedAssetId: String(data.imageAssetId), sourceEndpoint: "/admin/builder/home/hero-image", storageKey: String(data.storageKey || ""), mimeType: file.type, kind: "IMAGE", variantKeys: ["heroDesktop","heroMobile"], variantsCount: 2, chosenHeroUrl: String(data.imageUrl || ""), reason: "dedicated_hero_upload" });
+        toast.success("Image uploaded");
+        return;
+      }
+
       const prep = await apiRequest<{ data: { uploadUrl: string; publicUrl: string; storageKey: string; method: "PUT"; headers: Record<string, string> } }>(
         "/admin/media/uploads/prepare",
         {
@@ -577,9 +598,10 @@ function InspectorImageField({
           {uploading ? "Uploading..." : "Upload image"}
           <input type="file" accept="image/*" className="hidden" disabled={uploading || !accessToken} onChange={onUploadFile} />
         </label>
-        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button>
+        {!isHeroField ? <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button> : null}
         <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
       </div>
+      {isHeroField ? <p className="mt-1 text-[11px] text-gray-500">Hero upload limit: 15 MB. Recommended max width: 1920px.</p> : null}
       <MediaLibraryModal
         open={showLibrary}
         accessToken={accessToken}

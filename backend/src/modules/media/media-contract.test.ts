@@ -42,3 +42,20 @@ test("legacy media contract still resolves DB variant rows", () => {
   assert.match(contract.variants.thumbnail.url, /variants\/m2\/thumb\.webp/);
   assert.ok(contract.variants.card.url.length > 0);
 });
+
+
+test("toMediaAssetContract does not set heroDesktop to raw original for cloudflare-r2 assets", () => {
+  const contract = toMediaAssetContract({
+    id: "m3",
+    kind: "IMAGE",
+    storageKey: "uploads/2026/source.jpg",
+    mimeType: "image/jpeg",
+    metadata: { storageProvider: "cloudflare-r2" },
+    variants: [],
+  }, { provider: "cloudflare-r2", publicBaseUrl: "https://media.dearbody.co.za", signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any);
+
+  assert.notEqual(contract.variants.heroDesktop.url, contract.originalUrl);
+  assert.match(contract.variants.heroDesktop.url, /cdn-cgi\/image\/width=1920/);
+  assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=480/);
+  assert.match(contract.variants.thumbnail.url, /cdn-cgi\/image\/width=160/);
+});

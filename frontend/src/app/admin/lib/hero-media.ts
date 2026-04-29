@@ -11,6 +11,11 @@ function readVariantUrl(variant: any): string {
 
 export function chooseOptimizedHeroUrl(asset: AssetLike): string | null {
   const variants = normalizeVariants(asset.variants);
+  const debugKeys = ["thumbnail", "card", "gallery", "heroDesktop", "heroMobile", "original"] as const;
+  for (const dbgKey of debugKeys) {
+    const dbgVariant = findVariantByKey(variants, [dbgKey, dbgKey.toLowerCase(), dbgKey.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)]);
+    console.info("[hero-media] variant-url", { key: dbgKey, url: readVariantUrl(dbgVariant), publicUrl: String((dbgVariant as any)?.publicUrl ?? ""), rawUrl: String((dbgVariant as any)?.url ?? "") });
+  }
   for (const key of PREFERRED_HERO_VARIANT_KEYS) {
     const variant = findVariantByKey(variants, [key]);
     const url = readVariantUrl(variant);

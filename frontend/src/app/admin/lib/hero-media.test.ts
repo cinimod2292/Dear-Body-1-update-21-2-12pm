@@ -30,3 +30,21 @@ test("requireOptimizedHeroUrl throws clear error when optimized variant missing"
     /No optimized variant URL found for this media asset/,
   );
 });
+
+
+test("hero selector accepts Cloudflare-native heroDesktop URL", () => {
+  const url = chooseOptimizedHeroUrl({
+    variants: {
+      heroDesktop: { url: "https://media.example.com/cdn-cgi/image/width=1920/https://media.example.com/uploads/a.jpg" },
+    },
+  });
+  assert.equal(url, "https://media.example.com/cdn-cgi/image/width=1920/https://media.example.com/uploads/a.jpg");
+});
+
+test("hero selector rejects raw admin media original jpg", () => {
+  assert.throws(() => requireOptimizedHeroUrl({
+    variants: {
+      heroDesktop: { url: "/admin/media/public/uploads/a/source.jpg" },
+    },
+  }), /No optimized variant URL found/);
+});

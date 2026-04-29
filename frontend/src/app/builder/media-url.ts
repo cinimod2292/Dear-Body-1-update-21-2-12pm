@@ -10,7 +10,9 @@ export function isSafeImageUrl(value: string, options?: { isHero?: boolean }) {
   if (/^\/api\/media\/public\/variants\/.+/i.test(url)) return true;
   if (/^\/(?:api\/media\/public\/)?uploads\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(url)) return false;
   if (options?.isHero) {
+    if (isLikelyOriginalUploadUrl(url)) return false;
     if (isApprovedCloudflareUrl(url)) return true;
+    if (isOptimizedVariantUrl(url)) return true;
     return /^\/api\/media\/public\/variants\/.+/i.test(url);
   }
   if (url.startsWith("/")) return true;

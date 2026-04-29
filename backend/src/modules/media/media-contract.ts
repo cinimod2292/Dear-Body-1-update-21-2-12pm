@@ -62,9 +62,17 @@ function resolveOriginalUrl(asset: MediaLike, cfg: UploadConfig) {
 
 function resolveCloudflareResizedUrl(originalUrl: string, key: keyof typeof CLOUD_FLARE_SPECS, cfg: UploadConfig) {
   const base = String(cfg.publicBaseUrl ?? "").replace(/\/+$/, "");
-  if (!base) return originalUrl;
   const spec = CLOUD_FLARE_SPECS[key];
-  return `${base}/cdn-cgi/image/width=${spec.width},height=${spec.height},fit=${spec.fit},format=auto,quality=85/${originalUrl}`;
+  const source = /^https?:\/\//i.test(originalUrl) ? originalUrl : (base ? `${base}/${String(originalUrl).replace(/^\/+/, "")}` : originalUrl);
+  if (!/^https?:\/\//i.test(source)) return source;
+  const deliveryBase = (() => {
+    try {
+      return new URL(source).origin;
+    } catch {
+      return base;
+    }
+  })();
+  return `${deliveryBase}/cdn-cgi/image/width=${spec.width},height=${spec.height},fit=${spec.fit},format=auto,quality=85/${source}`;
 }
 
 function pickLegacyVariant(variants: VariantRow[], keys: string[]) {
@@ -91,7 +99,7 @@ export function toMediaAssetContract(asset: MediaLike, cfg: UploadConfig) {
     const legacyVariant = pickLegacyVariant(variants, LEGACY_KEYS[key]);
     const legacyUrl = toVariantUrl(legacyVariant, cfg);
     const spec = CLOUD_FLARE_SPECS[key];
-    const url = cloudflareNative ? resolveCloudflareResizedUrl(originalUrl, key, cfg) : (legacyUrl ?? originalUrl);
+    const url = cloudflareNative ? resolveCloudflareResizedUrl(originalUrl, key, cfg) : (legacyUrl ?? resolveCloudflareResizedUrl(originalUrl, key, cfg));
     return {
       url,
       width: legacyVariant?.width ?? spec.width,

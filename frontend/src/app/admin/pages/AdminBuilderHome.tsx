@@ -476,9 +476,7 @@ function InspectorImageField({
         const fd = new FormData();
         fd.append("file", file);
         fd.append("alt", file.name);
-        const heroUpload = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api"}/admin/builder/home/hero-image`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fd });
-        const payload = await heroUpload.json();
-        if (!heroUpload.ok) throw new Error(payload?.error?.message || "Hero upload failed");
+        const payload = await apiRequest<{ data: any }>("/admin/builder/home/hero-image", { method: "POST", body: fd }, accessToken);
         const data = payload.data as any;
         actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
           props.imageAssetId = data.imageAssetId;

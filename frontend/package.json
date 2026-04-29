@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run typecheck && VITE_APP_BUILD_SHA=$(git rev-parse --short HEAD) VITE_APP_BUILD_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ) sh -c 'echo [frontend-build] sha=$VITE_APP_BUILD_SHA ts=$VITE_APP_BUILD_TS && vite build'",
     "dev": "vite",
     "test": "node ../backend/node_modules/tsx/dist/cli.mjs --test src/**/*.test.ts"
   },

@@ -81,3 +81,23 @@ test("builder schema rejects unknown section types", () => {
     });
   });
 });
+
+
+test("builder schema accepts safe cloudflare image-resizing hero url", () => {
+  const parsed = updateBuilderDraftSchema.parse({
+    content: {
+      sections: [{
+        id: "hero-cf",
+        type: "hero_banner",
+        enabled: true,
+        props: {
+          title: "Hero",
+          imageUrl: "/cdn-cgi/image/width=1920,fit=cover,format=auto/https://media.dearbody.co.za/uploads/a/source.jpg",
+          layout: "image_right",
+          tone: "soft",
+        },
+      }],
+    },
+  });
+  assert.equal(parsed.content.sections[0]?.type, "hero_banner");
+});

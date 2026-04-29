@@ -46,42 +46,45 @@ function resizeUrlFromOriginal(original: string, width: number) {
   return `/cdn-cgi/image/width=${width},fit=cover,format=auto,quality=85${normalized}`;
 }
 
-export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; originalUrl?: string | null; publicUrl?: string | null; storageKey?: string | null }>(asset: T): T {
-  const variants = normalizeVariants(asset.variants);
-  const source = String(asset.originalUrl ?? asset.publicUrl ?? '').trim();
-  if (!source) return asset;
-  const map = new Map(variants.map((v) => [String((v as any).key ?? '').toLowerCase(), v as any]));
-  map.set('original', { key: 'original', url: source });
-  const ensure = (keys: string[], width: number, fit: "cover" | "contain" = "cover") => {
-    const generated = resizeUrlFromOriginal(source, width).replace("fit=cover", `fit=${fit}`);
-    let foundOptimized = false;
-    for (const key of keys) {
-      const current = map.get(key.toLowerCase());
-      const currentUrl = readVariantUrl(current);
-      if (isOptimizedVariantUrl(currentUrl)) {
-        foundOptimized = true;
-        map.set(key.toLowerCase(), { key, url: currentUrl });
-      }
+export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; originalUrl?: string | null; publicUrl?: string | null; mediaPublicUrl?: string | null; storageKey?: string | null }>(asset: T): T {
+  const src = String(asset.originalUrl ?? (asset as any).mediaPublicUrl ?? asset.publicUrl ?? "").trim();
+  if (!src) return asset;
+
+  const origin = (() => {
+    try {
+      if (/^https?:\/\//i.test(src)) return new URL(src).origin;
+      if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+      return "";
+    } catch {
+      return "";
     }
-    if (!foundOptimized) {
-      for (const key of keys) {
-        map.set(key.toLowerCase(), { key, url: generated });
-      }
-      return;
+  })();
+
+  const build = (params: string) => {
+    if (/^https?:\/\//i.test(src)) {
+      return `${origin}/cdn-cgi/image/${params}/${src}`;
     }
-    for (const key of keys) {
-      const current = map.get(key.toLowerCase());
-      const currentUrl = readVariantUrl(current);
-      if (!currentUrl || isRawOriginalUrl(currentUrl)) {
-        map.set(key.toLowerCase(), { key, url: generated });
-      }
-    }
+    const normalized = src.startsWith("/") ? src : `/${src}`;
+    return `/cdn-cgi/image/${params}${normalized}`;
   };
-  ensure(['heroDesktop','hero_desktop'], 1920, 'cover');
-  ensure(['heroMobile','hero_mobile'], 768, 'cover');
-  ensure(['card','card_2x'], 600, 'cover');
-  ensure(['thumbnail','thumb','gallery_thumb'], 300, 'cover');
-  ensure(['gallery','gallery_main'], 1200, 'contain');
-  const variantObject = Object.fromEntries(Array.from(map.values()).map((entry: any) => [String(entry?.key ?? ''), { url: readVariantUrl(entry) }]));
-  return { ...asset, variants: variantObject };
+
+  const heroDesktop = build("width=1920,height=1080,fit=cover,format=auto,quality=85");
+  const heroMobile = build("width=768,fit=cover,format=auto,quality=85");
+  const card = build("width=600,fit=cover,format=auto,quality=85");
+  const thumbnail = build("width=300,fit=cover,format=auto,quality=85");
+  const gallery = build("width=1200,fit=contain,format=auto,quality=85");
+
+  console.log("[hero-repair] generated", { heroDesktop, card, thumbnail });
+
+  return {
+    ...asset,
+    variants: {
+      thumbnail: { url: thumbnail },
+      card: { url: card },
+      gallery: { url: gallery },
+      heroDesktop: { url: heroDesktop },
+      heroMobile: { url: heroMobile },
+      original: { url: src },
+    },
+  };
 }

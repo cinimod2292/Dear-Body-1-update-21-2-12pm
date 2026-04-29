@@ -25,9 +25,8 @@ import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
-import { variantKeys } from "../lib/media-variants";
-import { requireOptimizedHeroUrl, synthesizeOptimizedHeroVariants } from "../lib/hero-media";
-import { resolveHeroSelectionUrl } from "./builder/hero-selection";
+import { findVariantByKey, normalizeVariants, variantKeys } from "../lib/media-variants";
+import { requireOptimizedHeroUrl } from "../lib/hero-media";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
@@ -405,36 +404,28 @@ function InspectorImageField({
     return fullAsset;
   };
 
+  const resolveContractHeroUrls = (asset: MediaAsset) => {
+    const variants = normalizeVariants(asset.variants);
+    const desktop = String(findVariantByKey(variants, ["heroDesktop", "hero_desktop"])?.url ?? findVariantByKey(variants, ["heroDesktop", "hero_desktop"])?.publicUrl ?? "").trim();
+    const mobile = String(findVariantByKey(variants, ["heroMobile", "hero_mobile"])?.url ?? findVariantByKey(variants, ["heroMobile", "hero_mobile"])?.publicUrl ?? "").trim();
+    return { desktop, mobile };
+  };
+
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
-    const repairedAsset = synthesizeOptimizedHeroVariants(asset);
-    builderDebugLog("hero raw/repaired variants", {
-      rawVariantShape: Array.isArray(asset.variants) ? "array" : typeof asset.variants,
-      rawVariantKeys: variantKeys(asset.variants),
-      repairedVariantShape: Array.isArray((repairedAsset as any).variants) ? "array" : typeof (repairedAsset as any).variants,
-      repairedVariantKeys: variantKeys((repairedAsset as any).variants),
-      repairedVariantHeroDesktopUrl: String((repairedAsset as any)?.variants?.heroDesktop?.url ?? (repairedAsset as any)?.variants?.hero_desktop?.url ?? ""),
-      repairedVariantCardUrl: String((repairedAsset as any)?.variants?.card?.url ?? ""),
-      repairedVariantThumbnailUrl: String((repairedAsset as any)?.variants?.thumbnail?.url ?? (repairedAsset as any)?.variants?.thumb?.url ?? ""),
+    const { desktop, mobile } = resolveContractHeroUrls(asset);
+    builderDebugLog("hero contract variants", {
+      variantShape: Array.isArray(asset.variants) ? "array" : typeof asset.variants,
+      variantKeys: variantKeys(asset.variants),
+      heroDesktopUrl: desktop,
+      heroMobileUrl: mobile,
     });
-    const selection = resolveHeroImageSelection(imageValue, repairedAsset, preferredKeys);
-    try {
-      builderDebugLog("hero requireOptimizedHeroUrl input", { variantKeys: variantKeys((repairedAsset as any).variants) });
-      const resolved = resolveHeroSelectionUrl(asset, imageValue, preferredKeys);
-      const requiredUrl = resolved.requiredUrl;
-      setHeroDebugInfo({ asset: repairedAsset as MediaAsset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
-      return {
-        shouldUpdate: true,
-        nextValue: requiredUrl,
-        warning: null,
-      } as const;
-    } catch {
-      if (!selection.shouldUpdate) {
-        setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
-        return selection;
-      }
-      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: selection.nextValue, reason: "cloudflare_variant_available" });
-      return selection;
+    if (!desktop || !mobile) {
+      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
+      return { shouldUpdate: false, nextValue: imageValue, warning: "This image contract is missing heroDesktop/heroMobile optimized URLs." } as const;
     }
+    const requiredUrl = requireOptimizedHeroUrl({ variants: asset.variants });
+    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
+    return { shouldUpdate: true, nextValue: requiredUrl, warning: null, mobileUrl: mobile } as const;
   };
 
   const setFieldValue = (next: string) => {
@@ -551,7 +542,12 @@ function InspectorImageField({
           toast.warning(heroSelection.warning);
           return;
         }
-        setFieldValue(heroSelection.nextValue);
+        actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+          props.imageAssetId = finalized.data.id;
+          props.imageUrl = heroSelection.nextValue;
+          props.imageMobileUrl = (heroSelection as any).mobileUrl ?? heroSelection.nextValue;
+          builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
+        });
       } else {
         setFieldValue(next);
       }
@@ -613,7 +609,12 @@ function InspectorImageField({
               toast.warning(heroSelection.warning);
               return;
             }
-            setFieldValue(heroSelection.nextValue);
+            actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+              props.imageAssetId = resolvedAsset.id;
+              props.imageUrl = heroSelection.nextValue;
+              props.imageMobileUrl = (heroSelection as any).mobileUrl ?? heroSelection.nextValue;
+              builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
+            });
           } else {
             setFieldValue(next);
           }

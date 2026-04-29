@@ -56,12 +56,12 @@ test("duplicateSectionInContent inserts copy after source", () => {
   assert.notEqual(duplicated.sections[1]?.id, "hero_1");
 });
 
-test("pageContentToCraftNodes does not preserve original hero upload URL in node props", () => {
+test("pageContentToCraftNodes preserves original hero upload URL in node props", () => {
   const serialized = pageContentToCraftNodes({
     sections: [{ id: "hero_1", type: "hero_banner", enabled: true, props: { imageUrl: "https://cdn.example.com/local-upload/uploads/a/huge-source.jpg" } }],
   });
 
-  assert.equal((serialized.hero_1 as any)?.props?.imageUrl, null);
+  assert.equal((serialized.hero_1 as any)?.props?.imageUrl, "https://cdn.example.com/local-upload/uploads/a/huge-source.jpg");
 });
 
 test("pageContentToCraftNodes preserves safe hero variant URL in node props", () => {

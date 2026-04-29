@@ -7,17 +7,18 @@ test("isSafeImageUrl allows legacy variant paths and https URLs for non-hero", (
   assert.equal(isSafeImageUrl("https://cdn.example/a.jpg"), true);
 });
 
-test("isSafeImageUrl enforces Cloudflare URLs for hero fields", () => {
+test("isSafeImageUrl allows standard https and relative URLs for hero fields", () => {
   assert.equal(isSafeImageUrl("https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a.jpg", { isHero: true }), true);
   assert.equal(isSafeImageUrl("https://imagedelivery.net/hash/id/public", { isHero: true }), true);
-  assert.equal(isSafeImageUrl("https://cdn.example.com/a.jpg", { isHero: true }), false);
+  assert.equal(isSafeImageUrl("https://cdn.example.com/a.jpg", { isHero: true }), true);
+  assert.equal(isSafeImageUrl("/uploads/source.jpg", { isHero: true }), true);
 });
 
 test("isSafeImageUrl rejects unsafe URL schemes", () => {
   assert.equal(isSafeImageUrl("javascript:alert(1)"), false);
   assert.equal(isSafeImageUrl("data:image/png;base64,abc"), false);
   assert.equal(isSafeImageUrl("http://example.com/a.jpg"), false);
-  assert.equal(isSafeImageUrl("/uploads/source.jpg"), false);
+  assert.equal(isSafeImageUrl("/uploads/source.jpg"), true);
 });
 
 test("variant/original heuristics detect optimized and original upload URLs", () => {
@@ -25,10 +26,10 @@ test("variant/original heuristics detect optimized and original upload URLs", ()
   assert.equal(isLikelyOriginalUploadUrl("https://cdn.example.com/local-upload/uploads/a/huge-source.jpg"), true);
 });
 
-test("sanitizeBuilderImageUrl rejects likely original upload URL for hero preview", () => {
+test("sanitizeBuilderImageUrl allows original upload URL for hero preview", () => {
   assert.equal(
     sanitizeBuilderImageUrl("https://cdn.example.com/local-upload/uploads/a/huge-source.jpg", { isHero: true }),
-    null,
+    "https://cdn.example.com/local-upload/uploads/a/huge-source.jpg",
   );
 });
 

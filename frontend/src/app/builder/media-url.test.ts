@@ -2,9 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isLikelyOriginalUploadUrl, isOptimizedVariantUrl, isSafeImageUrl, sanitizeBuilderImageUrl } from "./media-url";
 
-test("isSafeImageUrl allows optimized variant and https URLs", () => {
+test("isSafeImageUrl allows legacy variant paths and https URLs for non-hero", () => {
   assert.equal(isSafeImageUrl("/api/media/public/variants/asset_1/hero_desktop.webp"), true);
   assert.equal(isSafeImageUrl("https://cdn.example/a.jpg"), true);
+});
+
+test("isSafeImageUrl enforces Cloudflare URLs for hero fields", () => {
+  assert.equal(isSafeImageUrl("https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a.jpg", { isHero: true }), true);
+  assert.equal(isSafeImageUrl("https://imagedelivery.net/hash/id/public", { isHero: true }), true);
+  assert.equal(isSafeImageUrl("https://cdn.example.com/a.jpg", { isHero: true }), false);
 });
 
 test("isSafeImageUrl rejects unsafe URL schemes", () => {
@@ -15,7 +21,7 @@ test("isSafeImageUrl rejects unsafe URL schemes", () => {
 });
 
 test("variant/original heuristics detect optimized and original upload URLs", () => {
-  assert.equal(isOptimizedVariantUrl("https://cdn.example.com/local-upload/variants/uploads/a/hero_desktop.webp"), true);
+  assert.equal(isOptimizedVariantUrl("https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a/hero.jpg"), true);
   assert.equal(isLikelyOriginalUploadUrl("https://cdn.example.com/local-upload/uploads/a/huge-source.jpg"), true);
 });
 
@@ -26,17 +32,9 @@ test("sanitizeBuilderImageUrl rejects likely original upload URL for hero previe
   );
 });
 
-test("sanitizeBuilderImageUrl allows safe variant URLs (relative/signed/CDN)", () => {
+test("sanitizeBuilderImageUrl allows Cloudflare variant URLs", () => {
   assert.equal(
-    sanitizeBuilderImageUrl("/variants/uploads/a/hero_desktop.webp", { isHero: true }),
-    "/variants/uploads/a/hero_desktop.webp",
-  );
-  assert.equal(
-    sanitizeBuilderImageUrl("https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc", { isHero: true }),
-    "https://cdn.example.com/local-upload/variants/uploads/a/card.webp?X-Amz-Signature=abc",
-  );
-  assert.equal(
-    sanitizeBuilderImageUrl("https://images.example.com/media/hero_desktop.webp", { isHero: true }),
-    "https://images.example.com/media/hero_desktop.webp",
+    sanitizeBuilderImageUrl("https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a/hero.jpg", { isHero: true }),
+    "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a/hero.jpg",
   );
 });

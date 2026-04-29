@@ -38,7 +38,8 @@ export function duplicateSection(sections: BuilderSection[], sectionId: string):
 }
 
 export function removeSection(sections: BuilderSection[], sectionId: string): BuilderSection[] {
-  return sections.filter((section) => section.id !== sectionId);
+  const list = Array.isArray(sections) ? sections : Object.values((sections as unknown as Record<string, BuilderSection>) ?? {});
+  return list.filter((section) => section.id !== sectionId);
 }
 
 export function updateSection(

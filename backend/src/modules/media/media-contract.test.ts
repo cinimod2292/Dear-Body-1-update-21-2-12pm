@@ -20,8 +20,8 @@ test("cloudflare-native media contract generates delivery variants without DB ro
 
   assert.equal(contract.storageProvider, "cloudflare-r2");
   assert.match(contract.variants.heroDesktop.url, /cdn-cgi\/image\/width=1920/);
-  assert.match(contract.variants.heroMobile.url, /cdn-cgi\/image\/width=900/);
-  assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=480/);
+  assert.match(contract.variants.heroMobile.url, /cdn-cgi\/image\/width=768/);
+  assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=600/);
   assert.equal(contract.variants.original.url, contract.originalUrl);
 });
 
@@ -56,8 +56,8 @@ test("toMediaAssetContract does not set heroDesktop to raw original for cloudfla
 
   assert.notEqual(contract.variants.heroDesktop.url, contract.originalUrl);
   assert.match(contract.variants.heroDesktop.url, /cdn-cgi\/image\/width=1920/);
-  assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=480/);
-  assert.match(contract.variants.thumbnail.url, /cdn-cgi\/image\/width=160/);
+  assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=600/);
+  assert.match(contract.variants.thumbnail.url, /cdn-cgi\/image\/width=300/);
 });
 
 

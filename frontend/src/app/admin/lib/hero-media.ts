@@ -31,3 +31,37 @@ export function requireOptimizedHeroUrl(asset: AssetLike): string {
   }
   return chosen;
 }
+
+
+function isRawOriginalUrl(url: string) {
+  const v = url.trim().toLowerCase();
+  return Boolean(v) && v.includes('/uploads/') && !isOptimizedVariantUrl(v);
+}
+
+function resizeUrlFromOriginal(original: string, width: number) {
+  const src = original.trim();
+  if (!src) return "";
+  if (/^https?:\/\//i.test(src)) return `${new URL(src).origin}/cdn-cgi/image/width=${width},fit=cover,format=auto,quality=85/${src}`;
+  const normalized = src.startsWith('/') ? src : `/${src}`;
+  return `/cdn-cgi/image/width=${width},fit=cover,format=auto,quality=85${normalized}`;
+}
+
+export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; originalUrl?: string | null; publicUrl?: string | null; storageKey?: string | null }>(asset: T): T {
+  const variants = normalizeVariants(asset.variants);
+  const source = String(asset.originalUrl ?? asset.publicUrl ?? '').trim();
+  if (!source) return asset;
+  const map = new Map(variants.map((v) => [String((v as any).key ?? '').toLowerCase(), v as any]));
+  const ensure = (key: string, width: number) => {
+    const current = map.get(key.toLowerCase());
+    const currentUrl = readVariantUrl(current);
+    if (isOptimizedVariantUrl(currentUrl)) return;
+    if (!currentUrl || isRawOriginalUrl(currentUrl)) {
+      map.set(key.toLowerCase(), { key, url: resizeUrlFromOriginal(source, width) });
+    }
+  };
+  ensure('heroDesktop', 1920);
+  ensure('heroMobile', 768);
+  ensure('card', 600);
+  ensure('thumbnail', 300);
+  return { ...asset, variants: Array.from(map.values()) };
+}

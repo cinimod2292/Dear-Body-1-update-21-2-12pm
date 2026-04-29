@@ -63,16 +63,15 @@ function resolveOriginalUrl(asset: MediaLike, cfg: UploadConfig) {
 function resolveCloudflareResizedUrl(originalUrl: string, key: keyof typeof CLOUD_FLARE_SPECS, cfg: UploadConfig) {
   const base = String(cfg.publicBaseUrl ?? "").replace(/\/+$/, "");
   const spec = CLOUD_FLARE_SPECS[key];
-  const source = /^https?:\/\//i.test(originalUrl) ? originalUrl : (base ? `${base}/${String(originalUrl).replace(/^\/+/, "")}` : originalUrl);
-  if (!/^https?:\/\//i.test(source)) return source;
-  const deliveryBase = (() => {
-    try {
-      return new URL(source).origin;
-    } catch {
-      return base;
-    }
-  })();
-  return `${deliveryBase}/cdn-cgi/image/width=${spec.width},height=${spec.height},fit=${spec.fit},format=auto,quality=85/${source}`;
+  const trimmed = String(originalUrl).trim();
+  if (!trimmed) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    let deliveryBase = base;
+    try { deliveryBase = new URL(trimmed).origin; } catch {}
+    return `${deliveryBase}/cdn-cgi/image/width=${spec.width},height=${spec.height},fit=${spec.fit},format=auto,quality=85/${trimmed}`;
+  }
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `/cdn-cgi/image/width=${spec.width},height=${spec.height},fit=${spec.fit},format=auto,quality=85${normalizedPath}`;
 }
 
 function pickLegacyVariant(variants: VariantRow[], keys: string[]) {

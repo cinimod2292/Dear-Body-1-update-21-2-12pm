@@ -26,7 +26,7 @@ import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector"
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
-import { requireOptimizedHeroUrl } from "../lib/hero-media";
+import { requireOptimizedHeroUrl, synthesizeOptimizedHeroVariants } from "../lib/hero-media";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
@@ -405,10 +405,11 @@ function InspectorImageField({
   };
 
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
-    const selection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
+    const repairedAsset = synthesizeOptimizedHeroVariants(asset);
+    const selection = resolveHeroImageSelection(imageValue, repairedAsset, preferredKeys);
     try {
-      const requiredUrl = requireOptimizedHeroUrl({ variants: asset.variants });
-      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
+      const requiredUrl = requireOptimizedHeroUrl({ variants: repairedAsset.variants });
+      setHeroDebugInfo({ asset: repairedAsset as MediaAsset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
       return {
         shouldUpdate: true,
         nextValue: requiredUrl,

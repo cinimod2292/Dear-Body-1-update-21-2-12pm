@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseOptimizedHeroUrl, requireOptimizedHeroUrl } from "./hero-media";
+import { chooseOptimizedHeroUrl, requireOptimizedHeroUrl, synthesizeOptimizedHeroVariants } from "./hero-media";
 
 test("chooseOptimizedHeroUrl prefers hero_desktop and supports publicUrl/url fields", () => {
   const url = chooseOptimizedHeroUrl({
@@ -58,4 +58,18 @@ test("requireOptimizedHeroUrl ignores raw heroDesktop URL and falls back to opti
     },
   });
   assert.equal(picked, "/cdn-cgi/image/width=600/https://media.dearbody.co.za/uploads/a/raw.jpg");
+});
+
+
+test("synthesizes optimized hero variants when contract keys are raw originals", () => {
+  const repaired = synthesizeOptimizedHeroVariants({
+    publicUrl: "/api/media/public/uploads/a/raw.jpg",
+    variants: {
+      heroDesktop: { url: "/api/media/public/uploads/a/raw.jpg" },
+      card: { url: "/api/media/public/uploads/a/raw.jpg" },
+    },
+  } as any);
+
+  const picked = requireOptimizedHeroUrl({ variants: (repaired as any).variants });
+  assert.match(picked, /\/cdn-cgi\/image\//);
 });

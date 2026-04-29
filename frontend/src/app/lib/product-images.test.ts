@@ -10,6 +10,7 @@ import {
   PRODUCT_CARD_IMAGE_SIZES,
   resolveCardImage,
   resolveHoverImageUrl,
+  normalizeProductImages,
 } from "./product-images";
 
 const baseImage = {
@@ -150,4 +151,35 @@ test("Product card responsive sizes favor realistic rendered card widths", () =>
     PRODUCT_CARD_IMAGE_SIZES,
     "(min-width: 1280px) 280px, (min-width: 1024px) 29vw, (min-width: 640px) 44vw, 92vw",
   );
+});
+
+
+test("normalizeProductImages handles Cloudflare object-shaped variants", () => {
+  const images = normalizeProductImages([{
+    mediaAssetId: "img-object",
+    mediaAsset: {
+      publicUrl: "https://img/original.jpg",
+      variants: {
+        thumbnail: { url: "https://img/thumb.jpg", width: 160, height: 160 },
+        card: { url: "https://img/card.jpg", width: 480, height: 480 },
+      },
+    },
+  }] as any);
+
+  assert.equal(images.length, 1);
+  assert.equal(images[0]?.variants?.thumbnail?.url, "https://img/thumb.jpg");
+  assert.equal(images[0]?.variants?.card?.url, "https://img/card.jpg");
+});
+
+test("normalizeProductImages handles missing arrays safely", () => {
+  const images = normalizeProductImages([{
+    mediaAssetId: "img-missing",
+    mediaAsset: {
+      publicUrl: "https://img/original.jpg",
+      variants: undefined,
+    },
+  }] as any);
+
+  assert.equal(images.length, 1);
+  assert.deepEqual(images[0]?.variants, {});
 });

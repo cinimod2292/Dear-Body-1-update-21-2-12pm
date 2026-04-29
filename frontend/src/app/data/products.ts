@@ -120,6 +120,12 @@ const palette = [
   { color: "#CCDD00", bgColor: "#FAFFF0", textColor: "#65A30D" },
 ] as const;
 
+function normalizeList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>) as T[];
+  return [];
+}
+
 function parseJsonSafe<T>(value: string): T | null {
   try {
     return JSON.parse(value) as T;
@@ -129,7 +135,14 @@ function parseJsonSafe<T>(value: string): T | null {
 }
 
 function toProduct(api: StorefrontProductApi, index: number): Product {
-  const activeVariants = (api.variants ?? []).filter((variant) => variant.isActive !== false);
+  console.info("[product-mapper] product.variants", {
+    productId: api.id,
+    productName: api.name,
+    valueType: typeof api.variants,
+    isArray: Array.isArray(api.variants),
+    keys: Object.keys((api.variants ?? {}) as Record<string, unknown>),
+  });
+  const activeVariants = normalizeList<any>(api.variants).filter((variant) => (variant as any)?.isActive !== false);
   const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
   const galleryImages = normalizeProductImages(api.galleries);

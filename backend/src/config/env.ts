@@ -18,7 +18,7 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default("7d"),
   INITIAL_SUPER_ADMIN_EMAIL: z.string().email().optional(),
   INITIAL_SUPER_ADMIN_PASSWORD: z.string().min(10).optional(),
-  UPLOAD_PROVIDER: z.enum(["local", "s3"]).default("local"),
+  UPLOAD_PROVIDER: z.enum(["local", "s3", "cloudflare-r2"]).default("local"),
   UPLOAD_BUCKET: z.string().optional(),
   UPLOAD_REGION: z.string().optional(),
   UPLOAD_ENDPOINT: z.string().optional(),
@@ -51,6 +51,23 @@ if (
   const message = "DATABASE_URL must include sslmode=require when NODE_ENV=production";
   console.error(`[startup] Environment validation failed:\n${message}`);
   throw new Error(`Invalid environment configuration:\n${message}`);
+}
+
+
+if (parsed.data.UPLOAD_PROVIDER === "cloudflare-r2") {
+  const missing: string[] = [];
+  if (!parsed.data.UPLOAD_BUCKET) missing.push("UPLOAD_BUCKET");
+  if (!parsed.data.UPLOAD_ENDPOINT) missing.push("UPLOAD_ENDPOINT");
+  if (!parsed.data.UPLOAD_ACCESS_KEY_ID) missing.push("UPLOAD_ACCESS_KEY_ID");
+  if (!parsed.data.UPLOAD_SECRET_ACCESS_KEY) missing.push("UPLOAD_SECRET_ACCESS_KEY");
+  if (!parsed.data.UPLOAD_PUBLIC_BASE_URL) missing.push("UPLOAD_PUBLIC_BASE_URL");
+  if (missing.length) {
+    const message = `Missing required Cloudflare R2 upload configuration: ${missing.join(", ")}`;
+    console.error(`[startup] Environment validation failed:
+${message}`);
+    throw new Error(`Invalid environment configuration:
+${message}`);
+  }
 }
 
 export const env = parsed.data;

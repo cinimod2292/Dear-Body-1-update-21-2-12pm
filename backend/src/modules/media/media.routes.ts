@@ -12,6 +12,7 @@ import { generateMediaVariantsForAsset } from "./media-variants.js";
 import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
 import { regenerateVariantsForMediaIds } from "./media-variants-batch.js";
 import { toPickerMediaItem } from "./media-picker.js";
+import { toMediaAssetContract } from "./media-contract.js";
 
 type LoggerLike = {
   info: (...args: unknown[]) => void;
@@ -371,7 +372,7 @@ export async function mediaRoutes(app: FastifyInstance) {
           publicUrl: resolvedPublicUrl,
           altText: body.altText,
           uploadedById: request.user.sub,
-          metadata: body.metadata as Prisma.InputJsonValue | undefined,
+          metadata: { ...(body.metadata ?? {}), storageProvider: cfg.provider } as Prisma.InputJsonValue,
         },
       });
 
@@ -386,7 +387,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       }, "Media upload finalized");
 
       let variantStatus: FinalizeVariantGenerationResult = { variantsPending: false, variantErrors: [] };
-      if (asset.kind === "IMAGE") {
+      if (asset.kind === "IMAGE" && cfg.provider !== "cloudflare-r2") {
         request.log.info({ mediaAssetId: asset.id }, "Starting media variant generation on finalize");
         variantStatus = await attemptVariantGenerationOnFinalize(
           () => generateMediaVariantsForAsset(asset.id),
@@ -404,7 +405,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         variantErrors: variantStatus.variantErrors,
       }, "Finalize upload response path");
       return reply.send({
-        data: assetWithVariants ?? asset,
+        data: toMediaAssetContract((assetWithVariants ?? asset) as any, cfg),
         variantsPending: variantStatus.variantsPending,
         variantErrors: variantStatus.variantErrors,
       });
@@ -534,14 +535,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
       const normalizedItems = query.view === "picker"
         ? items.map((item) => toPickerMediaItem(item as any, cfg))
-        : items.map((item) => ({
-            ...item,
-            publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
-            variants: item.variants.map((variant: any) => ({
-              ...variant,
-              publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
-            })),
-          }));
+        : items.map((item) => toMediaAssetContract(item as any, cfg));
       return reply.send({ data: toPaginatedResponse(normalizedItems as any[], total, query) });
     },
   );
@@ -572,14 +566,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
       const data = body.view === "picker"
         ? items.map((item) => toPickerMediaItem(item as any, cfg))
-        : items.map((item) => ({
-            ...item,
-            publicUrl: resolvePublicUrlForStorageKey(item.storageKey, cfg),
-            variants: item.variants.map((variant: any) => ({
-              ...variant,
-              publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
-            })),
-          }));
+        : items.map((item) => toMediaAssetContract(item as any, cfg));
 
       return reply.send({ data });
     },
@@ -618,12 +605,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       const cfg = await resolveUploadConfig();
       return reply.send({
         data: {
-          ...asset,
-          publicUrl: resolvePublicUrlForStorageKey(asset.storageKey, cfg),
-          variants: asset.variants.map((variant) => ({
-            ...variant,
-            publicUrl: resolvePublicUrlForStorageKey(variant.storageKey, cfg),
-          })),
+          ...toMediaAssetContract(asset as any, cfg),
           usage: {
             galleryCount: asset._count.galleries,
             products: asset.galleries.map((entry) => ({
@@ -671,6 +653,11 @@ export async function mediaRoutes(app: FastifyInstance) {
           if (!media) throw new AppError(404, "Media asset not found", "MEDIA_NOT_FOUND");
 
           const cfg = await resolveUploadConfig();
+          if (cfg.provider === "cloudflare-r2") {
+            request.log.info({ assetId }, "Skipping Sharp variant regeneration for cloudflare-r2 asset");
+            variantRegenJobs.set(assetId, { status: "succeeded", startedAt, finishedAt: Date.now() });
+            return;
+          }
           if (cfg.provider === "local") {
             const sourcePath = resolveLocalUploadPath(media.storageKey);
             const sourceExists = existsSync(sourcePath);

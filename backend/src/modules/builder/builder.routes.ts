@@ -1,4 +1,8 @@
 import { FastifyInstance } from "fastify";
+import crypto from "node:crypto";
+import { prisma } from "../../lib/prisma.js";
+import { AppError } from "../../lib/errors.js";
+import { resolvePublicUrlForStorageKey, resolveUploadConfig, sanitizeStorageKey, writeStorageObjectBuffer } from "../media/upload.service.js";
 import {
   discardBuilderDraft,
   getAdminBuilderPage,
@@ -9,6 +13,42 @@ import {
 } from "./builder.service.js";
 
 export async function builderRoutes(app: FastifyInstance) {
+  app.post(
+    "/admin/builder/home/hero-image",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => {
+      const cfg = await resolveUploadConfig();
+      if (cfg.provider === "cloudflare-r2" && (!cfg.publicBaseUrl || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey)) {
+        throw new AppError(422, "Cloudflare/R2 storage is not fully configured.", "HERO_STORAGE_NOT_CONFIGURED");
+      }
+      const part = await request.file();
+      if (!part) throw new AppError(400, "Image file is required.", "HERO_IMAGE_REQUIRED");
+      if (!String(part.mimetype ?? "").startsWith("image/")) throw new AppError(400, "Only image files are allowed.", "HERO_IMAGE_INVALID_TYPE");
+      const MAX_BYTES = 15 * 1024 * 1024;
+      const buffer = await part.toBuffer();
+      if (buffer.length > MAX_BYTES) throw new AppError(413, "Image exceeds 15MB size limit.", "HERO_IMAGE_TOO_LARGE");
+      const storageKey = sanitizeStorageKey(`uploads/hero/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${(part.filename || "hero").replace(/[^a-zA-Z0-9._-]/g, "-")}`);
+      await writeStorageObjectBuffer(storageKey, buffer, part.mimetype || "application/octet-stream", cfg);
+      const originalUrl = resolvePublicUrlForStorageKey(storageKey, cfg);
+      const base = (cfg.publicBaseUrl || "").replace(/\/+$/, "");
+      const imageUrl = base ? `${base}/cdn-cgi/image/width=1920,fit=cover,format=auto,quality=85/${base}/${storageKey}` : `/cdn-cgi/image/width=1920,fit=cover,format=auto,quality=85/${originalUrl}`;
+      const imageMobileUrl = base ? `${base}/cdn-cgi/image/width=768,fit=cover,format=auto,quality=85/${base}/${storageKey}` : `/cdn-cgi/image/width=768,fit=cover,format=auto,quality=85/${originalUrl}`;
+      if (!imageUrl.includes("/cdn-cgi/image/") || !imageMobileUrl.includes("/cdn-cgi/image/")) throw new AppError(422, "Optimized Cloudflare URLs could not be created.", "HERO_IMAGE_OPTIMIZE_FAILED");
+      const asset = await prisma.mediaAsset.create({
+        data: {
+          filename: part.filename || "hero-image",
+          kind: "IMAGE",
+          mimeType: part.mimetype || "application/octet-stream",
+          byteSize: buffer.length,
+          storageKey,
+          publicUrl: originalUrl,
+          altText: String((part.fields?.alt as any)?.value ?? ""),
+          metadata: { source: "builder-home-hero" },
+        },
+      });
+      return reply.send({ data: { imageAssetId: asset.id, imageUrl, imageMobileUrl, originalUrl, alt: asset.altText ?? "", storageKey, storageProvider: cfg.provider } });
+    },
+  );
   app.get(
     "/admin/builder/pages",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },

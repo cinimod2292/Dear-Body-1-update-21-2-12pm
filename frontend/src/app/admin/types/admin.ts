@@ -44,7 +44,9 @@ export interface MediaAsset {
   kind: "IMAGE" | "VIDEO" | "FILE";
   storageKey?: string;
   publicUrl?: string;
-  variants?: Array<{ key: string; publicUrl?: string | null; width?: number | null; height?: number | null }>;
+  storageProvider?: string;
+  originalUrl?: string;
+  variants?: Record<string, { url?: string | null; publicUrl?: string | null; width?: number | null; height?: number | null; format?: string | null }> | Array<{ key: string; publicUrl?: string | null; url?: string | null; width?: number | null; height?: number | null }> ;
   mimeType: string;
   byteSize: number;
   altText?: string | null;

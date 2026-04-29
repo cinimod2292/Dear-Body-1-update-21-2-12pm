@@ -27,6 +27,7 @@ import { extractSelectedNodeId, resolveInspectableSection } from "./builder/sect
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
+import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
 
@@ -45,21 +46,11 @@ function builderDebugLog(message: string, payload: Record<string, unknown>) {
 }
 
 
-function normalizeList<T>(value: unknown): T[] {
-  if (Array.isArray(value)) return value as T[];
-  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>) as T[];
-  return [];
-}
-
 function logBuilderVariantDiagnostic(area: string, variants: unknown) {
   const isArray = Array.isArray(variants);
   const isObject = Boolean(variants && typeof variants === "object" && !isArray);
   const keys = isObject ? Object.keys(variants as Record<string, unknown>) : [];
   console.info("[builder-diagnostic] variant-shape", { area, valueType: typeof variants, isArray, isObject, keys });
-}
-
-export function __testOnly__normalizeList<T>(value: unknown): T[] {
-  return normalizeList<T>(value);
 }
 
 function BuilderCanvas({ children }: { children?: ReactNode }) {
@@ -944,29 +935,98 @@ export default function AdminBuilderHome() {
 
   const load = async () => {
     if (!session?.accessToken) return;
+    let page: any = null;
+    let productsResponse: any = null;
+    let draftContent: any = null;
+    let publishedContent: any = null;
+    let draftSections: BuilderSection[] = [];
+    let publishedSections: BuilderSection[] = [];
+    let heroCandidates: BuilderSection[] = [];
     try {
       setLoading(true);
       setError(null);
       logBuildMarker("AdminBuilderHome:load");
-      const [page, productsResponse] = await Promise.all([fetchAdminBuilderPage("home", session.accessToken), fetchStoreProducts()]);
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-fetch-draft");
+      page = await fetchAdminBuilderPage("home", session.accessToken);
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-fetch-draft");
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-fetch-published");
+      publishedContent = page?.publishedContent ?? null;
+      productsResponse = await fetchStoreProducts();
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-fetch-published");
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-draft-content");
+      draftContent = normalizeLoadContent(page?.draftContent);
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-draft-content");
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-published-content");
+      publishedContent = normalizeLoadContent(publishedContent);
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-published-content");
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-sections");
+      draftSections = normalizeList<BuilderSection>((draftContent as any)?.sections);
+      publishedSections = normalizeList<BuilderSection>((publishedContent as any)?.sections);
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-sections");
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-find-hero-section");
+      heroCandidates = draftSections.filter((section) => section?.type === "hero_banner");
+      const hero = heroCandidates[0] ?? null;
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-find-hero-section");
+
       builderDebugLog("loaded draft content", {
-        heroImageUrl: normalizeList<BuilderSection>((page.draftContent as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroImageUrl: hero?.props?.imageUrl ?? null,
       });
       builderDebugLog("before pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
+        heroImageUrl: extractHeroImageUrlFromContent(draftContent),
       });
-      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      const mappedNodes = pageContentToCraftNodes(draftContent);
       builderDebugLog("after pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
       });
-      setProducts(productsResponse);
-      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
+
+      console.info("[ADMIN_BUILDER_LOAD_STEP] before-setState");
+      setProducts(normalizeArrayOnly<Product>(productsResponse));
+      setSavedSnapshot({ ...draftContent, sections: draftSections });
       setSerialized(mappedNodes);
-      setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
+      setMeta({ updatedAt: page?.updatedAt ?? null, publishedAt: page?.publishedAt ?? null, version: page?.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
+      console.info("[ADMIN_BUILDER_LOAD_STEP] after-setState");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load page builder");
+      const error = err as any;
+      console.error("[ADMIN_BUILDER_LOAD_FATAL]", {
+        message: error?.message ?? String(error),
+        stack: error?.stack ?? null,
+        rawPagePayload: page,
+        rawPublishedPayload: page?.publishedContent ?? null,
+        rawProductsPayload: productsResponse,
+        draftContentType: typeof draftContent,
+        draftContentIsArray: Array.isArray(draftContent),
+        draftContentKeys: Object.keys((draftContent ?? {}) as Record<string, unknown>),
+        publishedContentType: typeof publishedContent,
+        publishedContentIsArray: Array.isArray(publishedContent),
+        publishedContentKeys: Object.keys((publishedContent ?? {}) as Record<string, unknown>),
+        sectionsType: typeof (draftContent as any)?.sections,
+        sectionsIsArray: Array.isArray((draftContent as any)?.sections),
+        sectionsKeys: Object.keys((((draftContent as any)?.sections) ?? {}) as Record<string, unknown>),
+        contentSectionsType: typeof (draftContent as any)?.sections,
+        contentSectionsIsArray: Array.isArray((draftContent as any)?.sections),
+        contentSectionsKeys: Object.keys((((draftContent as any)?.sections) ?? {}) as Record<string, unknown>),
+        pageSectionsType: typeof (page as any)?.sections,
+        pageSectionsIsArray: Array.isArray((page as any)?.sections),
+        pageSectionsKeys: Object.keys((((page as any)?.sections) ?? {}) as Record<string, unknown>),
+        heroCandidatesType: typeof heroCandidates,
+        heroCandidatesIsArray: Array.isArray(heroCandidates),
+        heroCandidatesKeys: Object.keys((heroCandidates ?? {}) as Record<string, unknown>),
+        fieldsType: typeof (draftContent as any)?.fields,
+        fieldsIsArray: Array.isArray((draftContent as any)?.fields),
+        fieldsKeys: Object.keys((((draftContent as any)?.fields) ?? {}) as Record<string, unknown>),
+        itemsType: typeof (draftContent as any)?.items,
+        itemsIsArray: Array.isArray((draftContent as any)?.items),
+        itemsKeys: Object.keys((((draftContent as any)?.items) ?? {}) as Record<string, unknown>),
+      });
+      setError(error instanceof Error ? error.message : "Failed to load page builder");
     } finally {
       setLoading(false);
     }

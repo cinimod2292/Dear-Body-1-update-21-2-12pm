@@ -59,3 +59,36 @@ test("toMediaAssetContract does not set heroDesktop to raw original for cloudfla
   assert.match(contract.variants.card.url, /cdn-cgi\/image\/width=480/);
   assert.match(contract.variants.thumbnail.url, /cdn-cgi\/image\/width=160/);
 });
+
+
+test("prefers generated cloudflare delivery URLs over raw legacy jpg rows", () => {
+  const contract = toMediaAssetContract({
+    id: "m4",
+    kind: "IMAGE",
+    storageKey: "uploads/legacy/source.jpg",
+    mimeType: "image/jpeg",
+    variants: [
+      { key: "hero_desktop", publicUrl: "/api/media/public/uploads/legacy/source.jpg" },
+      { key: "thumb", publicUrl: "/api/media/public/uploads/legacy/source.jpg" },
+    ],
+  }, { provider: "s3", publicBaseUrl: "https://media.dearbody.co.za", signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any);
+
+  assert.match(contract.variants.heroDesktop.url, /cdn-cgi\/image\//);
+  assert.match(contract.variants.thumbnail.url, /cdn-cgi\/image\//);
+  assert.match(contract.variants.original.url, /uploads\//);
+});
+
+test("media full contract shape returns delivery variants and original url", () => {
+  const responseLike = { data: toMediaAssetContract({
+    id: "m5",
+    kind: "IMAGE",
+    storageKey: "uploads/2026/full.jpg",
+    mimeType: "image/jpeg",
+    metadata: { storageProvider: "cloudflare-r2" },
+    variants: [],
+  }, { provider: "cloudflare-r2", publicBaseUrl: "https://media.dearbody.co.za", signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any) };
+
+  assert.match(responseLike.data.variants.heroDesktop.url, /cdn-cgi\/image\//);
+  assert.match(responseLike.data.variants.thumbnail.url, /cdn-cgi\/image\//);
+  assert.match(responseLike.data.variants.original.url, /uploads\//);
+});

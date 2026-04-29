@@ -48,3 +48,14 @@ test("hero selector rejects raw admin media original jpg", () => {
     },
   }), /No optimized variant URL found/);
 });
+
+
+test("requireOptimizedHeroUrl ignores raw heroDesktop URL and falls back to optimized card variant", () => {
+  const picked = requireOptimizedHeroUrl({
+    variants: {
+      heroDesktop: { url: "/api/media/public/uploads/a/raw.jpg" },
+      card: { url: "/cdn-cgi/image/width=600/https://media.dearbody.co.za/uploads/a/raw.jpg" },
+    },
+  });
+  assert.equal(picked, "/cdn-cgi/image/width=600/https://media.dearbody.co.za/uploads/a/raw.jpg");
+});

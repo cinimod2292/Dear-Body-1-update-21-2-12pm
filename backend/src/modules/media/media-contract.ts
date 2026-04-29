@@ -17,11 +17,11 @@ export type MediaContractVariants = {
 };
 
 const CLOUD_FLARE_SPECS = {
-  thumbnail: { width: 160, height: 160, fit: "cover" },
-  card: { width: 480, height: 480, fit: "cover" },
-  gallery: { width: 960, height: 960, fit: "contain" },
+  thumbnail: { width: 300, height: 300, fit: "cover" },
+  card: { width: 600, height: 600, fit: "cover" },
+  gallery: { width: 1200, height: 1200, fit: "contain" },
   heroDesktop: { width: 1920, height: 1080, fit: "cover" },
-  heroMobile: { width: 900, height: 1200, fit: "cover" },
+  heroMobile: { width: 768, height: 1024, fit: "cover" },
 } as const;
 
 const LEGACY_KEYS: Record<keyof typeof CLOUD_FLARE_SPECS, string[]> = {
@@ -83,6 +83,13 @@ function pickLegacyVariant(variants: VariantRow[], keys: string[]) {
   return null;
 }
 
+
+function isOptimizedUrl(url: string | null | undefined) {
+  const v = String(url ?? "").trim().toLowerCase();
+  if (!v) return false;
+  return v.includes("/cdn-cgi/image/") || v.includes("/variants/") || v.includes("imagedelivery.net") || v.endsWith(".webp");
+}
+
 function toVariantUrl(variant: VariantRow | null, cfg: UploadConfig) {
   if (!variant) return null;
   if (variant.storageKey) return resolvePublicUrlForStorageKey(variant.storageKey, cfg);
@@ -94,12 +101,15 @@ export function toMediaAssetContract(asset: MediaLike, cfg: UploadConfig) {
   const originalUrl = resolveOriginalUrl(asset, cfg);
   const variants = Array.isArray(asset.variants) ? asset.variants : [];
 
-  const cloudflareNative = storageProvider === "cloudflare-r2";
+  const shouldGenerateDeliveryVariants = storageProvider === "cloudflare-r2" || Boolean(String(cfg.publicBaseUrl ?? "").trim());
   const v = (key: keyof typeof CLOUD_FLARE_SPECS): MediaVariantContractItem => {
     const legacyVariant = pickLegacyVariant(variants, LEGACY_KEYS[key]);
     const legacyUrl = toVariantUrl(legacyVariant, cfg);
     const spec = CLOUD_FLARE_SPECS[key];
-    const url = cloudflareNative ? resolveCloudflareResizedUrl(originalUrl, key, cfg) : (legacyUrl ?? resolveCloudflareResizedUrl(originalUrl, key, cfg));
+    const generatedUrl = resolveCloudflareResizedUrl(originalUrl, key, cfg);
+    const url = shouldGenerateDeliveryVariants
+      ? generatedUrl
+      : (isOptimizedUrl(legacyUrl) ? String(legacyUrl) : generatedUrl);
     return {
       url,
       width: legacyVariant?.width ?? spec.width,

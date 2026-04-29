@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { resolveHeroImageConfig } from "./hero-image-config";
 
 test("resolveHeroImageConfig prefers CMS hero URL when present", () => {
-  const cfg = resolveHeroImageConfig({ backgroundImageUrl: "https://cdn.example.com/variants/uploads/hero/hero_desktop.webp" });
-  assert.equal(cfg.imageUrl, "https://cdn.example.com/variants/uploads/hero/hero_desktop.webp");
+  const cfg = resolveHeroImageConfig({ backgroundImageUrl: "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg" });
+  assert.equal(cfg.imageUrl, "https://media.dearbody.co.za/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/hero.jpg");
 });
 
 test("resolveHeroImageConfig returns null for legacy/original upload hero URLs", () => {

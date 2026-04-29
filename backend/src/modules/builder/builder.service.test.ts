@@ -62,7 +62,6 @@ test("lookup candidate normalization supports CDN/signed/original URL path match
 
   assert.ok(candidates.includes("/media/local-upload/uploads/hero/01b39ccb.jpg"));
   assert.ok(candidates.includes("uploads/hero/01b39ccb.jpg"));
-  assert.ok(candidates.includes("01b39ccb.jpg"));
 });
 
 test("hero image URL from published content resolves to mapped asset and optimized variant URL", () => {

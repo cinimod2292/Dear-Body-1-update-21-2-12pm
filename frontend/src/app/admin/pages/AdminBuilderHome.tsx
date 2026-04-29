@@ -26,6 +26,7 @@ import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector"
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
 import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
+import { requireOptimizedHeroUrl } from "../lib/hero-media";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
@@ -405,18 +406,31 @@ function InspectorImageField({
 
   const ensureHeroOptimizedAsset = async (asset: MediaAsset, sourceEndpoint: string, preferredKeys: string[]) => {
     const selection = resolveHeroImageSelection(imageValue, asset, preferredKeys);
-    if (!selection.shouldUpdate) {
-      setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
+    try {
+      const requiredUrl = requireOptimizedHeroUrl({ variants: asset.variants });
+      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: requiredUrl, reason: "cloudflare_variant_available" });
+      return {
+        shouldUpdate: true,
+        nextValue: requiredUrl,
+        warning: null,
+      } as const;
+    } catch {
+      if (!selection.shouldUpdate) {
+        setHeroDebugInfo({ asset, sourceEndpoint, reason: "missing_cloudflare_variant" });
+        return selection;
+      }
+      setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: selection.nextValue, reason: "cloudflare_variant_available" });
       return selection;
     }
-    setHeroDebugInfo({ asset, sourceEndpoint, chosenHeroUrl: selection.nextValue, reason: "cloudflare_variant_available" });
-    return selection;
   };
 
   const setFieldValue = (next: string) => {
     const safeNext = resolveNextImageValue(imageValue, next);
     actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
       props[keyName] = safeNext;
+      if (isHeroField) {
+        builderDebugLog("selected hero chosenHeroUrl", { selectedNodeId, keyName, chosenHeroUrl: next, safeNext });
+      }
       builderDebugLog("setProp image field", {
         selectedNodeId,
         sectionType,
@@ -1070,12 +1084,12 @@ export default function AdminBuilderHome() {
     try {
       setStatus("publishing");
       const content = craftNodesToPageContent(nodes);
-      builderDebugLog("publish save payload content", {
+      builderDebugLog("publish payload heroImageUrl", {
         heroImageUrl: extractHeroImageUrlFromContent(content),
       });
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
-      builderDebugLog("publish response draft/published content", {
+      builderDebugLog("publish response heroImageUrl", {
         draftHeroImageUrl: extractHeroImageUrlFromContent(published.draftContent),
         publishedHeroImageUrl: extractHeroImageUrlFromContent(published.publishedContent),
       });

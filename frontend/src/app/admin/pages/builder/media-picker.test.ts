@@ -58,3 +58,16 @@ test("hero media selection with variants returns selected optimized URL", () => 
   assert.equal(result.shouldUpdate, true);
   assert.equal(result.warning, null);
 });
+
+
+test("hero media selection prefers heroDesktop variant over media public/original URL", () => {
+  const result = resolveHeroImageSelection("", {
+    publicUrl: "/api/media/public/uploads/a/original.jpg",
+    originalUrl: "/api/media/public/uploads/a/original.jpg",
+    variants: {
+      heroDesktop: { url: "/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a/original.jpg" },
+    },
+  } as any, ["heroDesktop", "card", "thumbnail"]);
+  assert.equal(result.shouldUpdate, true);
+  assert.equal(result.nextValue, "/cdn-cgi/image/width=1920/https://media.dearbody.co.za/uploads/a/original.jpg");
+});

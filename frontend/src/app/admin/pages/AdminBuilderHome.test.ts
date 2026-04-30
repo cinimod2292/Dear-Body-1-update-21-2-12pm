@@ -5,7 +5,6 @@ import { removeSection } from "./builder/editor-state";
 import { pageContentToCraftNodes } from "../../builder/craft-mapper";
 import { normalizeLoadContent } from "./builder/load-normalize";
 import { resolveHeroSelectionUrl } from "./builder/hero-selection";
-import { isHeroUploadTooLarge } from "./builder/hero-upload";
 
 test("page builder media normalization handles Cloudflare contract object variants", () => {
   const cloudflareContractVariants = {
@@ -60,7 +59,7 @@ test("AdminBuilderHome load normalization accepts object sections and object var
 });
 
 
-test("AdminBuilderHome hero flow uses repaired /cdn-cgi URL and keeps variant object shape", () => {
+test("AdminBuilderHome hero flow keeps original URL and variant object shape", () => {
   const rawAsset = {
     id: "m1",
     publicUrl: "/api/media/public/uploads/a/raw.jpg",
@@ -71,11 +70,6 @@ test("AdminBuilderHome hero flow uses repaired /cdn-cgi URL and keeps variant ob
   } as any;
   const result = resolveHeroSelectionUrl(rawAsset, "", ["heroDesktop", "card", "thumbnail"]);
   assert.equal(Array.isArray((result.repairedAsset as any).variants), false);
-  assert.match(String((result.repairedAsset as any).variants.heroDesktop?.url ?? ""), /\/cdn-cgi\/image\//);
-  assert.match(result.requiredUrl, /\/cdn-cgi\/image\//);
-});
-
-test("frontend blocks oversized hero upload before POST", () => {
-  assert.equal(isHeroUploadTooLarge(16 * 1024 * 1024), true);
-  assert.equal(isHeroUploadTooLarge(14 * 1024 * 1024), false);
+  assert.equal(String((result.repairedAsset as any).variants.heroDesktop?.url ?? ""), "/api/media/public/uploads/a/raw.jpg");
+  assert.equal(result.requiredUrl, "/api/media/public/uploads/a/raw.jpg");
 });

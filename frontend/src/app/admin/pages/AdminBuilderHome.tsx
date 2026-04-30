@@ -707,6 +707,18 @@ function extractHeroImageUrlFromContent(content: BuilderPageContent) {
   return String(hero?.props?.imageUrl ?? "");
 }
 
+function extractHeroPropsFromContent(content: BuilderPageContent) {
+  const sections = normalizeList<BuilderSection>((content as any)?.sections);
+  const hero = sections.find((section) => section?.type === "hero_banner");
+  const props = (hero?.props ?? {}) as Record<string, unknown>;
+  return {
+    imageAssetId: props.imageAssetId ?? null,
+    imageUrl: props.imageUrl ?? null,
+    imageMobileUrl: props.imageMobileUrl ?? null,
+    imageAlt: props.imageAlt ?? null,
+  };
+}
+
 function extractHeroImageUrlFromNodes(nodes: SerializedNodes) {
   const heroNode = Object.values(nodes).find((node) => {
     if (!node || typeof node !== "object") return false;
@@ -1046,11 +1058,11 @@ export default function AdminBuilderHome() {
       setStatus("saving");
       const content = craftNodesToPageContent(nodes);
       builderDebugLog("saving draft content", {
-        heroImageUrl: normalizeList<BuilderSection>((content as any)?.sections).find((section) => section?.type === "hero_banner")?.props?.imageUrl ?? null,
+        heroProps: extractHeroPropsFromContent(content),
       });
       const saved = await saveBuilderDraft("home", content, session.accessToken);
       builderDebugLog("save draft response content", {
-        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
+        heroProps: extractHeroPropsFromContent(saved.draftContent),
       });
       builderDebugLog("before pageContentToCraftNodes", {
         heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
@@ -1077,13 +1089,13 @@ export default function AdminBuilderHome() {
       setStatus("publishing");
       const content = craftNodesToPageContent(nodes);
       builderDebugLog("publish payload heroImageUrl", {
-        heroImageUrl: extractHeroImageUrlFromContent(content),
+        heroProps: extractHeroPropsFromContent(content),
       });
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
       builderDebugLog("publish response heroImageUrl", {
-        draftHeroImageUrl: extractHeroImageUrlFromContent(published.draftContent),
-        publishedHeroImageUrl: extractHeroImageUrlFromContent(published.publishedContent),
+        draftHeroProps: extractHeroPropsFromContent(published.draftContent),
+        publishedHeroProps: extractHeroPropsFromContent(published.publishedContent),
       });
       const mappedNodes = pageContentToCraftNodes(published.draftContent);
       builderDebugLog("after pageContentToCraftNodes", {

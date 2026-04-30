@@ -33,14 +33,14 @@ test("hero variant preference avoids oversized original when card/thumb exist", 
   assert.equal(url, "https://cdn.test/variants/asset/card.webp");
 });
 
-test("hero variant preference does not fall back to original when optimized variants are missing", () => {
+test("hero variant preference falls back to original when optimized variants are missing", () => {
   const url = __testOnly__choosePreferredImageVariantUrl({
     variants: [],
     fallbackStorageKey: "uploads/01b39ccb-4318-4e0b-a99d-4fed6de0c025-DAX01-1-.jpg",
     isHero: true,
   }, (storageKey) => `https://cdn.test/${storageKey}`);
 
-  assert.equal(url, null);
+  assert.equal(url, "https://cdn.test/uploads/01b39ccb-4318-4e0b-a99d-4fed6de0c025-DAX01-1-.jpg");
 });
 
 test("hero variant preference preserves currently selected safe variant when available", () => {

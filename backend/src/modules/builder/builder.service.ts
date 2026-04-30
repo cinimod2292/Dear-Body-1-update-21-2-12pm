@@ -302,7 +302,6 @@ export function __testOnly__choosePreferredImageVariantUrl(
     const variant = params.variants.find((entry) => entry.key === key);
     if (variant) return resolver(variant.storageKey);
   }
-  if (params.isHero) return null;
   return resolver(params.fallbackStorageKey);
 }
 

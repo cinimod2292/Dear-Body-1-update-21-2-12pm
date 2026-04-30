@@ -12,37 +12,62 @@ import {
   updateBuilderDraft,
 } from "./builder.service.js";
 
+type HeroUploadDeps = {
+  resolveUploadConfig: typeof resolveUploadConfig;
+  writeStorageObjectBuffer: typeof writeStorageObjectBuffer;
+  resolvePublicUrlForStorageKey: typeof resolvePublicUrlForStorageKey;
+  createMediaAsset: typeof prisma.mediaAsset.create;
+  logger?: Pick<FastifyInstance["log"], "warn">;
+};
+
+export function createHeroImageUploadHandler(deps: HeroUploadDeps) {
+  return async (request: any, reply: any) => {
+    const cfg = await deps.resolveUploadConfig();
+    const part = await request.file();
+    if (!part) throw new AppError(400, "Image file is required.", "HERO_IMAGE_REQUIRED");
+    if (!String(part.mimetype ?? "").startsWith("image/")) throw new AppError(400, "Only image files are allowed.", "HERO_IMAGE_INVALID_TYPE");
+    const buffer = await part.toBuffer();
+    const storageKey = sanitizeStorageKey(`uploads/hero/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${(part.filename || "hero").replace(/[^a-zA-Z0-9._-]/g, "-")}`);
+    try {
+      await deps.writeStorageObjectBuffer(storageKey, buffer, part.mimetype || "application/octet-stream", cfg);
+    } catch (error) {
+      const hasCredMessage = error instanceof Error && /bucket|access key|secret|region/i.test(error.message);
+      if (hasCredMessage) {
+        deps.logger?.warn?.({
+          provider: cfg.provider,
+          bucketConfigured: Boolean(cfg.bucket),
+          endpointConfigured: Boolean(cfg.endpoint),
+          publicBaseUrlConfigured: Boolean(cfg.publicBaseUrl),
+          accessKeyConfigured: Boolean(cfg.accessKeyId),
+          secretConfigured: Boolean(cfg.secretAccessKey),
+          regionConfigured: Boolean(cfg.region),
+        }, "Hero upload storage configuration missing required keys");
+      }
+      throw error;
+    }
+    const originalUrl = deps.resolvePublicUrlForStorageKey(storageKey, cfg);
+    if (!originalUrl) throw new AppError(422, "Hero image upload did not return a public URL.", "HERO_IMAGE_UPLOAD_FAILED");
+    const asset = await deps.createMediaAsset({
+      data: {
+        filename: part.filename || "hero-image",
+        kind: "IMAGE",
+        mimeType: part.mimetype || "application/octet-stream",
+        byteSize: buffer.length,
+        storageKey,
+        publicUrl: originalUrl,
+        altText: String((part.fields?.alt as any)?.value ?? ""),
+        metadata: { source: "builder-home-hero" },
+      },
+    } as any);
+    return reply.send({ data: { imageAssetId: asset.id, imageUrl: originalUrl, imageMobileUrl: originalUrl, originalUrl, alt: asset.altText ?? "", storageKey, storageProvider: cfg.provider } });
+  };
+}
+
 export async function builderRoutes(app: FastifyInstance) {
   app.post(
     "/admin/builder/home/hero-image",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
-    async (request, reply) => {
-      const cfg = await resolveUploadConfig();
-      if (cfg.provider === "cloudflare-r2" && (!cfg.publicBaseUrl || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey)) {
-        throw new AppError(422, "Cloudflare/R2 storage is not fully configured.", "HERO_STORAGE_NOT_CONFIGURED");
-      }
-      const part = await request.file();
-      if (!part) throw new AppError(400, "Image file is required.", "HERO_IMAGE_REQUIRED");
-      if (!String(part.mimetype ?? "").startsWith("image/")) throw new AppError(400, "Only image files are allowed.", "HERO_IMAGE_INVALID_TYPE");
-      const buffer = await part.toBuffer();
-      const storageKey = sanitizeStorageKey(`uploads/hero/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${(part.filename || "hero").replace(/[^a-zA-Z0-9._-]/g, "-")}`);
-      await writeStorageObjectBuffer(storageKey, buffer, part.mimetype || "application/octet-stream", cfg);
-      const originalUrl = resolvePublicUrlForStorageKey(storageKey, cfg);
-      if (!originalUrl) throw new AppError(422, "Hero image upload did not return a public URL.", "HERO_IMAGE_UPLOAD_FAILED");
-      const asset = await prisma.mediaAsset.create({
-        data: {
-          filename: part.filename || "hero-image",
-          kind: "IMAGE",
-          mimeType: part.mimetype || "application/octet-stream",
-          byteSize: buffer.length,
-          storageKey,
-          publicUrl: originalUrl,
-          altText: String((part.fields?.alt as any)?.value ?? ""),
-          metadata: { source: "builder-home-hero" },
-        },
-      });
-      return reply.send({ data: { imageAssetId: asset.id, imageUrl: originalUrl, imageMobileUrl: originalUrl, originalUrl, alt: asset.altText ?? "", storageKey, storageProvider: cfg.provider } });
-    },
+    createHeroImageUploadHandler({ resolveUploadConfig, writeStorageObjectBuffer, resolvePublicUrlForStorageKey, createMediaAsset: prisma.mediaAsset.create.bind(prisma.mediaAsset), logger: app.log }),
   );
   app.get(
     "/admin/builder/pages",

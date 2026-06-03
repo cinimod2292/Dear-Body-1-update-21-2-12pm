@@ -15,8 +15,15 @@ export type BuilderSection = {
   metadata?: Record<string, unknown>;
 };
 
+export type BuilderSeo = {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+};
+
 export type BuilderPageContent = {
   sections: BuilderSection[];
+  seo?: BuilderSeo;
 };
 
 export type BuilderPageRecord = {
@@ -30,8 +37,16 @@ export type BuilderPageRecord = {
   updatedBy?: string | null;
 };
 
+export type BenefitIconName = "sparkles" | "shield" | "heart" | "leaf" | "truck";
+
+export type BenefitItem = {
+  icon: BenefitIconName;
+  title: string;
+  text?: string;
+};
+
 export type EditableField = {
-  type: "text" | "textarea" | "image" | "url" | "select" | "boolean" | "number";
+  type: "text" | "textarea" | "image" | "url" | "select" | "boolean" | "number" | "benefit_items";
   label: string;
   required?: boolean;
   options?: string[];

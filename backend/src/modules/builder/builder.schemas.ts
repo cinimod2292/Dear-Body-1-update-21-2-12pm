@@ -112,8 +112,15 @@ export const builderSectionSchema = z.object({
   }
 });
 
+const builderSeoSchema = z.object({
+  title: z.string().max(120).optional(),
+  description: z.string().max(320).optional(),
+  ogImage: safeUrl.optional(),
+}).optional();
+
 export const builderPageContentSchema = z.object({
   sections: z.array(builderSectionSchema).max(MAX_SECTIONS),
+  seo: builderSeoSchema,
 });
 
 export const builderPageSchema = z.object({

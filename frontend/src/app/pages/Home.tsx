@@ -180,6 +180,26 @@ export default function Home() {
     document.title = "Dear Body";
   }, []);
 
+  // Apply SEO metadata from builder content
+  useEffect(() => {
+    if (!builderContent?.seo) return;
+    const { title, description, ogImage } = builderContent.seo;
+    if (title) document.title = title;
+    const setMeta = (name: string, content: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"], meta[property="${name}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        if (name.startsWith("og:")) el.setAttribute("property", name);
+        else el.setAttribute("name", name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    if (description) setMeta("description", description);
+    if (ogImage) { setMeta("og:image", ogImage); }
+    if (title) { setMeta("og:title", title); }
+  }, [builderContent?.seo]);
+
   useEffect(() => {
     let cancelled = false;
     const isPreview = searchParams.get("preview") === "builder";

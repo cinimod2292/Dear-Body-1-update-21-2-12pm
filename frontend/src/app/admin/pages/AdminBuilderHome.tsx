@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
-import { Link } from "react-router";
-import { ArrowDown, ArrowLeft, ArrowUp, Copy, Eye, Loader2, Monitor, Redo2, Save, Smartphone, Tablet, Trash2, Undo2 } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Eye, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Tablet, Trash2, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, publishBuilderDraft, saveBuilderDraft } from "../../builder/api";
@@ -11,7 +11,7 @@ import { FeaturedProductsSection } from "../../builder/sections/FeaturedProducts
 import { HeroBannerSection } from "../../builder/sections/HeroBannerSection";
 import { ImageTextSection } from "../../builder/sections/ImageTextSection";
 import { PromoBannerSection } from "../../builder/sections/PromoBannerSection";
-import { BuilderPageContent, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
+import { BenefitIconName, BenefitItem, BuilderPageContent, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -20,16 +20,45 @@ import { craftNodesToPageContent, pageContentToCraftNodes } from "../../builder/
 import { SECTION_PRESETS } from "../../builder/presets";
 import { actionBlockedMessage, isActionAllowed } from "../../builder/action-rules";
 import { isSafeImageUrl } from "../../builder/media-url";
-import { duplicateSection, moveSection, removeSection } from "./builder/editor-state";
+import { createSection, duplicateSection, moveSection, removeSection } from "./builder/editor-state";
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
-import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveHeroImageSelection, resolveNextImageValue } from "./builder/media-picker";
+import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
 
 type Status = "unsaved" | "saving" | "saved" | "publishing" | "published" | "error";
+
+const BENEFIT_ICON_OPTIONS: BenefitIconName[] = ["sparkles", "shield", "heart", "leaf", "truck"];
+
+const BENEFIT_ICON_LABELS: Record<BenefitIconName, string> = {
+  sparkles: "Sparkles",
+  shield: "Shield",
+  heart: "Heart",
+  leaf: "Leaf",
+  truck: "Truck",
+};
+
+const OPTION_LABEL_MAP: Record<string, string> = {
+  image_right: "Image Right",
+  image_left: "Image Left",
+  centered: "Centered",
+  soft: "Soft",
+  clean: "Clean",
+  warm: "Warm",
+  bold: "Bold",
+  manual: "Manual",
+  latest: "Latest",
+  featured: "Featured",
+  "3": "3 Columns",
+  "4": "4 Columns",
+};
+
+function formatOptionLabel(option: string): string {
+  return OPTION_LABEL_MAP[option] ?? option.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function isBuilderDebugEnabled() {
   if (import.meta.env.DEV) return true;
@@ -45,15 +74,22 @@ function builderDebugLog(message: string, payload: Record<string, unknown>) {
   console.info(`[builder-home] ${message}`, payload);
 }
 
-
-function logBuilderVariantDiagnostic(area: string, variants: unknown) {
-  const isArray = Array.isArray(variants);
-  const isObject = Boolean(variants && typeof variants === "object" && !isArray);
-  const keys = isObject ? Object.keys(variants as Record<string, unknown>) : [];
-  console.info("[builder-diagnostic] variant-shape", { area, valueType: typeof variants, isArray, isObject, keys });
-}
-
 function BuilderCanvas({ children }: { children?: ReactNode }) {
+  const { nodes } = useEditor((state) => ({ nodes: state.nodes }));
+  const isEmpty = Object.keys(nodes).length <= 1; // only ROOT node
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-3 min-h-[400px] flex items-center justify-center">
+        <div className="text-center py-16 px-8">
+          <div className="text-4xl mb-4">🎨</div>
+          <p className="text-gray-700 font-semibold mb-1">Your page is empty</p>
+          <p className="text-sm text-gray-400 mb-4">Drag a section preset from the left panel,<br />or click the + button next to any preset.</p>
+        </div>
+      </div>
+    );
+  }
+
   return <div className="space-y-3">{children}</div>;
 }
 
@@ -71,7 +107,7 @@ const SectionFrame = ({ label, enabled, children }: { label: string; enabled: bo
       }}
       className={`relative rounded-md border-2 transition ${selected ? "border-pink-400" : "border-transparent hover:border-pink-200"} ${enabled ? "" : "opacity-50"}`}
     >
-      <div className="absolute left-2 top-2 z-10 rounded bg-white/95 border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-700">
+      <div className="absolute left-2 top-2 z-10 rounded bg-white/95 border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-700 select-none">
         {label} {enabled ? "" : "(Hidden)"}
       </div>
       {children}
@@ -112,7 +148,8 @@ function resolvedComponent(type: BuilderSectionType) {
   if (type === "featured_products") return FeaturedProductsCraftSection;
   if (type === "image_text") return ImageTextCraftSection;
   if (type === "benefit_icons") return BenefitIconsCraftSection;
-  return PromoBannerCraftSection;
+  if (type === "promo_banner") return PromoBannerCraftSection;
+  throw new Error(`Unknown section type: ${type}`);
 }
 
 function toFieldValue(value: unknown) {
@@ -137,31 +174,50 @@ function applySectionMutation(
 }
 
 function SectionLibrary() {
-  const { connectors } = useEditor();
+  const { connectors, actions, query } = useEditor();
+
+  const addPreset = (preset: typeof SECTION_PRESETS[number]) => {
+    const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+    const newSection = createSection(preset.sectionType, preset.defaultProps);
+    const nextSections = [...content.sections, newSection];
+    actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
+    setTimeout(() => actions.selectNode(newSection.id), 50);
+    toast.success(`${preset.name} added`);
+  };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {SECTION_PRESETS.map((preset) => (
         <div
           key={preset.id}
-          ref={(ref) => {
-            if (!ref) return;
-            connectors.create(
-              ref,
-              <Element
-                is={resolvedComponent(preset.sectionType)}
-                canvas={false}
-                custom={{ sectionType: preset.sectionType }}
-                {...preset.defaultProps}
-                sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
-                enabled
-              />,
-            );
-          }}
-          className="cursor-grab active:cursor-grabbing border border-gray-200 rounded-lg p-2 bg-white"
+          className="group flex items-center gap-1 border border-gray-200 rounded-lg bg-white hover:border-pink-300 hover:bg-pink-50/30 transition"
         >
-          <p className="text-sm font-semibold">{preset.icon} {preset.name}</p>
-          <p className="text-xs text-gray-500">{preset.description}</p>
+          <div
+            ref={(ref) => {
+              if (!ref) return;
+              connectors.create(
+                ref,
+                <Element
+                  is={resolvedComponent(preset.sectionType)}
+                  canvas={false}
+                  custom={{ sectionType: preset.sectionType }}
+                  {...preset.defaultProps}
+                  sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
+                  enabled
+                />,
+              );
+            }}
+            className="flex-1 cursor-grab active:cursor-grabbing p-2 select-none min-w-0"
+          >
+            <p className="text-xs font-semibold truncate">{preset.icon} {preset.name}</p>
+            <p className="text-[11px] text-gray-400 truncate">{preset.description}</p>
+          </div>
+          <button
+            type="button"
+            title="Add to page"
+            onClick={() => addPreset(preset)}
+            className="flex-shrink-0 p-2 text-gray-400 hover:text-pink-600 transition opacity-0 group-hover:opacity-100"
+          ><Plus size={14} /></button>
         </div>
       ))}
     </div>
@@ -178,7 +234,12 @@ function SectionList() {
   void stateNodes;
 
   if (sections.length === 0) {
-    return <div className="text-xs text-gray-500 border border-dashed border-gray-200 rounded-lg p-2">No sections yet. Drag a preset into the canvas.</div>;
+    return (
+      <div className="text-xs text-gray-500 border border-dashed border-gray-200 rounded-lg p-3 text-center">
+        <p className="mb-1">No sections yet.</p>
+        <p>Drag a preset from above into the canvas.</p>
+      </div>
+    );
   }
 
   const getRules = (sectionType: BuilderSectionType) => ({
@@ -198,14 +259,14 @@ function SectionList() {
           <div key={section.nodeId} className={`border rounded-lg p-2 ${selected ? "border-pink-400 bg-pink-50/40" : "border-gray-200 bg-white"}`}>
             <button type="button" onClick={() => actions.selectNode(section.nodeId)} className="w-full text-left">
               <p className="text-xs font-semibold">{registry.icon} {registry.displayName}</p>
-              <p className="text-[11px] text-gray-500">{section.sectionId}{section.enabled ? "" : " · hidden"}</p>
+              <p className="text-[11px] text-gray-400">{section.enabled ? "Visible" : "Hidden"}</p>
             </button>
             <div className="mt-2 grid grid-cols-5 gap-1">
               <button
                 type="button"
                 title="Move up"
-                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-40"
-                disabled={index === 0}
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-30 hover:border-gray-400 transition"
+                disabled={index === 0 || !rules.movable}
                 onClick={() => {
                   if (!isActionAllowed(rules, "move")) return toast.error(actionBlockedMessage("move"));
                   applySectionMutation(query, actions, (sectionsData) => moveSection(sectionsData, index, -1), section.nodeId);
@@ -214,8 +275,8 @@ function SectionList() {
               <button
                 type="button"
                 title="Move down"
-                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-40"
-                disabled={index === sections.length - 1}
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-30 hover:border-gray-400 transition"
+                disabled={index === sections.length - 1 || !rules.movable}
                 onClick={() => {
                   if (!isActionAllowed(rules, "move")) return toast.error(actionBlockedMessage("move"));
                   applySectionMutation(query, actions, (sectionsData) => moveSection(sectionsData, index, 1), section.nodeId);
@@ -224,7 +285,8 @@ function SectionList() {
               <button
                 type="button"
                 title="Duplicate"
-                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-30 hover:border-gray-400 transition"
+                disabled={!rules.duplicatable}
                 onClick={() => {
                   if (!isActionAllowed(rules, "duplicate")) return toast.error(actionBlockedMessage("duplicate"));
                   const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
@@ -236,16 +298,17 @@ function SectionList() {
               ><Copy size={12} className="mx-auto" /></button>
               <button
                 type="button"
-                title={section.enabled ? "Hide" : "Show"}
-                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                title={section.enabled ? "Hide section" : "Show section"}
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] hover:border-gray-400 transition"
                 onClick={() => {
                   actions.setProp(section.nodeId, (props: Record<string, unknown>) => { props.enabled = !Boolean(props.enabled ?? true); });
                 }}
-              >{section.enabled ? "Hide" : "Show"}</button>
+              >{section.enabled ? <Eye size={12} className="mx-auto" /> : <Eye size={12} className="mx-auto opacity-40" />}</button>
               <button
                 type="button"
-                title="Delete"
-                className="px-1 py-1 rounded border border-gray-200 text-[11px]"
+                title="Delete section"
+                className="px-1 py-1 rounded border border-gray-200 text-[11px] disabled:opacity-30 hover:border-red-300 hover:text-red-600 transition"
+                disabled={!rules.removable}
                 onClick={() => {
                   if (!isActionAllowed(rules, "remove")) return toast.error(actionBlockedMessage("remove"));
                   const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
@@ -278,27 +341,45 @@ function MediaLibraryModal({
   const [error, setError] = useState<string | null>(null);
   const [queryText, setQueryText] = useState("");
   const [items, setItems] = useState<MediaAsset[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const loadPage = async (pageNum: number, q: string) => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams({ page: String(pageNum), perPage: "24", kind: "IMAGE", sortBy: "createdAt", sortDir: "desc" });
+      if (q.trim()) params.set("q", q.trim());
+      const response = await apiRequest<{ data: PaginatedResult<MediaAsset> }>(`/admin/media?${params.toString()}`, {}, accessToken);
+      setItems(response.data.items);
+      setTotalPages(Math.max(1, Math.ceil((response.data.total ?? response.data.items.length) / 24)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load media");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || !accessToken) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const params = new URLSearchParams({ page: "1", perPage: "24", kind: "IMAGE", sortBy: "createdAt", sortDir: "desc" });
-        if (queryText.trim()) params.set("q", queryText.trim());
-        const response = await apiRequest<{ data: PaginatedResult<MediaAsset> }>(`/admin/media?${params.toString()}`, {}, accessToken);
-        if (!cancelled) setItems(response.data.items);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load media");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [open, accessToken, queryText]);
+    setPage(1);
+    void loadPage(1, queryText);
+  }, [open, accessToken]);
+
+  useEffect(() => {
+    if (!open || !accessToken) return;
+    const timer = setTimeout(() => {
+      setPage(1);
+      void loadPage(1, queryText);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [queryText]);
+
+  const goToPage = (p: number) => {
+    setPage(p);
+    void loadPage(p, queryText);
+  };
 
   if (!open) return null;
 
@@ -307,24 +388,49 @@ function MediaLibraryModal({
       <div className="bg-white w-full max-w-4xl rounded-xl shadow-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Choose image from media library</h3>
-          <button type="button" onClick={onClose} className="px-2 py-1 rounded border border-gray-200 text-xs">Close</button>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition"><X size={16} /></button>
         </div>
-        <input value={queryText} onChange={(event) => setQueryText(event.target.value)} placeholder="Search by filename..." className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-        {loading ? <div className="text-xs text-gray-500">Loading media...</div> : null}
+        <input
+          value={queryText}
+          onChange={(event) => setQueryText(event.target.value)}
+          placeholder="Search by filename..."
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        />
+        {loading ? <div className="text-xs text-gray-500 py-2">Loading...</div> : null}
         {error ? <div className="text-xs text-red-600">{error}</div> : null}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[420px] overflow-auto">
+        {!loading && items.length === 0 && !error ? <div className="text-xs text-gray-400 py-4 text-center">No images found.</div> : null}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[400px] overflow-auto">
           {items.map((asset) => (
             <button
               key={asset.id}
               type="button"
               onClick={() => onSelect(asset)}
-              className="text-left border border-gray-200 rounded-lg p-2 hover:border-gray-400"
+              className="text-left border border-gray-200 rounded-lg p-2 hover:border-pink-400 hover:shadow-sm transition"
             >
-              {asset.publicUrl ? <img src={asset.publicUrl} alt={asset.altText ?? asset.filename} className="w-full h-24 object-cover rounded mb-2" /> : <div className="w-full h-24 bg-gray-100 rounded mb-2" />}
+              {asset.publicUrl
+                ? <img src={asset.publicUrl} alt={asset.altText ?? asset.filename} className="w-full h-24 object-cover rounded mb-1" />
+                : <div className="w-full h-24 bg-gray-100 rounded mb-1" />}
               <p className="text-[11px] font-medium truncate">{asset.filename}</p>
             </button>
           ))}
         </div>
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => goToPage(page - 1)}
+              className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:border-gray-400 transition"
+            >Previous</button>
+            <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => goToPage(page + 1)}
+              className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:border-gray-400 transition"
+            >Next</button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -349,87 +455,17 @@ function InspectorImageField({
   query: ReturnType<typeof useEditor>["query"];
   accessToken?: string;
 }) {
-  type HeroDebugInfo = {
-    selectedAssetId: string;
-    sourceEndpoint: string;
-    storageKey: string;
-    mimeType: string;
-    kind: string;
-    variantKeys: string[];
-    variantsCount: number;
-    chosenHeroUrl: string;
-    reason: string;
-  };
-
   const imageValue = toFieldValue(value);
   const isHeroField = isHeroImageField(sectionType, keyName);
   const safe = isSafeImageUrl(imageValue, { isHero: isHeroField });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
-  const [heroDebug, setHeroDebug] = useState<HeroDebugInfo | null>(null);
-
-  const setHeroDebugInfo = (params: {
-    asset: MediaAsset;
-    sourceEndpoint: string;
-    chosenHeroUrl?: string;
-    reason: string;
-  }) => {
-    logBuilderVariantDiagnostic("InspectorImageField.setHeroDebugInfo", params.asset.variants);
-    const variants = variantKeys(params.asset.variants);
-    setHeroDebug({
-      selectedAssetId: params.asset.id,
-      sourceEndpoint: params.sourceEndpoint,
-      storageKey: String(params.asset.storageKey ?? ""),
-      mimeType: String(params.asset.mimeType ?? ""),
-      kind: String(params.asset.kind ?? ""),
-      variantKeys: variants,
-      variantsCount: variants.length,
-      chosenHeroUrl: String(params.chosenHeroUrl ?? ""),
-      reason: params.reason,
-    });
-  };
-
-  const loadFullAssetById = async (assetId: string, sourceEndpoint: string) => {
-    if (!accessToken) return null;
-    const response = await apiRequest<{ data: MediaAsset[] }>("/admin/media/by-ids", {
-      method: "POST",
-      body: JSON.stringify({ ids: [assetId], view: "full" }),
-    }, accessToken);
-    const fullAsset = response.data[0] ?? null;
-    if (fullAsset) {
-      setHeroDebugInfo({ asset: fullAsset, sourceEndpoint, reason: "loaded_full_asset" });
-    }
-    return fullAsset;
-  };
-
 
   const setFieldValue = (next: string) => {
     const safeNext = resolveNextImageValue(imageValue, next);
     actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
       props[keyName] = safeNext;
-      if (isHeroField) {
-        builderDebugLog("selected hero chosenHeroUrl", { selectedNodeId, keyName, chosenHeroUrl: next, safeNext });
-      }
-      builderDebugLog("setProp image field", {
-        assignedImageUrl: safeNext,
-        selectedNodeId,
-        sectionType,
-        keyName,
-        imageUrl: String(props.imageUrl ?? ""),
-        imageAlt: String(props.imageAlt ?? ""),
-      });
-    });
-    queueMicrotask(() => {
-      const node = query.getSerializedNodes()[selectedNodeId] as SerializedNode | undefined;
-      const props = (node?.props ?? {}) as Record<string, unknown>;
-      builderDebugLog("setProp post-state snapshot", {
-        selectedNodeId,
-        sectionType,
-        keyName,
-        imageUrl: String(props.imageUrl ?? ""),
-        imageAlt: String(props.imageAlt ?? ""),
-      });
     });
   };
 
@@ -456,7 +492,6 @@ function InspectorImageField({
           props.imageMobileUrl = data.imageMobileUrl;
           props.imageAlt = data.alt || file.name;
         });
-        setHeroDebug({ selectedAssetId: String(data.imageAssetId), sourceEndpoint: "/admin/builder/home/hero-image", storageKey: String(data.storageKey || ""), mimeType: file.type, kind: "IMAGE", variantKeys: [], variantsCount: 0, chosenHeroUrl: String(data.imageUrl || ""), reason: "dedicated_hero_upload_original" });
         toast.success("Image uploaded");
         return;
       }
@@ -474,11 +509,6 @@ function InspectorImageField({
         },
         accessToken,
       );
-      builderDebugLog("prepare upload response", {
-        keyName,
-        storageKey: prep.data.storageKey,
-        publicUrl: prep.data.publicUrl,
-      });
 
       let uploadResponse: Response;
       try {
@@ -489,7 +519,7 @@ function InspectorImageField({
         });
       } catch (error) {
         throw new Error(
-          `Browser upload request failed before reaching storage. Likely bucket CORS issue for admin origin. ${error instanceof Error ? error.message : ""}`.trim(),
+          `Upload request failed. Likely a CORS configuration issue. ${error instanceof Error ? error.message : ""}`.trim(),
         );
       }
       if (!uploadResponse.ok) {
@@ -497,7 +527,7 @@ function InspectorImageField({
         throw new Error(`Upload failed (${uploadResponse.status})${details ? `: ${details.slice(0, 200)}` : ""}`);
       }
 
-      const finalized = await apiRequest<{ data: MediaAsset; variantsPending?: boolean; variantErrors?: string[] }>("/admin/media/uploads/finalize", {
+      const finalized = await apiRequest<{ data: MediaAsset; variantsPending?: boolean }>("/admin/media/uploads/finalize", {
         method: "POST",
         body: JSON.stringify({
           storageKey: prep.data.storageKey,
@@ -507,36 +537,9 @@ function InspectorImageField({
           altText: file.name,
         }),
       }, accessToken);
-      builderDebugLog("finalize upload response", {
-        keyName,
-        mediaId: finalized.data.id,
-        publicUrl: finalized.data.publicUrl,
-        variants: variantKeys(finalized.data.variants),
-        variantShape: (Array.isArray(finalized.data.variants) ? "array" : typeof finalized.data.variants),
-        variantsPending: finalized.variantsPending ?? false,
-        variantErrors: finalized.variantErrors ?? [],
-      });
 
-      const preferredKeys = ["gallery", "card", "thumbnail"];
-      const allowOriginalFallback = true;
-      const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, preferredKeys, { allowOriginalFallback });
-      builderDebugLog("upload selected image URL", {
-        keyName,
-        mediaId: finalized.data.id,
-        chosenImageUrl: next,
-        previousImageUrl: imageValue,
-        variantsPending: finalized.variantsPending ?? false,
-      });
-      if (isHeroField) {
-        actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
-          props.imageAssetId = finalized.data.id;
-          props.imageUrl = finalized.data.publicUrl;
-          props.imageMobileUrl = finalized.data.publicUrl;
-          builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
-        });
-      } else {
-        setFieldValue(next);
-      }
+      const next = mapSelectedMediaVariantToFieldValue(imageValue, finalized.data, ["gallery", "card", "thumbnail"], { allowOriginalFallback: true });
+      setFieldValue(next);
       toast.success("Image uploaded");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed";
@@ -548,71 +551,162 @@ function InspectorImageField({
     }
   };
 
+  const handleLibrarySelect = async (asset: MediaAsset) => {
+    void (async () => {
+      const preferredKeys = ["gallery", "card", "thumbnail"];
+      let resolvedAsset = asset;
+      if (accessToken) {
+        try {
+          const response = await apiRequest<{ data: MediaAsset[] }>("/admin/media/by-ids", {
+            method: "POST",
+            body: JSON.stringify({ ids: [asset.id], view: "full" }),
+          }, accessToken);
+          resolvedAsset = response.data[0] ?? asset;
+        } catch {
+          // fall back to the asset from the list
+        }
+      }
+      builderDebugLog("library selected", { keyName, mediaId: resolvedAsset.id, variantKeys: variantKeys(resolvedAsset.variants) });
+      if (isHeroField) {
+        actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+          props.imageAssetId = resolvedAsset.id;
+          props.imageUrl = resolvedAsset.publicUrl;
+          props.imageMobileUrl = resolvedAsset.publicUrl;
+        });
+      } else {
+        const next = mapSelectedMediaVariantToFieldValue(imageValue, resolvedAsset, preferredKeys, { allowOriginalFallback: true });
+        setFieldValue(next);
+      }
+      setShowLibrary(false);
+    })();
+  };
+
   return (
     <div>
-      {imageValue ? <img src={imageValue} alt={label} className="w-full h-24 rounded-lg border border-gray-200 object-cover mb-2" /> : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
-      <input type="text" className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`} value={imageValue} onChange={(event) => setFieldValue(event.target.value)} />
-      {!safe ? <p className="text-xs text-red-600 mt-1">Use only relative or https image URLs.</p> : null}
+      {imageValue
+        ? <img src={imageValue} alt={label} className="w-full h-32 rounded-lg border border-gray-200 object-cover mb-2" />
+        : <div className="w-full h-20 rounded-lg border border-dashed border-gray-200 mb-2 flex items-center justify-center text-xs text-gray-400">No image selected</div>}
+      <input
+        type="text"
+        className={`w-full rounded-lg border px-3 py-2 text-sm ${safe ? "border-gray-200" : "border-red-400"}`}
+        value={imageValue}
+        onChange={(event) => setFieldValue(event.target.value)}
+        placeholder="https://... or /path/to/image"
+      />
+      {!safe ? <p className="text-xs text-red-600 mt-1">Use relative or https URLs only.</p> : null}
       {uploadError ? <p className="text-xs text-red-600 mt-1">{uploadError}</p> : null}
-      <p className="text-[11px] text-gray-500 mt-1 truncate">{imageValue || "No image URL"}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <label className="text-xs px-2 py-1 rounded border border-gray-300 cursor-pointer">
-          {uploading ? "Uploading..." : "Upload image"}
+        <label className="text-xs px-2 py-1.5 rounded border border-gray-300 cursor-pointer hover:border-gray-400 transition">
+          {uploading ? <span className="flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Uploading...</span> : "Upload image"}
           <input type="file" accept="image/*" className="hidden" disabled={uploading || !accessToken} onChange={onUploadFile} />
         </label>
-        {!isHeroField ? <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" disabled={!accessToken} onClick={() => setShowLibrary(true)}>Choose from media</button> : null}
-        <button type="button" className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => setFieldValue("")}>Clear image</button>
+        <button
+          type="button"
+          className="text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-gray-400 transition"
+          disabled={!accessToken}
+          onClick={() => setShowLibrary(true)}
+        >Choose from library</button>
+        {imageValue ? (
+          <button type="button" className="text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-red-300 hover:text-red-600 transition" onClick={() => setFieldValue("")}>Clear</button>
+        ) : null}
       </div>
-      {isHeroField ? <p className="mt-1 text-[11px] text-gray-500">Hero accepts JPG/PNG/WebP and standard image uploads.</p> : null}
       <MediaLibraryModal
         open={showLibrary}
         accessToken={accessToken}
         onClose={() => setShowLibrary(false)}
-        onSelect={(asset) => {
-          void (async () => {
-          const preferredKeys = ["gallery", "card", "thumbnail"];
-          const fullAssetPromise = accessToken ? loadFullAssetById(asset.id, "/admin/media/by-ids?view=full") : Promise.resolve(null);
-          const fullAsset = await fullAssetPromise;
-          const resolvedAsset = fullAsset ?? asset;
-          const next = mapSelectedMediaVariantToFieldValue(imageValue, resolvedAsset, preferredKeys, {
-            allowOriginalFallback: !isHeroField,
-          });
-          builderDebugLog("library selected image URL", {
-            keyName,
-            mediaId: resolvedAsset.id,
-            mediaPublicUrl: resolvedAsset.publicUrl,
-            variantKeys: variantKeys(resolvedAsset.variants),
-            variantShape: (Array.isArray(resolvedAsset.variants) ? "array" : typeof resolvedAsset.variants),
-            chosenImageUrl: next,
-          });
-          if (isHeroField) {
-            actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
-              props.imageAssetId = resolvedAsset.id;
-              props.imageUrl = resolvedAsset.publicUrl;
-              props.imageMobileUrl = resolvedAsset.publicUrl;
-              builderDebugLog("setProp hero contract fields", { imageAssetId: props.imageAssetId, imageUrl: props.imageUrl, imageMobileUrl: props.imageMobileUrl });
-            });
-          } else {
-            setFieldValue(next);
-          }
-          setShowLibrary(false);
-          })();
-        }}
+        onSelect={handleLibrarySelect}
       />
-      {isHeroField && heroDebug ? (
-        <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-900 space-y-0.5">
-          <p><strong>Hero image debug</strong></p>
-          <p>selected asset id: {heroDebug.selectedAssetId}</p>
-          <p>source endpoint: {heroDebug.sourceEndpoint}</p>
-          <p>storageKey: {heroDebug.storageKey || "n/a"}</p>
-          <p>mimeType: {heroDebug.mimeType || "n/a"}</p>
-          <p>kind: {heroDebug.kind || "n/a"}</p>
-          <p>variants count: {heroDebug.variantsCount}</p>
-          <p>variant keys: {heroDebug.variantKeys.join(", ") || "none"}</p>
-          <p>chosen hero URL: {heroDebug.chosenHeroUrl || "none"}</p>
-          <p>reason: {heroDebug.reason}</p>
+    </div>
+  );
+}
+
+function BenefitItemsEditor({
+  value,
+  selectedNodeId,
+  actions,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+}) {
+  const items: BenefitItem[] = Array.isArray(value)
+    ? (value as BenefitItem[])
+    : [];
+
+  const updateItems = (next: BenefitItem[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<BenefitItem>) => {
+    const next = items.map((item, i) => i === index ? { ...item, ...patch } : item);
+    updateItems(next);
+  };
+
+  const addItem = () => {
+    updateItems([...items, { icon: "sparkles", title: "New benefit", text: "" }]);
+  };
+
+  const removeItem = (index: number) => {
+    updateItems(items.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Benefit {index + 1}</span>
+            <button
+              type="button"
+              onClick={() => removeItem(index)}
+              className="text-gray-400 hover:text-red-500 transition"
+              title="Remove"
+            ><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Icon</label>
+            <div className="grid grid-cols-5 gap-1">
+              {BENEFIT_ICON_OPTIONS.map((icon) => (
+                <button
+                  key={icon}
+                  type="button"
+                  title={BENEFIT_ICON_LABELS[icon]}
+                  className={`py-1 rounded border text-[10px] ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"}`}
+                  onClick={() => updateItem(index, { icon })}
+                >{icon.slice(0, 4)}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Title</label>
+            <input
+              type="text"
+              value={item.title}
+              onChange={(e) => updateItem(index, { title: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1 text-xs"
+              placeholder="Benefit title"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Description</label>
+            <input
+              type="text"
+              value={item.text ?? ""}
+              onChange={(e) => updateItem(index, { text: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1 text-xs"
+              placeholder="Short description"
+            />
+          </div>
         </div>
+      ))}
+      {items.length < 8 ? (
+        <button
+          type="button"
+          onClick={addItem}
+          className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"
+        ><Plus size={12} /> Add benefit</button>
       ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No benefits yet. Click Add benefit.</p> : null}
     </div>
   );
 }
@@ -631,15 +725,16 @@ function renderFieldControl(args: {
 }) {
   const { keyName, field, value, selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken } = args;
 
+  if (field.type === "benefit_items") {
+    return <BenefitItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
   if (sectionType === "featured_products" && keyName === "mode") {
     return (
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">Mode</label>
-        <div className="grid grid-cols-3 gap-2">
-          {(["latest", "featured", "manual"] as const).map((option) => (
-            <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "latest") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.mode = option; })}>{option}</button>
-          ))}
-        </div>
+      <div className="grid grid-cols-3 gap-2">
+        {(["latest", "featured", "manual"] as const).map((option) => (
+          <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "latest") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 hover:border-gray-400"} transition`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.mode = option; })}>{formatOptionLabel(option)}</button>
+        ))}
       </div>
     );
   }
@@ -648,12 +743,12 @@ function renderFieldControl(args: {
     const selectedIds = Array.isArray(value) ? value.map(String) : [];
     return (
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Manual products</label>
-        <div className="max-h-36 overflow-auto border border-gray-200 rounded-lg p-2 space-y-1">
+        <div className="max-h-40 overflow-auto border border-gray-200 rounded-lg p-2 space-y-1">
+          {products.length === 0 ? <p className="text-xs text-gray-400 py-1 text-center">No products available.</p> : null}
           {products.slice(0, 40).map((product) => {
             const checked = selectedIds.includes(product.id);
             return (
-              <label key={product.id} className="flex items-center gap-2 text-xs">
+              <label key={product.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 rounded">
                 <input
                   type="checkbox"
                   checked={checked}
@@ -668,19 +763,20 @@ function renderFieldControl(args: {
             );
           })}
         </div>
+        <p className="text-[11px] text-gray-400 mt-1">{selectedIds.length} product{selectedIds.length !== 1 ? "s" : ""} selected</p>
       </div>
     );
   }
 
   if (field.type === "textarea") {
-    return <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-20" value={toFieldValue(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
+    return <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-20 resize-y" value={toFieldValue(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
   }
 
   if (field.type === "select") {
     return (
       <div className="grid grid-cols-2 gap-2">
         {(field.options ?? []).map((option) => (
-          <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200"}`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = option; })}>{option}</button>
+          <button key={option} type="button" className={`px-2 py-2 rounded-lg border text-xs ${String(value ?? "") === option ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 hover:border-gray-400"} transition`} onClick={() => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = option; })}>{formatOptionLabel(option)}</button>
         ))}
       </div>
     );
@@ -691,7 +787,12 @@ function renderFieldControl(args: {
   }
 
   if (field.type === "boolean") {
-    return <input type="checkbox" checked={Boolean(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.checked; })} />;
+    return (
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={Boolean(value)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.checked; })} />
+        <span className="text-xs text-gray-600">{field.label}</span>
+      </label>
+    );
   }
 
   if (field.type === "image") {
@@ -699,34 +800,6 @@ function renderFieldControl(args: {
   }
 
   return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
-}
-
-function extractHeroImageUrlFromContent(content: BuilderPageContent) {
-  const sections = normalizeList<BuilderSection>((content as any)?.sections);
-  const hero = sections.find((section) => section?.type === "hero_banner");
-  return String(hero?.props?.imageUrl ?? "");
-}
-
-function extractHeroPropsFromContent(content: BuilderPageContent) {
-  const sections = normalizeList<BuilderSection>((content as any)?.sections);
-  const hero = sections.find((section) => section?.type === "hero_banner");
-  const props = (hero?.props ?? {}) as Record<string, unknown>;
-  return {
-    imageAssetId: props.imageAssetId ?? null,
-    imageUrl: props.imageUrl ?? null,
-    imageMobileUrl: props.imageMobileUrl ?? null,
-    imageAlt: props.imageAlt ?? null,
-  };
-}
-
-function extractHeroImageUrlFromNodes(nodes: SerializedNodes) {
-  const heroNode = Object.values(nodes).find((node) => {
-    if (!node || typeof node !== "object") return false;
-    const resolvedName = typeof node.type === "string" ? node.type : node.type?.resolvedName;
-    return resolvedName === "HeroCraftSection";
-  });
-  const props = (heroNode?.props ?? {}) as Record<string, unknown>;
-  return String(props.imageUrl ?? "");
 }
 
 function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
@@ -740,12 +813,17 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
   });
 
   if (!selectedNodeId || !selectedNode) {
-    return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Select a section to edit settings.</div>;
+    return (
+      <div className="text-sm text-gray-400 border border-dashed border-gray-200 rounded-lg p-4 text-center">
+        <p className="font-medium text-gray-500 mb-1">No section selected</p>
+        <p className="text-xs">Click any section in the canvas or section tree to edit its settings.</p>
+      </div>
+    );
   }
 
   const resolvedSection = resolveInspectableSection(selectedNodeId, selectedNode, dearBodySectionRegistry);
   if (!resolvedSection) {
-    return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Selected node is not an editable storefront section.</div>;
+    return <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-3">Selected node is not an editable section.</div>;
   }
 
   const { sectionType, registryEntry: registry, editableSchema, nodeProps } = resolvedSection;
@@ -767,12 +845,12 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
   return (
     <div className="space-y-3">
       <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-        <p className="text-sm font-semibold">{registry.displayName}</p>
-        <p className="text-xs text-gray-500">{registry.description}</p>
+        <p className="text-sm font-semibold">{registry.icon} {registry.displayName}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{registry.description}</p>
       </div>
 
-      <label className="flex items-center justify-between text-sm border border-gray-200 rounded-lg px-3 py-2">
-        <span>Visible</span>
+      <label className="flex items-center justify-between text-sm border border-gray-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-50">
+        <span className="font-medium">Visible</span>
         <input type="checkbox" checked={Boolean(nodeProps.enabled ?? true)} onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.enabled = event.target.checked; })} />
       </label>
 
@@ -785,7 +863,7 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
             <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{groupName}</h4>
             {fields.map(([keyName, field]) => (
               <div key={keyName}>
-                <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
+                <label className="block text-xs text-gray-600 mb-1 font-medium">{field.label}{field.required ? <span className="text-red-500 ml-0.5">*</span> : null}</label>
                 {renderFieldControl({ keyName, field, value: nodeProps[keyName], selectedNodeId, sectionType, nodeProps, products, actions, query, accessToken })}
               </div>
             ))}
@@ -796,6 +874,7 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
+          disabled={!rules.duplicatable}
           onClick={() => {
             if (!isActionAllowed(rules, "duplicate")) return toast.error(actionBlockedMessage("duplicate"));
             const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
@@ -806,23 +885,24 @@ function SelectedSectionInspector({ accessToken }: { accessToken?: string }) {
             actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
             if (cloned) actions.selectNode(cloned.id);
           }}
-          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1 disabled:opacity-40 hover:border-gray-400 transition"
         ><Copy size={14} /> Duplicate</button>
 
         <button
           type="button"
+          disabled={!rules.removable}
           onClick={() => {
             if (!isActionAllowed(rules, "remove")) return toast.error(actionBlockedMessage("remove"));
             actions.delete(selectedNodeId);
           }}
-          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center justify-center gap-1 disabled:opacity-40 hover:border-red-300 hover:text-red-600 transition"
         ><Trash2 size={14} /> Delete</button>
       </div>
     </div>
   );
 }
 
-function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, publishedAt, version }: {
+function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, publishedAt, version, unsaved }: {
   status: Status;
   onSave: (nodes: SerializedNodes) => Promise<void>;
   onPublish: (nodes: SerializedNodes) => Promise<void>;
@@ -830,39 +910,208 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   updatedAt?: string | null;
   publishedAt?: string | null;
   version?: number | null;
+  unsaved: boolean;
 }) {
-  const { query, actions } = useEditor();
+  const { query, actions, canUndo, canRedo } = useEditor((state) => {
+    const s = state as any;
+    const past = s.history?.past ?? s.options?.history?.past ?? [];
+    const future = s.history?.future ?? s.options?.history?.future ?? [];
+    return {
+      canUndo: Array.isArray(past) && past.length > 0,
+      canRedo: Array.isArray(future) && future.length > 0,
+    };
+  });
   const [busy, setBusy] = useState(false);
-  const [historyTick, setHistoryTick] = useState(0);
+  const [publishConfirm, setPublishConfirm] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
 
-  const canUndo = historyTick > 0;
-  const canRedo = historyTick > 0;
+  const isBusy = busy || status === "saving" || status === "publishing";
 
-  const statusLabel = status === "saving" ? "Saving..." : status === "saved" ? "Saved draft" : status === "publishing" ? "Publishing..." : status === "published" ? "Published" : status === "error" ? "Error" : "Unsaved changes";
+  // Cmd+S / Ctrl+S keyboard shortcut for saving
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        if (isBusy) return;
+        setBusy(true);
+        onSave(query.getSerializedNodes() as SerializedNodes)
+          .finally(() => setBusy(false));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isBusy, onSave, query]);
+
+  const statusLabel =
+    status === "saving" ? "Saving..." :
+    status === "saved" ? "Draft saved" :
+    status === "publishing" ? "Publishing..." :
+    status === "published" ? "Published" :
+    status === "error" ? "Error" :
+    unsaved ? "Unsaved changes" : "Draft saved";
+
+  const statusClass =
+    status === "error" ? "bg-red-100 text-red-700" :
+    (status === "published" || status === "saved" || !unsaved) ? "bg-emerald-100 text-emerald-700" :
+    "bg-amber-100 text-amber-700";
 
   return (
-    <header className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <Link to="/admin" className="px-3 py-2 rounded-lg border border-gray-200 text-sm inline-flex items-center gap-2"><ArrowLeft size={14} /> Back to admin</Link>
-        <span className={`text-xs px-2 py-1 rounded-full ${status === "error" ? "bg-red-100 text-red-700" : status === "published" || status === "saved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{statusLabel}</span>
-        <span className="text-xs text-gray-500">Version: {version ?? "—"}</span>
-        <span className="text-xs text-gray-500">Draft updated: {updatedAt ? new Date(updatedAt).toLocaleString() : "—"}</span>
-        <span className="text-xs text-gray-500">Published: {publishedAt ? new Date(publishedAt).toLocaleString() : "—"}</span>
+    <header className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusClass}`}>{statusLabel}</span>
+        {version ? <span className="text-xs text-gray-400">v{version}</span> : null}
+        {updatedAt ? <span className="text-xs text-gray-400 hidden xl:inline">Saved {new Date(updatedAt).toLocaleString()}</span> : null}
+        {publishedAt ? <span className="text-xs text-gray-400 hidden xl:inline">Published {new Date(publishedAt).toLocaleString()}</span> : null}
       </div>
 
-      <div className="flex items-center gap-2">
-        <button type="button" disabled={!canUndo} onClick={() => { actions.history.undo(); setHistoryTick((x) => Math.max(0, x - 1)); }} className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-2 disabled:opacity-40"><Undo2 size={14} /> Undo</button>
-        <button type="button" disabled={!canRedo} onClick={() => { actions.history.redo(); setHistoryTick((x) => x + 1); }} className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-2 disabled:opacity-40"><Redo2 size={14} /> Redo</button>
-        <Link to="/?preview=builder" target="_blank" className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-2"><Eye size={14} /> Preview draft</Link>
-        <button type="button" disabled={busy || status === "saving" || status === "publishing"} onClick={async () => { setBusy(true); try { await onSave(query.getSerializedNodes() as SerializedNodes); } finally { setBusy(false); } }} className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-2 disabled:opacity-40"><Save size={14} /> Save Draft</button>
-        <button type="button" disabled={busy || status === "saving" || status === "publishing"} onClick={async () => { setBusy(true); try { await onPublish(query.getSerializedNodes() as SerializedNodes); } finally { setBusy(false); } }} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm inline-flex items-center gap-2 disabled:opacity-40">{status === "publishing" || busy ? <Loader2 className="animate-spin" size={14} /> : null} Publish</button>
-        <button type="button" className="px-3 py-2 rounded-lg border border-gray-300 text-sm" onClick={() => void onDiscard()}>Discard</button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          disabled={!canUndo}
+          onClick={() => actions.history.undo()}
+          title="Undo"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-1.5 disabled:opacity-40 hover:border-gray-400 transition"
+        ><Undo2 size={14} /> Undo</button>
+        <button
+          type="button"
+          disabled={!canRedo}
+          onClick={() => actions.history.redo()}
+          title="Redo"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-1.5 disabled:opacity-40 hover:border-gray-400 transition"
+        ><Redo2 size={14} /> Redo</button>
+
+        <Link
+          to="/?preview=builder"
+          target="_blank"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-1.5 hover:border-gray-400 transition"
+          title={unsaved ? "Save draft first to see latest changes in preview" : "Preview draft"}
+        >
+          <Eye size={14} />
+          Preview
+          {unsaved ? <AlertTriangle size={12} className="text-amber-500" /> : null}
+        </Link>
+
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={async () => {
+            setBusy(true);
+            try { await onSave(query.getSerializedNodes() as SerializedNodes); }
+            finally { setBusy(false); }
+          }}
+          title="Save draft (Cmd+S)"
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-1.5 disabled:opacity-40 hover:border-gray-400 transition"
+        ><Save size={14} /> Save Draft</button>
+
+        {publishConfirm ? (
+          <div className="flex items-center gap-1.5 bg-gray-900 rounded-lg px-3 py-2">
+            <span className="text-white text-xs">Go live?</span>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={async () => {
+                setPublishConfirm(false);
+                setBusy(true);
+                try { await onPublish(query.getSerializedNodes() as SerializedNodes); }
+                finally { setBusy(false); }
+              }}
+              className="px-2 py-0.5 rounded bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1 hover:bg-emerald-600 transition"
+            ><Check size={11} /> Yes</button>
+            <button type="button" onClick={() => setPublishConfirm(false)} className="px-2 py-0.5 rounded bg-white/20 text-white text-xs hover:bg-white/30 transition"><X size={11} /></button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={() => setPublishConfirm(true)}
+            className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm inline-flex items-center gap-1.5 disabled:opacity-40 hover:bg-gray-700 transition"
+          >
+            {status === "publishing" || busy ? <Loader2 className="animate-spin" size={14} /> : null}
+            Publish
+          </button>
+        )}
+
+        {discardConfirm ? (
+          <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <span className="text-red-700 text-xs">Discard changes?</span>
+            <button
+              type="button"
+              onClick={async () => {
+                setDiscardConfirm(false);
+                await onDiscard();
+              }}
+              className="px-2 py-0.5 rounded bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition"
+            >Yes</button>
+            <button type="button" onClick={() => setDiscardConfirm(false)} className="px-2 py-0.5 rounded border border-red-200 text-red-600 text-xs hover:bg-red-100 transition">No</button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={isBusy}
+            className="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:border-gray-400 disabled:opacity-40 transition"
+            onClick={() => setDiscardConfirm(true)}
+          >Discard</button>
+        )}
       </div>
     </header>
   );
 }
 
-function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken }: {
+function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition text-left"
+      >
+        <span className="text-xs font-semibold text-gray-700">SEO Settings</span>
+        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="p-3 space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Page Title</label>
+            <input
+              type="text"
+              value={seoData.title ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, title: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="Dear Body — Homepage"
+              maxLength={120}
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.title ?? "").length}/120 chars</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Meta Description</label>
+            <textarea
+              value={seoData.description ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, description: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs min-h-16 resize-y"
+              placeholder="Discover our bold collection of body sprays and skincare."
+              maxLength={320}
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.description ?? "").length}/320 chars · Ideal: 120–160</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image URL</label>
+            <input
+              type="text"
+              value={seoData.ogImage ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="https://... or /images/og.jpg"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">Shown when shared on social media (1200×630 recommended)</p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken, unsaved, seoData, onSeoChange }: {
   initialData: SerializedNodes;
   viewport: "desktop" | "tablet" | "mobile";
   products: Product[];
@@ -875,6 +1124,9 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   publishedAt?: string | null;
   version?: number | null;
   accessToken?: string;
+  unsaved: boolean;
+  seoData: import("../../builder/types").BuilderSeo;
+  onSeoChange: (next: import("../../builder/types").BuilderSeo) => void;
 }) {
   const widthClass = viewport === "mobile" ? "max-w-[390px]" : viewport === "tablet" ? "max-w-[820px]" : "max-w-[1200px]";
 
@@ -888,20 +1140,31 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
           if (nextNodes) onNodesChange(nextNodes);
         }}
       >
-        <BuilderTopActions status={status} onSave={onSave} onPublish={onPublish} onDiscard={onDiscard} updatedAt={updatedAt} publishedAt={publishedAt} version={version} />
+        <BuilderTopActions status={status} onSave={onSave} onPublish={onPublish} onDiscard={onDiscard} updatedAt={updatedAt} publishedAt={publishedAt} version={version} unsaved={unsaved} />
         <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr_360px] gap-3">
           <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto space-y-4">
             <div>
-              <p className="text-sm font-semibold text-gray-900 mb-3">Section / Preset Library</p>
+              <p className="text-sm font-semibold text-gray-900 mb-1">Section Library</p>
+              <p className="text-[11px] text-gray-400 mb-3">Drag a preset into the canvas, or click + to add.</p>
               <SectionLibrary />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 mb-3">Section Tree</p>
+              <p className="text-sm font-semibold text-gray-900 mb-3">Page Sections</p>
               <SectionList />
             </div>
+            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} />
           </aside>
-          <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto"><div className={`mx-auto ${widthClass}`}><div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><Frame data={initialData}><Element is={BuilderCanvas} canvas /></Frame></div></div></main>
-          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto"><p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p><SelectedSectionInspector accessToken={accessToken} /></aside>
+          <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto">
+            <div className={`mx-auto ${widthClass} transition-all duration-300`}>
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <Frame data={initialData}><Element is={BuilderCanvas} canvas /></Frame>
+              </div>
+            </div>
+          </main>
+          <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto">
+            <p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p>
+            <SelectedSectionInspector accessToken={accessToken} />
+          </aside>
         </div>
       </Editor>
     </CraftProductsContext.Provider>
@@ -910,6 +1173,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
 
 export default function AdminBuilderHome() {
   const { session } = useAdminAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -919,160 +1183,104 @@ export default function AdminBuilderHome() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [status, setStatus] = useState<Status>("saved");
   const [meta, setMeta] = useState<{ updatedAt?: string | null; publishedAt?: string | null; version?: number | null }>({});
+  const [seoData, setSeoData] = useState<import("../../builder/types").BuilderSeo>({});
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const unsaved = useMemo(() => JSON.stringify(craftNodesToPageContent(serialized)) !== JSON.stringify(savedSnapshot), [serialized, savedSnapshot]);
+  const unsaved = useMemo(() => {
+    const current: BuilderPageContent = { ...craftNodesToPageContent(serialized), seo: seoData };
+    return JSON.stringify(current) !== JSON.stringify(savedSnapshot);
+  }, [serialized, savedSnapshot, seoData]);
 
   useEffect(() => {
     logBuildMarker("AdminBuilderHome:init");
   }, []);
 
   useEffect(() => {
-    if (status === "saved" || status === "published" || status === "saving" || status === "publishing") return;
+    if (status === "saving" || status === "publishing") return;
     setStatus(unsaved ? "unsaved" : "saved");
   }, [unsaved]);
-  useEffect(() => {
-    const onError = (event: ErrorEvent) => {
-      const message = String(event.error?.message ?? event.message ?? "");
-      if (!/filter is not a function/i.test(message)) return;
-      const snapshot = craftNodesToPageContent(serialized);
-      const sections = normalizeList<BuilderSection>((snapshot as any)?.sections);
-      const hero = sections.find((section) => section?.type === "hero_banner");
-      console.error("[builder-diagnostic] runtime-filter-crash", {
-        area: "AdminBuilderHome",
-        message,
-        sectionsType: typeof (snapshot as any)?.sections,
-        sectionsIsArray: Array.isArray((snapshot as any)?.sections),
-        sectionKeys: Object.keys(((snapshot as any)?.sections ?? {}) as Record<string, unknown>),
-        heroPropsKeys: Object.keys((hero?.props ?? {}) as Record<string, unknown>),
-      });
-    };
-    window.addEventListener("error", onError);
-    return () => window.removeEventListener("error", onError);
-  }, [serialized]);
 
+  // Guard against accidentally leaving with unsaved changes
+  useEffect(() => {
+    if (!unsaved) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [unsaved]);
+
+  // Auto-save draft after 30s of inactivity when there are unsaved changes
+  useEffect(() => {
+    if (!unsaved || !session?.accessToken) return;
+    if (status === "saving" || status === "publishing") return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (!session?.accessToken) return;
+      try {
+        const content = { ...craftNodesToPageContent(serialized), seo: seoData };
+        const saved = await saveBuilderDraft("home", content, session.accessToken);
+        setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
+        setSerialized(pageContentToCraftNodes(saved.draftContent));
+        setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
+        setStatus("saved");
+        setEditorVersion((v) => v + 1);
+        toast.info("Draft auto-saved", { duration: 2000 });
+      } catch {
+        // auto-save silently fails; manual save still available
+      }
+    }, 30000);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [serialized, unsaved]);
 
   const load = async () => {
     if (!session?.accessToken) return;
-    let page: any = null;
-    let productsResponse: any = null;
-    let draftContent: any = null;
-    let publishedContent: any = null;
-    let draftSections: BuilderSection[] = [];
-    let publishedSections: BuilderSection[] = [];
-    let heroCandidates: BuilderSection[] = [];
     try {
       setLoading(true);
       setError(null);
       logBuildMarker("AdminBuilderHome:load");
 
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-fetch-draft");
-      page = await fetchAdminBuilderPage("home", session.accessToken);
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-fetch-draft");
+      const page = await fetchAdminBuilderPage("home", session.accessToken);
+      const productsResponse = await fetchStoreProducts();
 
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-fetch-published");
-      publishedContent = page?.publishedContent ?? null;
-      productsResponse = await fetchStoreProducts();
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-fetch-published");
+      const draftContent = normalizeLoadContent(page?.draftContent);
+      const draftSections = normalizeList<BuilderSection>((draftContent as any)?.sections);
 
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-draft-content");
-      draftContent = normalizeLoadContent(page?.draftContent);
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-draft-content");
+      builderDebugLog("loaded draft", { heroImageUrl: draftSections.find((s) => s?.type === "hero_banner")?.props?.imageUrl ?? null });
 
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-published-content");
-      publishedContent = normalizeLoadContent(publishedContent);
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-published-content");
-
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-normalize-sections");
-      draftSections = normalizeList<BuilderSection>((draftContent as any)?.sections);
-      publishedSections = normalizeList<BuilderSection>((publishedContent as any)?.sections);
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-normalize-sections");
-
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-find-hero-section");
-      heroCandidates = draftSections.filter((section) => section?.type === "hero_banner");
-      const hero = heroCandidates[0] ?? null;
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-find-hero-section");
-
-      builderDebugLog("loaded draft content", {
-        heroImageUrl: hero?.props?.imageUrl ?? null,
-      });
-      builderDebugLog("before pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromContent(draftContent),
-      });
       const mappedNodes = pageContentToCraftNodes(draftContent);
-      builderDebugLog("after pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
-      });
 
-      console.info("[ADMIN_BUILDER_LOAD_STEP] before-setState");
       setProducts(normalizeArrayOnly<Product>(productsResponse));
       setSavedSnapshot({ ...draftContent, sections: draftSections });
       setSerialized(mappedNodes);
+      setSeoData((draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: page?.updatedAt ?? null, publishedAt: page?.publishedAt ?? null, version: page?.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
-      console.info("[ADMIN_BUILDER_LOAD_STEP] after-setState");
     } catch (err) {
-      const error = err as any;
-      console.error("[ADMIN_BUILDER_LOAD_FATAL]", {
-        message: error?.message ?? String(error),
-        stack: error?.stack ?? null,
-        rawPagePayload: page,
-        rawPublishedPayload: page?.publishedContent ?? null,
-        rawProductsPayload: productsResponse,
-        draftContentType: typeof draftContent,
-        draftContentIsArray: Array.isArray(draftContent),
-        draftContentKeys: Object.keys((draftContent ?? {}) as Record<string, unknown>),
-        publishedContentType: typeof publishedContent,
-        publishedContentIsArray: Array.isArray(publishedContent),
-        publishedContentKeys: Object.keys((publishedContent ?? {}) as Record<string, unknown>),
-        sectionsType: typeof (draftContent as any)?.sections,
-        sectionsIsArray: Array.isArray((draftContent as any)?.sections),
-        sectionsKeys: Object.keys((((draftContent as any)?.sections) ?? {}) as Record<string, unknown>),
-        contentSectionsType: typeof (draftContent as any)?.sections,
-        contentSectionsIsArray: Array.isArray((draftContent as any)?.sections),
-        contentSectionsKeys: Object.keys((((draftContent as any)?.sections) ?? {}) as Record<string, unknown>),
-        pageSectionsType: typeof (page as any)?.sections,
-        pageSectionsIsArray: Array.isArray((page as any)?.sections),
-        pageSectionsKeys: Object.keys((((page as any)?.sections) ?? {}) as Record<string, unknown>),
-        heroCandidatesType: typeof heroCandidates,
-        heroCandidatesIsArray: Array.isArray(heroCandidates),
-        heroCandidatesKeys: Object.keys((heroCandidates ?? {}) as Record<string, unknown>),
-        fieldsType: typeof (draftContent as any)?.fields,
-        fieldsIsArray: Array.isArray((draftContent as any)?.fields),
-        fieldsKeys: Object.keys((((draftContent as any)?.fields) ?? {}) as Record<string, unknown>),
-        itemsType: typeof (draftContent as any)?.items,
-        itemsIsArray: Array.isArray((draftContent as any)?.items),
-        itemsKeys: Object.keys((((draftContent as any)?.items) ?? {}) as Record<string, unknown>),
-      });
-      setError(error instanceof Error ? error.message : "Failed to load page builder");
+      const e = err as any;
+      builderDebugLog("load error", { message: e?.message ?? String(e) });
+      setError(e instanceof Error ? e.message : "Failed to load page builder");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [session?.accessToken]);
+  useEffect(() => { void load(); }, [session?.accessToken]);
 
   const onSave = async (nodes: SerializedNodes) => {
     if (!session?.accessToken) return;
     try {
       setStatus("saving");
-      const content = craftNodesToPageContent(nodes);
-      builderDebugLog("saving draft content", {
-        heroProps: extractHeroPropsFromContent(content),
-      });
+      const content = { ...craftNodesToPageContent(nodes), seo: seoData };
       const saved = await saveBuilderDraft("home", content, session.accessToken);
-      builderDebugLog("save draft response content", {
-        heroProps: extractHeroPropsFromContent(saved.draftContent),
-      });
-      builderDebugLog("before pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromContent(saved.draftContent),
-      });
       const mappedNodes = pageContentToCraftNodes(saved.draftContent);
-      builderDebugLog("after pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
-      });
       setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
+      setSeoData((saved.draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -1087,26 +1295,16 @@ export default function AdminBuilderHome() {
     if (!session?.accessToken) return;
     try {
       setStatus("publishing");
-      const content = craftNodesToPageContent(nodes);
-      builderDebugLog("publish payload heroImageUrl", {
-        heroProps: extractHeroPropsFromContent(content),
-      });
+      const content = { ...craftNodesToPageContent(nodes), seo: seoData };
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
-      builderDebugLog("publish response heroImageUrl", {
-        draftHeroProps: extractHeroPropsFromContent(published.draftContent),
-        publishedHeroProps: extractHeroPropsFromContent(published.publishedContent),
-      });
       const mappedNodes = pageContentToCraftNodes(published.draftContent);
-      builderDebugLog("after pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
-      });
       setSavedSnapshot({ ...published.draftContent, sections: normalizeList<BuilderSection>((published.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
       setEditorVersion((v) => v + 1);
-      toast.success("Homepage published");
+      toast.success("Homepage published and live");
     } catch (err) {
       setStatus("error");
       toast.error(err instanceof Error ? err.message : "Publish failed");
@@ -1115,23 +1313,17 @@ export default function AdminBuilderHome() {
 
   const onDiscard = async () => {
     if (!session?.accessToken) return;
-    if (!window.confirm("Discard draft changes and revert to published content?")) return;
     try {
       setStatus("saving");
       const page = await discardBuilderDraft("home", session.accessToken);
-      builderDebugLog("discard response content", {
-        heroImageUrl: extractHeroImageUrlFromContent(page.draftContent),
-      });
       const mappedNodes = pageContentToCraftNodes(page.draftContent);
-      builderDebugLog("after pageContentToCraftNodes", {
-        heroImageUrl: extractHeroImageUrlFromNodes(mappedNodes),
-      });
       setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
+      setSeoData((page.draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
-      toast.success("Draft reverted");
+      toast.success("Draft reverted to published version");
     } catch (err) {
       setStatus("error");
       toast.error(err instanceof Error ? err.message : "Discard failed");
@@ -1144,16 +1336,28 @@ export default function AdminBuilderHome() {
   return (
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
       <div className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Viewport:</span>
-          <button className={`px-2 py-1 rounded border ${viewport === "desktop" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("desktop")}><Monitor size={14} /></button>
-          <button className={`px-2 py-1 rounded border ${viewport === "tablet" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("tablet")}><Tablet size={14} /></button>
-          <button className={`px-2 py-1 rounded border ${viewport === "mobile" ? "bg-gray-900 text-white" : "border-gray-300"}`} onClick={() => setViewport("mobile")}><Smartphone size={14} /></button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (unsaved) {
+                if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
+              }
+              void navigate("/admin");
+            }}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm inline-flex items-center gap-2 hover:border-gray-400 transition"
+          >
+            <ArrowLeft size={14} />
+            Back to admin
+          </button>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-gray-500">Viewport:</span>
+            <button className={`px-2 py-1 rounded border text-xs ${viewport === "desktop" ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 hover:border-gray-400"} transition`} onClick={() => setViewport("desktop")} title="Desktop"><Monitor size={14} /></button>
+            <button className={`px-2 py-1 rounded border text-xs ${viewport === "tablet" ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 hover:border-gray-400"} transition`} onClick={() => setViewport("tablet")} title="Tablet"><Tablet size={14} /></button>
+            <button className={`px-2 py-1 rounded border text-xs ${viewport === "mobile" ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 hover:border-gray-400"} transition`} onClick={() => setViewport("mobile")} title="Mobile"><Smartphone size={14} /></button>
+          </div>
         </div>
-        <div className="text-right">
-          <span className="block text-xs text-gray-500">Drag presets into canvas, manage sections from the tree, then edit fields in Inspector.</span>
-          <span className="block text-[10px] text-gray-400">{BUILD_MARKER}</span>
-        </div>
+        <span className="text-[10px] text-gray-300">{BUILD_MARKER}</span>
       </div>
 
       <CraftWorkspace
@@ -1170,6 +1374,9 @@ export default function AdminBuilderHome() {
         publishedAt={meta.publishedAt}
         version={meta.version}
         accessToken={session?.accessToken}
+        unsaved={unsaved}
+        seoData={seoData}
+        onSeoChange={setSeoData}
       />
     </div>
   );

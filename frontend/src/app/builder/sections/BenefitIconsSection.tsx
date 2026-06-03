@@ -18,12 +18,13 @@ const iconMap = {
 
 export function BenefitIconsSection(props: BenefitIconsProps) {
   const columns = props.columns === "4" ? "md:grid-cols-4" : "md:grid-cols-3";
+  const items = Array.isArray(props.items) ? props.items : [];
   return (
     <section className="py-14 bg-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <h3 className="text-2xl font-black text-gray-900 text-center mb-8">{props.title}</h3>
         <div className={`grid grid-cols-1 ${columns} gap-4`}>
-          {props.items.map((item, idx) => {
+          {items.map((item, idx) => {
             const Icon = iconMap[item.icon] ?? Sparkles;
             return (
               <div key={`${item.title}-${idx}`} className="border border-gray-100 rounded-xl p-5 text-center">

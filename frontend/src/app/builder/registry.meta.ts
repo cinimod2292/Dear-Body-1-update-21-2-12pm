@@ -121,6 +121,7 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     editableSchema: {
       title: { type: "text", label: "Title", required: true },
       columns: { type: "select", label: "Columns", options: ["3", "4"] },
+      items: { type: "benefit_items", label: "Benefits" },
     },
   },
   promo_banner: {

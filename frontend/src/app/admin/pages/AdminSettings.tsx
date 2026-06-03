@@ -482,8 +482,26 @@ export default function AdminSettings() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <form onSubmit={saveStore} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">Store Settings</h2>
+      <div>
+        <h2 className="text-2xl font-black text-gray-900">Settings</h2>
+        <p className="text-sm text-gray-500 mb-3">Configure your store, payments, email, and integrations.</p>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {[
+            ["#store", "Store"],
+            ["#stitch", "Stitch Payments"],
+            ["#payfast", "PayFast"],
+            ["#storage", "Storage"],
+            ["#sendgrid", "SendGrid Email"],
+            ["#abandoned-cart", "Abandoned Cart"],
+            ["#xero", "Xero"],
+          ].map(([href, label]) => (
+            <a key={href} href={href} className="px-2.5 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">{label}</a>
+          ))}
+        </div>
+      </div>
+
+      <form id="store" onSubmit={saveStore} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">Store Settings</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
@@ -497,8 +515,8 @@ export default function AdminSettings() {
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
       </form>
 
-      <form onSubmit={saveStitch} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">Stitch Payments</h2>
+      <form id="stitch" onSubmit={saveStitch} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">Stitch Payments</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />Enable Stitch</label>
           <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production") }><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
@@ -512,8 +530,8 @@ export default function AdminSettings() {
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
       </form>
 
-      <form onSubmit={savePayfast} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">PayFast Payments</h2>
+      <form id="payfast" onSubmit={savePayfast} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">PayFast Payments</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payfastEnabled} onChange={(e) => setPayfastEnabled(e.target.checked)} />Enable PayFast</label>
           <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live") }><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
@@ -531,8 +549,8 @@ export default function AdminSettings() {
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save PayFast Settings"}</button>
       </form>
 
-      <form onSubmit={saveStorage} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">Storage Settings</h2>
+      <form id="storage" onSubmit={saveStorage} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">Storage Settings</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
           <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
             const provider = e.target.value as StorageSettings["provider"];
@@ -564,8 +582,8 @@ export default function AdminSettings() {
         </div>
       </form>
 
-      <form onSubmit={saveSendgrid} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">SendGrid Email</h2>
+      <form id="sendgrid" onSubmit={saveSendgrid} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">SendGrid Email</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.enabled} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable SendGrid provider settings</label>
           <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="From Email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
@@ -595,8 +613,8 @@ export default function AdminSettings() {
         </div>
       </section>
 
-      <form onSubmit={saveAbandonedCartConfig} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">Abandoned Cart Automation</h2>
+      <form id="abandoned-cart" onSubmit={saveAbandonedCartConfig} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">Abandoned Cart Automation</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.enabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable abandoned cart handling</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.reminderEnabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderEnabled: e.target.checked }))} />Enable reminder email</label>
@@ -609,8 +627,8 @@ export default function AdminSettings() {
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Abandoned Cart Settings"}</button>
       </form>
 
-      <form onSubmit={saveXero} className="space-y-4">
-        <h2 className="text-2xl font-black text-gray-900">Xero Accounting</h2>
+      <form id="xero" onSubmit={saveXero} className="space-y-4">
+        <h2 className="text-xl font-black text-gray-900">Xero Accounting</h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={xeroEnabled} onChange={(e) => setXeroEnabled(e.target.checked)} />Enable Xero</label>

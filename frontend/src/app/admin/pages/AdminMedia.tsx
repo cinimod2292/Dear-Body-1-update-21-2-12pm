@@ -1117,7 +1117,7 @@ export default function AdminMedia() {
       const savedUrl = readHeroImageUrl(saved.data.draftContent);
       const loadedUrl = readHeroImageUrl(loaded.data.draftContent);
       setHeroAssignmentDebug({ selectedAssetId: selectedMediaId, chosenUrl, savedUrl, loadedUrl });
-      toast.success(`Hero assigned. selected=${selectedMediaId} chosen=${chosenUrl} saved=${savedUrl} loaded=${loadedUrl}`);
+      toast.success("Homepage hero image updated. Publish the page in Page Builder to go live.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to assign hero image");
     } finally {
@@ -1185,7 +1185,12 @@ export default function AdminMedia() {
         </div>
       </div>
 
-      <MediaBackfillTool accessToken={session?.accessToken} onBackfillComplete={loadMedia} />
+      <details className="rounded-xl border border-gray-200 bg-white">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-medium text-gray-600 select-none hover:bg-gray-50 rounded-xl">Advanced: Image variant maintenance</summary>
+        <div className="p-5 pt-0">
+          <MediaBackfillTool accessToken={session?.accessToken} onBackfillComplete={loadMedia} />
+        </div>
+      </details>
 
       <div className="rounded-xl border border-rose-200 bg-rose-50/30 p-4 space-y-3">
         <div>
@@ -1280,15 +1285,6 @@ export default function AdminMedia() {
             Selected asset: {selectedAssetLabel(selectedAsset)}
           </span>
         </div>
-        {heroAssignmentDebug ? (
-          <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 text-xs text-blue-900 space-y-1">
-            <p><strong>Hero Debug</strong></p>
-            <p>selected asset id: {heroAssignmentDebug.selectedAssetId}</p>
-            <p>chosen URL: {heroAssignmentDebug.chosenUrl}</p>
-            <p>saved URL: {heroAssignmentDebug.savedUrl}</p>
-            <p>loaded URL: {heroAssignmentDebug.loadedUrl}</p>
-          </div>
-        ) : null}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-4 gap-3">

@@ -6,6 +6,21 @@ import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { formatRand } from "../../lib/currency";
 
+interface OrderAddress {
+  firstName?: string | null;
+  lastName?: string | null;
+  recipientName?: string | null;
+  company?: string | null;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+  phone?: string | null;
+  deliveryNotes?: string | null;
+}
+
 interface OrderDetail {
   id: string;
   orderNumber: string;
@@ -23,7 +38,9 @@ interface OrderDetail {
   shippingAmount: number;
   totalAmount: number;
   placedAt: string;
-  customer?: { id: string; email: string } | null;
+  customer?: { id: string; email: string; firstName?: string; lastName?: string; phone?: string } | null;
+  shippingAddress?: OrderAddress | null;
+  billingAddress?: OrderAddress | null;
   items: Array<{ id: string; sku: string; productName: string; variantTitle?: string; quantity: number; lineTotal: number }>;
   notes: Array<{ id: string; note: string; isInternal: boolean; createdAt: string; author?: { email?: string } }>;
   events: Array<{ id: string; eventType: string; previousValue?: string; nextValue?: string; createdAt: string; actor?: { email?: string } }>;
@@ -163,7 +180,54 @@ export default function AdminOrderDetail() {
         <div><p className="text-xs text-gray-400">Payment Status</p><p className="font-semibold">{order.paymentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Fulfillment</p><p className="font-semibold">{order.fulfillmentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{formatRand(order.totalAmount)}</p></div>
+        <div><p className="text-xs text-gray-400">Placed</p><p className="font-semibold">{new Date(order.placedAt).toLocaleString()}</p></div>
+        {order.customer && (
+          <div className="md:col-span-3">
+            <p className="text-xs text-gray-400">Customer</p>
+            <p className="font-semibold">{[order.customer.firstName, order.customer.lastName].filter(Boolean).join(" ") || order.customer.email}</p>
+            {order.customer.phone && <p className="text-xs text-gray-500">{order.customer.phone}</p>}
+          </div>
+        )}
       </section>
+
+      {(order.shippingAddress || order.billingAddress) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {order.shippingAddress && (
+            <section className="bg-white border border-gray-200 rounded-xl p-5">
+              <h3 className="font-bold mb-2">Shipping Address</h3>
+              <address className="not-italic text-sm text-gray-700 space-y-0.5">
+                {order.shippingAddress.recipientName && <p className="font-medium">{order.shippingAddress.recipientName}</p>}
+                {(order.shippingAddress.firstName || order.shippingAddress.lastName) && !order.shippingAddress.recipientName && (
+                  <p className="font-medium">{[order.shippingAddress.firstName, order.shippingAddress.lastName].filter(Boolean).join(" ")}</p>
+                )}
+                {order.shippingAddress.company && <p>{order.shippingAddress.company}</p>}
+                <p>{order.shippingAddress.line1}</p>
+                {order.shippingAddress.line2 && <p>{order.shippingAddress.line2}</p>}
+                <p>{[order.shippingAddress.city, order.shippingAddress.state, order.shippingAddress.postalCode].filter(Boolean).join(", ")}</p>
+                <p>{order.shippingAddress.country}</p>
+                {order.shippingAddress.phone && <p className="text-gray-500 mt-1">{order.shippingAddress.phone}</p>}
+                {order.shippingAddress.deliveryNotes && <p className="text-gray-500 italic mt-1">Note: {order.shippingAddress.deliveryNotes}</p>}
+              </address>
+            </section>
+          )}
+          {order.billingAddress && order.billingAddress !== order.shippingAddress && (
+            <section className="bg-white border border-gray-200 rounded-xl p-5">
+              <h3 className="font-bold mb-2">Billing Address</h3>
+              <address className="not-italic text-sm text-gray-700 space-y-0.5">
+                {order.billingAddress.recipientName && <p className="font-medium">{order.billingAddress.recipientName}</p>}
+                {(order.billingAddress.firstName || order.billingAddress.lastName) && !order.billingAddress.recipientName && (
+                  <p className="font-medium">{[order.billingAddress.firstName, order.billingAddress.lastName].filter(Boolean).join(" ")}</p>
+                )}
+                {order.billingAddress.company && <p>{order.billingAddress.company}</p>}
+                <p>{order.billingAddress.line1}</p>
+                {order.billingAddress.line2 && <p>{order.billingAddress.line2}</p>}
+                <p>{[order.billingAddress.city, order.billingAddress.state, order.billingAddress.postalCode].filter(Boolean).join(", ")}</p>
+                <p>{order.billingAddress.country}</p>
+              </address>
+            </section>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
@@ -180,8 +244,8 @@ export default function AdminOrderDetail() {
 
         <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
           <h3 className="font-bold">Manual Actions</h3>
-          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option>PENDING</option><option>AWAITING_PAYMENT</option><option>PAID</option><option>PROCESSING</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option><option>PAYMENT_FAILED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
-          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option>PENDING</option><option>AWAITING_PAYMENT</option><option>PAID</option><option>FAILED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
+          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
+          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option value="PENDING">Pending</option><option value="AUTHORIZED">Authorized</option><option value="PAID">Paid</option><option value="PARTIALLY_REFUNDED">Partially Refunded</option><option value="REFUNDED">Refunded</option><option value="FAILED">Failed</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
           <form onSubmit={updateFulfillment} className="space-y-2"><div className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={fulfillmentValue} onChange={(e) => setFulfillmentValue(e.target.value)}><option>UNFULFILLED</option><option>PARTIALLY_FULFILLED</option><option>FULFILLED</option><option>RETURNED</option><option>CANCELLED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Fulfillment</button></div><div className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Courier" value={courier} onChange={(e) => setCourier(e.target.value)} /><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Tracking number" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} /></div></form>
 
           <form onSubmit={addNote} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Internal note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Add Note</button></form>

@@ -20,7 +20,7 @@ import { craftNodesToPageContent, pageContentToCraftNodes } from "../../builder/
 import { SECTION_PRESETS } from "../../builder/presets";
 import { actionBlockedMessage, isActionAllowed } from "../../builder/action-rules";
 import { isSafeImageUrl } from "../../builder/media-url";
-import { duplicateSection, moveSection, removeSection } from "./builder/editor-state";
+import { createSection, duplicateSection, moveSection, removeSection } from "./builder/editor-state";
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
@@ -159,31 +159,50 @@ function applySectionMutation(
 }
 
 function SectionLibrary() {
-  const { connectors } = useEditor();
+  const { connectors, actions, query } = useEditor();
+
+  const addPreset = (preset: typeof SECTION_PRESETS[number]) => {
+    const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
+    const newSection = createSection(preset.sectionType, preset.defaultProps);
+    const nextSections = [...content.sections, newSection];
+    actions.deserialize(pageContentToCraftNodes({ sections: nextSections }));
+    setTimeout(() => actions.selectNode(newSection.id), 50);
+    toast.success(`${preset.name} added`);
+  };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {SECTION_PRESETS.map((preset) => (
         <div
           key={preset.id}
-          ref={(ref) => {
-            if (!ref) return;
-            connectors.create(
-              ref,
-              <Element
-                is={resolvedComponent(preset.sectionType)}
-                canvas={false}
-                custom={{ sectionType: preset.sectionType }}
-                {...preset.defaultProps}
-                sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
-                enabled
-              />,
-            );
-          }}
-          className="cursor-grab active:cursor-grabbing border border-gray-200 rounded-lg p-2 bg-white hover:border-pink-300 hover:bg-pink-50/40 transition select-none"
+          className="group flex items-center gap-1 border border-gray-200 rounded-lg bg-white hover:border-pink-300 hover:bg-pink-50/30 transition"
         >
-          <p className="text-sm font-semibold">{preset.icon} {preset.name}</p>
-          <p className="text-xs text-gray-500">{preset.description}</p>
+          <div
+            ref={(ref) => {
+              if (!ref) return;
+              connectors.create(
+                ref,
+                <Element
+                  is={resolvedComponent(preset.sectionType)}
+                  canvas={false}
+                  custom={{ sectionType: preset.sectionType }}
+                  {...preset.defaultProps}
+                  sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
+                  enabled
+                />,
+              );
+            }}
+            className="flex-1 cursor-grab active:cursor-grabbing p-2 select-none min-w-0"
+          >
+            <p className="text-xs font-semibold truncate">{preset.icon} {preset.name}</p>
+            <p className="text-[11px] text-gray-400 truncate">{preset.description}</p>
+          </div>
+          <button
+            type="button"
+            title="Add to page"
+            onClick={() => addPreset(preset)}
+            className="flex-shrink-0 p-2 text-gray-400 hover:text-pink-600 transition opacity-0 group-hover:opacity-100"
+          ><Plus size={14} /></button>
         </div>
       ))}
     </div>
@@ -893,6 +912,21 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
 
   const isBusy = busy || status === "saving" || status === "publishing";
 
+  // Cmd+S / Ctrl+S keyboard shortcut for saving
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        if (isBusy) return;
+        setBusy(true);
+        onSave(query.getSerializedNodes() as SerializedNodes)
+          .finally(() => setBusy(false));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isBusy, onSave, query]);
+
   const statusLabel =
     status === "saving" ? "Saving..." :
     status === "saved" ? "Draft saved" :
@@ -950,6 +984,7 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
             try { await onSave(query.getSerializedNodes() as SerializedNodes); }
             finally { setBusy(false); }
           }}
+          title="Save draft (Cmd+S)"
           className="px-3 py-2 rounded-lg border border-gray-300 text-sm inline-flex items-center gap-1.5 disabled:opacity-40 hover:border-gray-400 transition"
         ><Save size={14} /> Save Draft</button>
 
@@ -1076,6 +1111,7 @@ export default function AdminBuilderHome() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [status, setStatus] = useState<Status>("saved");
   const [meta, setMeta] = useState<{ updatedAt?: string | null; publishedAt?: string | null; version?: number | null }>({});
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unsaved = useMemo(
     () => JSON.stringify(craftNodesToPageContent(serialized)) !== JSON.stringify(savedSnapshot),
@@ -1101,6 +1137,31 @@ export default function AdminBuilderHome() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [unsaved]);
+
+  // Auto-save draft after 30s of inactivity when there are unsaved changes
+  useEffect(() => {
+    if (!unsaved || !session?.accessToken) return;
+    if (status === "saving" || status === "publishing") return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (!session?.accessToken) return;
+      try {
+        const content = craftNodesToPageContent(serialized);
+        const saved = await saveBuilderDraft("home", content, session.accessToken);
+        setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
+        setSerialized(pageContentToCraftNodes(saved.draftContent));
+        setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
+        setStatus("saved");
+        setEditorVersion((v) => v + 1);
+        toast.info("Draft auto-saved", { duration: 2000 });
+      } catch {
+        // auto-save silently fails; manual save still available
+      }
+    }, 30000);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [serialized, unsaved]);
 
   const load = async () => {
     if (!session?.accessToken) return;

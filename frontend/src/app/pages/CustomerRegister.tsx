@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { Lock, Mail, User, Phone } from "lucide-react";
@@ -8,6 +8,11 @@ export default function CustomerRegister() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next") || "/account";
+
+  useEffect(() => {
+    document.title = "Create Account — Dear Body";
+  }, []);
+
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "", phone: "" });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

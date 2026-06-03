@@ -38,6 +38,7 @@ export default function ProductDetail() {
       .then((foundProduct) => {
         if (isCancelled) return;
         setProduct(foundProduct);
+        if (foundProduct) document.title = `${foundProduct.name} — Dear Body`;
         setActiveImageIndex(0);
         setLightboxOpen(false);
         setLoading(false);

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Mail, ArrowLeft } from "lucide-react";
 import { API_BASE } from "../admin/api/client";
@@ -8,6 +8,10 @@ export default function ForgotPassword() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = "Reset Password — Dear Body";
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

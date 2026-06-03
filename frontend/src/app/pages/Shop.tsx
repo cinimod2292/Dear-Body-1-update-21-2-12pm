@@ -28,6 +28,10 @@ export default function Shop() {
   const userSelectedMax = useRef<number | null>(null);
 
   useEffect(() => {
+    document.title = "Shop — Dear Body";
+  }, []);
+
+  useEffect(() => {
     fetchStoreProducts()
       .then((items) => {
         setProducts(items);

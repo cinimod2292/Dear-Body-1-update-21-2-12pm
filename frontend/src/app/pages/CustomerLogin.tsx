@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { Lock, Mail } from "lucide-react";
@@ -13,6 +13,10 @@ export default function CustomerLogin() {
   const [loading, setLoading] = useState(false);
 
   const next = params.get("next") || "/account";
+
+  useEffect(() => {
+    document.title = "Sign In — Dear Body";
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

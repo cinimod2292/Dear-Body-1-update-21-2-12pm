@@ -177,6 +177,10 @@ export default function Home() {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
+    document.title = "Dear Body";
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const isPreview = searchParams.get("preview") === "builder";
     if (isPreview) {

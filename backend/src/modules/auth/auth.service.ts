@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { env } from "../../config/env.js";
-import { Customer, StaffUser } from "@prisma/client";
+import { Customer, StaffRole, StaffStatus, StaffUser } from "@prisma/client";
 import { getPermissionsForRole } from "./rbac.js";
 import { sendEmail } from "../notifications/notification.service.js";
 
@@ -303,6 +303,60 @@ export async function requestCustomerPasswordReset(email: string, siteUrl: strin
     .replace(/\{\{\s*siteUrl\s*\}\}/g, siteUrl);
 
   await sendEmail({ to: customer.email, subject, html });
+}
+
+export async function listStaffUsers() {
+  return prisma.staffUser.findMany({
+    select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, lastLoginAt: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function createStaffUser(data: { email: string; password: string; firstName?: string; lastName?: string; role?: string }) {
+  const existing = await prisma.staffUser.findUnique({ where: { email: data.email } });
+  if (existing) throw new AppError(409, "A user with that email already exists", "STAFF_USER_EXISTS");
+
+  const passwordHash = await bcrypt.hash(data.password, 12);
+  return prisma.staffUser.create({
+    data: {
+      email: data.email,
+      passwordHash,
+      firstName: data.firstName || undefined,
+      lastName: data.lastName || undefined,
+      role: (data.role as StaffRole) ?? StaffRole.STORE_MANAGER,
+      status: StaffStatus.ACTIVE,
+    },
+    select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
+  });
+}
+
+export async function updateStaffUser(id: string, data: { firstName?: string; lastName?: string; role?: string; status?: string }) {
+  const user = await prisma.staffUser.findUnique({ where: { id } });
+  if (!user) throw new AppError(404, "Staff user not found", "STAFF_USER_NOT_FOUND");
+
+  return prisma.staffUser.update({
+    where: { id },
+    data: {
+      ...(data.firstName !== undefined ? { firstName: data.firstName || null } : {}),
+      ...(data.lastName !== undefined ? { lastName: data.lastName || null } : {}),
+      ...(data.role ? { role: data.role as StaffRole } : {}),
+      ...(data.status ? { status: data.status as StaffStatus } : {}),
+    },
+    select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
+  });
+}
+
+export async function deactivateStaffUser(id: string, requestingUserId: string) {
+  if (id === requestingUserId) throw new AppError(400, "You cannot suspend your own account", "CANNOT_DEACTIVATE_SELF");
+
+  const user = await prisma.staffUser.findUnique({ where: { id } });
+  if (!user) throw new AppError(404, "Staff user not found", "STAFF_USER_NOT_FOUND");
+
+  return prisma.staffUser.update({
+    where: { id },
+    data: { status: StaffStatus.SUSPENDED },
+    select: { id: true, email: true, status: true },
+  });
 }
 
 export async function resetCustomerPassword(rawToken: string, newPassword: string) {

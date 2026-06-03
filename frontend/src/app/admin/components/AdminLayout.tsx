@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/email-templates", label: "Email Templates", permission: "settings:read" },
   { to: "/admin/cms", label: "Website CMS", permission: "settings:read" },
   { to: "/admin/builder", label: "Page Builder", permission: "settings:read" },
+  { to: "/admin/staff-users", label: "Admin Users", permission: "settings:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
 ];
 

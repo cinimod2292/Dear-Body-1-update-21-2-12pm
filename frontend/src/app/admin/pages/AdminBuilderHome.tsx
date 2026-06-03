@@ -1171,10 +1171,10 @@ export default function AdminBuilderHome() {
   const [seoData, setSeoData] = useState<import("../../builder/types").BuilderSeo>({});
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const unsaved = useMemo(
-    () => JSON.stringify(craftNodesToPageContent(serialized)) !== JSON.stringify(savedSnapshot),
-    [serialized, savedSnapshot],
-  );
+  const unsaved = useMemo(() => {
+    const current: BuilderPageContent = { ...craftNodesToPageContent(serialized), seo: seoData };
+    return JSON.stringify(current) !== JSON.stringify(savedSnapshot);
+  }, [serialized, savedSnapshot, seoData]);
 
   useEffect(() => {
     logBuildMarker("AdminBuilderHome:init");

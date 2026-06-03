@@ -445,6 +445,7 @@ async function normalizePublishedContentForStore(content: BuilderPageContent): P
   }
 
   return {
+    ...(content.seo ? { seo: content.seo } : {}),
     sections: sections.map((section) => ({
       ...section,
       props: Object.fromEntries(Object.entries(section.props ?? {}).map(([key, value]) => {

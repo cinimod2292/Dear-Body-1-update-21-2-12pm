@@ -75,6 +75,21 @@ function builderDebugLog(message: string, payload: Record<string, unknown>) {
 }
 
 function BuilderCanvas({ children }: { children?: ReactNode }) {
+  const { nodes } = useEditor((state) => ({ nodes: state.nodes }));
+  const isEmpty = Object.keys(nodes).length <= 1; // only ROOT node
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-3 min-h-[400px] flex items-center justify-center">
+        <div className="text-center py-16 px-8">
+          <div className="text-4xl mb-4">🎨</div>
+          <p className="text-gray-700 font-semibold mb-1">Your page is empty</p>
+          <p className="text-sm text-gray-400 mb-4">Drag a section preset from the left panel,<br />or click the + button next to any preset.</p>
+        </div>
+      </div>
+    );
+  }
+
   return <div className="space-y-3">{children}</div>;
 }
 
@@ -1181,7 +1196,7 @@ export default function AdminBuilderHome() {
   }, []);
 
   useEffect(() => {
-    if (status === "saved" || status === "published" || status === "saving" || status === "publishing") return;
+    if (status === "saving" || status === "publishing") return;
     setStatus(unsaved ? "unsaved" : "saved");
   }, [unsaved]);
 

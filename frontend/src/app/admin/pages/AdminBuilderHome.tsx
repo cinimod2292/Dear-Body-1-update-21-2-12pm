@@ -1042,7 +1042,61 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   );
 }
 
-function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken, unsaved }: {
+function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition text-left"
+      >
+        <span className="text-xs font-semibold text-gray-700">SEO Settings</span>
+        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="p-3 space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Page Title</label>
+            <input
+              type="text"
+              value={seoData.title ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, title: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="Dear Body — Homepage"
+              maxLength={120}
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.title ?? "").length}/120 chars</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Meta Description</label>
+            <textarea
+              value={seoData.description ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, description: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs min-h-16 resize-y"
+              placeholder="Discover our bold collection of body sprays and skincare."
+              maxLength={320}
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.description ?? "").length}/320 chars · Ideal: 120–160</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image URL</label>
+            <input
+              type="text"
+              value={seoData.ogImage ?? ""}
+              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value })}
+              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="https://... or /images/og.jpg"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">Shown when shared on social media (1200×630 recommended)</p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken, unsaved, seoData, onSeoChange }: {
   initialData: SerializedNodes;
   viewport: "desktop" | "tablet" | "mobile";
   products: Product[];
@@ -1056,6 +1110,8 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   version?: number | null;
   accessToken?: string;
   unsaved: boolean;
+  seoData: import("../../builder/types").BuilderSeo;
+  onSeoChange: (next: import("../../builder/types").BuilderSeo) => void;
 }) {
   const widthClass = viewport === "mobile" ? "max-w-[390px]" : viewport === "tablet" ? "max-w-[820px]" : "max-w-[1200px]";
 
@@ -1074,13 +1130,14 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
           <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto space-y-4">
             <div>
               <p className="text-sm font-semibold text-gray-900 mb-1">Section Library</p>
-              <p className="text-[11px] text-gray-400 mb-3">Drag a preset into the canvas to add it.</p>
+              <p className="text-[11px] text-gray-400 mb-3">Drag a preset into the canvas, or click + to add.</p>
               <SectionLibrary />
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900 mb-3">Page Sections</p>
               <SectionList />
             </div>
+            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} />
           </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto">
             <div className={`mx-auto ${widthClass} transition-all duration-300`}>
@@ -1111,6 +1168,7 @@ export default function AdminBuilderHome() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [status, setStatus] = useState<Status>("saved");
   const [meta, setMeta] = useState<{ updatedAt?: string | null; publishedAt?: string | null; version?: number | null }>({});
+  const [seoData, setSeoData] = useState<import("../../builder/types").BuilderSeo>({});
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unsaved = useMemo(
@@ -1146,7 +1204,7 @@ export default function AdminBuilderHome() {
     autoSaveTimerRef.current = setTimeout(async () => {
       if (!session?.accessToken) return;
       try {
-        const content = craftNodesToPageContent(serialized);
+        const content = { ...craftNodesToPageContent(serialized), seo: seoData };
         const saved = await saveBuilderDraft("home", content, session.accessToken);
         setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
         setSerialized(pageContentToCraftNodes(saved.draftContent));
@@ -1183,6 +1241,7 @@ export default function AdminBuilderHome() {
       setProducts(normalizeArrayOnly<Product>(productsResponse));
       setSavedSnapshot({ ...draftContent, sections: draftSections });
       setSerialized(mappedNodes);
+      setSeoData((draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: page?.updatedAt ?? null, publishedAt: page?.publishedAt ?? null, version: page?.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -1201,11 +1260,12 @@ export default function AdminBuilderHome() {
     if (!session?.accessToken) return;
     try {
       setStatus("saving");
-      const content = craftNodesToPageContent(nodes);
+      const content = { ...craftNodesToPageContent(nodes), seo: seoData };
       const saved = await saveBuilderDraft("home", content, session.accessToken);
       const mappedNodes = pageContentToCraftNodes(saved.draftContent);
       setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
+      setSeoData((saved.draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -1220,7 +1280,7 @@ export default function AdminBuilderHome() {
     if (!session?.accessToken) return;
     try {
       setStatus("publishing");
-      const content = craftNodesToPageContent(nodes);
+      const content = { ...craftNodesToPageContent(nodes), seo: seoData };
       await saveBuilderDraft("home", content, session.accessToken);
       const published = await publishBuilderDraft("home", session.accessToken);
       const mappedNodes = pageContentToCraftNodes(published.draftContent);
@@ -1244,6 +1304,7 @@ export default function AdminBuilderHome() {
       const mappedNodes = pageContentToCraftNodes(page.draftContent);
       setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
+      setSeoData((page.draftContent as any)?.seo ?? {});
       setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
@@ -1299,6 +1360,8 @@ export default function AdminBuilderHome() {
         version={meta.version}
         accessToken={session?.accessToken}
         unsaved={unsaved}
+        seoData={seoData}
+        onSeoChange={setSeoData}
       />
     </div>
   );

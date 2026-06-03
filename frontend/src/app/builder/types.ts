@@ -15,8 +15,15 @@ export type BuilderSection = {
   metadata?: Record<string, unknown>;
 };
 
+export type BuilderSeo = {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+};
+
 export type BuilderPageContent = {
   sections: BuilderSection[];
+  seo?: BuilderSeo;
 };
 
 export type BuilderPageRecord = {

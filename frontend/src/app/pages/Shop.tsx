@@ -5,6 +5,7 @@ import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
 
 const sortOptions = [
+  { value: "", label: "Featured" },
   { value: "price-asc", label: "Price: Low to High" },
   { value: "price-desc", label: "Price: High to Low" },
 ];
@@ -18,6 +19,8 @@ export default function Shop() {
   const [sortBy, setSortBy] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [saleOnly, setSaleOnly] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,14 @@ export default function Shop() {
 
     result = result.filter(p => p.price >= priceRange[0] && p.price <= priceRange[1] + 0.01);
 
+    if (inStockOnly) {
+      result = result.filter(p => p.inStock);
+    }
+
+    if (saleOnly) {
+      result = result.filter(p => p.originalPrice !== undefined);
+    }
+
     switch (sortBy) {
       case "price-asc":
         result.sort((a, b) => a.price - b.price);
@@ -102,7 +113,7 @@ export default function Shop() {
     }
 
     return result;
-  }, [productsForFilters, sortBy, priceRange]);
+  }, [productsForFilters, sortBy, priceRange, inStockOnly, saleOnly]);
 
   const categories = useMemo(() => getCategories(products), [products]);
 
@@ -170,7 +181,6 @@ export default function Shop() {
                 onChange={e => setSortBy(e.target.value)}
                 className="appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-full text-gray-700 font-medium focus:outline-none focus:border-pink-400 cursor-pointer"
               >
-                <option value="" disabled>Sort by</option>
                 {sortOptions.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
@@ -209,14 +219,24 @@ export default function Shop() {
               <div className="flex-1">
                 <h4 className="font-bold text-gray-900 mb-4">Availability</h4>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" defaultChecked className="accent-pink-500" />
+                  <input
+                    type="checkbox"
+                    checked={inStockOnly}
+                    onChange={e => setInStockOnly(e.target.checked)}
+                    className="accent-pink-500"
+                  />
                   <span className="text-gray-600 text-sm">In Stock Only</span>
                 </label>
               </div>
               <div className="flex-1">
                 <h4 className="font-bold text-gray-900 mb-4">On Sale</h4>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="accent-pink-500" />
+                  <input
+                    type="checkbox"
+                    checked={saleOnly}
+                    onChange={e => setSaleOnly(e.target.checked)}
+                    className="accent-pink-500"
+                  />
                   <span className="text-gray-600 text-sm">Sale Items Only</span>
                 </label>
               </div>
@@ -246,7 +266,7 @@ export default function Shop() {
             <h3 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700 }}>No products found</h3>
             <p className="text-gray-500 mb-6">Try adjusting your filters or search terms</p>
             <button
-              onClick={() => { handleCategoryChange("All"); }}
+              onClick={() => { handleCategoryChange("All"); setInStockOnly(false); setSaleOnly(false); setSortBy(""); }}
               className="px-6 py-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold"
             >
               Clear Filters

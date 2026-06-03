@@ -14,9 +14,9 @@ const iconMap: Record<string, any> = {
 export function Footer() {
   const [logoUrl, setLogoUrl] = useState("");
   const [logo2xUrl, setLogo2xUrl] = useState("");
-  const [contactEmail, setContactEmail] = useState("hello@dearbody.com");
-  const [contactPhone, setContactPhone] = useState("+1 (800) DEAR-BODY");
-  const [address, setAddress] = useState("123 Bloom Avenue, Miami, FL 33101, USA");
+  const [contactEmail, setContactEmail] = useState("hello@dearbody.co.za");
+  const [contactPhone, setContactPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [copyright, setCopyright] = useState(`© ${new Date().getFullYear()} My Dear Body. All rights reserved.`);
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([
     { platform: "instagram", url: "#" },
@@ -100,9 +100,9 @@ export function Footer() {
           <div>
             <h4 className="font-bold mb-5 text-white uppercase tracking-wider text-sm">Contact</h4>
             <ul className="space-y-4 text-gray-400 text-sm">
-              <li className="flex items-start gap-3"><MapPin size={16} className="mt-0.5 text-pink-400 shrink-0" /><span>{address}</span></li>
-              <li className="flex items-center gap-3"><Phone size={16} className="text-pink-400 shrink-0" /><span>{contactPhone}</span></li>
-              <li className="flex items-center gap-3"><Mail size={16} className="text-pink-400 shrink-0" /><a href={`mailto:${contactEmail}`} className="hover:text-pink-400 transition-colors">{contactEmail}</a></li>
+              {address && <li className="flex items-start gap-3"><MapPin size={16} className="mt-0.5 text-pink-400 shrink-0" /><span>{address}</span></li>}
+              {contactPhone && <li className="flex items-center gap-3"><Phone size={16} className="text-pink-400 shrink-0" /><span>{contactPhone}</span></li>}
+              {contactEmail && <li className="flex items-center gap-3"><Mail size={16} className="text-pink-400 shrink-0" /><a href={`mailto:${contactEmail}`} className="hover:text-pink-400 transition-colors">{contactEmail}</a></li>}
             </ul>
           </div>
         </div>

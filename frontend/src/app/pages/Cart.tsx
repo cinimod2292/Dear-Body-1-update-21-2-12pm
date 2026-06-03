@@ -28,20 +28,28 @@ export default function Cart() {
   const [promoError, setPromoError] = useState("");
 
   const [quote, setQuote] = useState<Quote | null>(null);
-  const discount = Number(quote?.discountAmount ?? (promoApplied ? cartTotal * 0.2 : 0));
+  const discount = Number(quote?.discountAmount ?? 0);
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
-  const summaryShippingDisplay = "TBC";
+  const summaryShippingDisplay = quote
+    ? (quote.freeShippingApplied ? "FREE" : (shipping > 0 ? formatRand(shipping) : "FREE"))
+    : "TBC";
   const canProceedToCheckout = cartCount > 0;
 
 
   useEffect(() => {
-    const items = cartItems.filter(({ product }) => !!product.backendVariantId).map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    const items = cartItems
+      .filter(({ product }) => !!product.backendVariantId)
+      .map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
     if (!items.length) return;
     fetch(`${API_BASE}/store/cart/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, shippingAddress: { country: "ZA" } }),
+      body: JSON.stringify({
+        items,
+        shippingAddress: { country: "ZA" },
+        couponCode: promoApplied ? promoCode : undefined,
+      }),
     })
       .then((r) => r.json())
       .then((payload) => {
@@ -50,25 +58,32 @@ export default function Cart() {
         setQuote(q);
       })
       .catch(() => undefined);
-  }, [cartItems]);
+  }, [cartItems, promoApplied, promoCode]);
 
-  useEffect(() => {
-    console.info("[cart] render diagnostics", {
-      cartCount,
-      summaryShippingDisplay,
-      hasQuote: !!quote,
-      shippingBranch: "no-shipping-method-state",
-      cartRenderVersion: "2026-03-30-cart-hotfix",
-    });
-  }, [cartCount, summaryShippingDisplay, quote]);
-
-  const handlePromo = (e: React.FormEvent) => {
+  const handlePromo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (promoCode.toUpperCase() === "DEARBODY20") {
-      setPromoApplied(true);
-      setPromoError("");
-    } else {
-      setPromoError("Invalid promo code. Try DEARBODY20!");
+    if (!promoCode.trim()) return;
+    const items = cartItems
+      .filter(({ product }) => !!product.backendVariantId)
+      .map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    try {
+      const res = await fetch(`${API_BASE}/store/cart/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, shippingAddress: { country: "ZA" }, couponCode: promoCode }),
+      });
+      const payload = await res.json().catch(() => null);
+      const q = payload?.data as Quote | undefined;
+      if (q && Number(q.discountAmount) > 0) {
+        setPromoApplied(true);
+        setPromoError("");
+        setQuote(q);
+      } else {
+        setPromoApplied(false);
+        setPromoError("Invalid or expired promo code.");
+      }
+    } catch {
+      setPromoError("Unable to validate promo code. Please try again.");
     }
   };
 
@@ -197,7 +212,7 @@ export default function Cart() {
                   </button>
                 </div>
                 {promoError && <p className="text-red-500 text-xs mt-2">{promoError}</p>}
-                {promoApplied && <p className="text-green-500 text-xs mt-2">✓ 20% discount applied!</p>}
+                {promoApplied && <p className="text-green-500 text-xs mt-2">✓ Promo code applied!</p>}
               </form>
 
               {/* Breakdown */}
@@ -206,9 +221,9 @@ export default function Cart() {
                   <span>Subtotal ({cartCount} items)</span>
                   <span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
                 </div>
-                {promoApplied && (
+                {discount > 0 && (
                   <div className="flex justify-between text-green-600 text-sm font-medium">
-                    <span>Discount (20%)</span>
+                    <span>Discount</span>
                     <span>-{formatRand(discount)}</span>
                   </div>
                 )}
@@ -239,10 +254,13 @@ export default function Cart() {
               </Link>
 
               {/* Payment icons */}
-              <div className="mt-5 flex items-center justify-center gap-2">
-                {["VISA", "MC", "AMEX", "PayPal"].map(card => (
-                  <span key={card} className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-500 font-medium">{card}</span>
-                ))}
+              <div className="mt-5 flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2">
+                  {["PayFast", "Stitch"].map(provider => (
+                    <span key={provider} className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-500 font-medium">{provider}</span>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">Secured by bank-grade encryption</p>
               </div>
             </div>
           </div>

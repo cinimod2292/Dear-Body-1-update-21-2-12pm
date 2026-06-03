@@ -135,13 +135,6 @@ function parseJsonSafe<T>(value: string): T | null {
 }
 
 function toProduct(api: StorefrontProductApi, index: number): Product {
-  console.info("[product-mapper] product.variants", {
-    productId: api.id,
-    productName: api.name,
-    valueType: typeof api.variants,
-    isArray: Array.isArray(api.variants),
-    keys: Object.keys((api.variants ?? {}) as Record<string, unknown>),
-  });
   const activeVariants = normalizeList<any>(api.variants).filter((variant) => (variant as any)?.isActive !== false);
   const primaryVariant = activeVariants.find((variant) => (variant.inventoryLevel?.quantityOnHand ?? 0) > 0) ?? activeVariants[0];
   const colorSet = palette[index % palette.length];
@@ -163,6 +156,7 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     slug: api.slug,
     categoryId: api.category?.id,
     variantId: primaryVariant?.id ?? null,
+    backendVariantId: primaryVariant?.id ?? null,
     name: api.name,
     tagline: tagDetails?.tagline ?? api.shortDescription ?? "",
     price: salePrice ?? basePrice,

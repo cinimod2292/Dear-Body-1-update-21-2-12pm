@@ -38,6 +38,10 @@ export default function Cart() {
 
 
   useEffect(() => {
+    document.title = "Cart — Dear Body";
+  }, []);
+
+  useEffect(() => {
     const items = cartItems
       .filter(({ product }) => !!product.backendVariantId)
       .map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));

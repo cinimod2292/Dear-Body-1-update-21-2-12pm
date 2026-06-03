@@ -96,7 +96,7 @@ export default function Checkout() {
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
-    address: "", city: "", state: "", zip: "", country: "United States",
+    address: "", city: "", state: "", zip: "", country: "South Africa",
     sameAsShipping: true,
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -122,6 +122,7 @@ export default function Checkout() {
   const returnCancelled = Boolean(searchParams.get("cancelled"));
 
   useEffect(() => {
+    document.title = "Checkout — Dear Body";
     fetchCmsBootstrap()
       .then((bootstrap) => {
         setLogoUrl(bootstrap.siteConfig.branding.logoUrl || bootstrap.siteConfig.header.logoUrl || "");
@@ -615,7 +616,7 @@ export default function Checkout() {
                     { key: "city", label: "City", placeholder: "Miami" },
                     { key: "state", label: "State / Province", placeholder: "FL" },
                     { key: "zip", label: "ZIP / Postal Code", placeholder: "33101" },
-                    { key: "country", label: "Country", placeholder: "United States" },
+                    { key: "country", label: "Country", placeholder: "South Africa" },
                   ].map(field => (
                     <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
                       <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>
@@ -655,7 +656,12 @@ export default function Checkout() {
                         <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>
                       </label>
                     ))}
-                    {shippingMethods.length === 0 ? <p className="text-sm text-gray-500">No shipping methods configured.</p> : null}
+                    {shippingMethods.length === 0 ? (
+                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+                        <p className="text-sm font-semibold text-amber-800">No shipping options available</p>
+                        <p className="text-sm text-amber-700 mt-0.5">The store has not yet configured any shipping methods. Please contact us to complete your order.</p>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

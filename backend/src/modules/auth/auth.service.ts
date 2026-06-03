@@ -1,9 +1,11 @@
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { env } from "../../config/env.js";
 import { Customer, StaffUser } from "@prisma/client";
 import { getPermissionsForRole } from "./rbac.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 interface TokenPair {
   accessToken: string;
@@ -263,4 +265,77 @@ export async function getCustomerById(customerId: string) {
   });
   if (!customer) throw new AppError(404, "Customer not found", "CUSTOMER_NOT_FOUND");
   return customer;
+}
+
+const RESET_TOKEN_TTL_MINUTES = 60;
+
+export async function requestCustomerPasswordReset(email: string, siteUrl: string) {
+  const customer = await prisma.customer.findUnique({ where: { email } });
+
+  // Always respond with success to prevent email enumeration
+  if (!customer?.passwordHash) return;
+
+  // Invalidate any existing unused tokens
+  await prisma.customerPasswordReset.updateMany({
+    where: { customerId: customer.id, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = await bcrypt.hash(rawToken, 10);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+  await prisma.customerPasswordReset.create({
+    data: { customerId: customer.id, tokenHash, expiresAt },
+  });
+
+  const resetUrl = `${siteUrl}/account/reset-password?token=${rawToken}`;
+
+  // Fetch the password_reset email template if available
+  const templateRecord = await prisma.emailTemplate.findUnique({ where: { key: "password_reset" } });
+  const subject = templateRecord?.subject ?? "Reset your Dear Body password";
+  let html = templateRecord?.htmlBody ?? `<p>Click the link below to reset your password (valid for ${RESET_TOKEN_TTL_MINUTES} minutes):</p><p><a href="{{resetUrl}}">Reset Password</a></p>`;
+
+  html = html
+    .replace(/\{\{\s*resetUrl\s*\}\}/g, resetUrl)
+    .replace(/\{\{\s*companyName\s*\}\}/g, "Dear Body")
+    .replace(/\{\{\s*supportEmail\s*\}\}/g, env.EMAIL_FROM)
+    .replace(/\{\{\s*siteUrl\s*\}\}/g, siteUrl);
+
+  await sendEmail({ to: customer.email, subject, html });
+}
+
+export async function resetCustomerPassword(rawToken: string, newPassword: string) {
+  // Find all unexpired, unused reset records
+  const candidates = await prisma.customerPasswordReset.findMany({
+    where: {
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    include: { customer: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let matched: (typeof candidates)[number] | null = null;
+  for (const candidate of candidates) {
+    const isMatch = await bcrypt.compare(rawToken, candidate.tokenHash);
+    if (isMatch) { matched = candidate; break; }
+  }
+
+  if (!matched) {
+    throw new AppError(400, "This reset link is invalid or has expired. Please request a new one.", "INVALID_RESET_TOKEN");
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+
+  await prisma.$transaction([
+    prisma.customer.update({
+      where: { id: matched.customerId },
+      data: { passwordHash, status: "ACTIVE" },
+    }),
+    prisma.customerPasswordReset.update({
+      where: { id: matched.id },
+      data: { usedAt: new Date() },
+    }),
+  ]);
 }

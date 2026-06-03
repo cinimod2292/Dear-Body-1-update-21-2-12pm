@@ -39,7 +39,7 @@ const emptyAddress: AddressFormState = {
   city: "",
   state: "",
   postalCode: "",
-  country: "United States",
+  country: "South Africa",
   deliveryNotes: "",
   isDefaultShipping: false,
   isDefaultBilling: false,
@@ -150,6 +150,11 @@ function AddressSection({
 
 export default function CustomerDashboard() {
   const { customer, token, logout } = useCustomerAuth();
+
+  useEffect(() => {
+    document.title = "My Account — Dear Body";
+  }, []);
+
   const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", phone: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);

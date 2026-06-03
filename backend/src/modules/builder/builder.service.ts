@@ -5,6 +5,7 @@ import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upl
 import {
   BUILDER_PAGE_KEYS,
   type BuilderPageKey,
+  builderHistoryEntrySchema,
   builderPageContentSchema,
   builderPageSchema,
   updateBuilderDraftSchema,
@@ -14,6 +15,8 @@ import {
 const BUILDER_SCOPE = "builder";
 
 type BuilderPageContent = ReturnType<typeof builderPageContentSchema.parse>;
+
+type BuilderHistoryEntry = ReturnType<typeof builderHistoryEntrySchema.parse>;
 
 type BuilderPageRecord = ReturnType<typeof builderPageSchema.parse>;
 
@@ -236,6 +239,14 @@ export async function publishBuilderDraft(rawPageKey: string, actorUserId?: stri
   }
 
   const publishedAt = nowIso();
+  const newEntry: BuilderHistoryEntry = {
+    version: existing.version + 1,
+    publishedAt,
+    publishedBy: actorUserId ?? null,
+    content: existing.draftContent,
+  };
+  const existingHistory = Array.isArray((existing as any).history) ? (existing as any).history as BuilderHistoryEntry[] : [];
+  const history = [newEntry, ...existingHistory].slice(0, 20);
   const updated: BuilderPageRecord = {
     ...existing,
     publishedContent: existing.draftContent,
@@ -244,6 +255,7 @@ export async function publishBuilderDraft(rawPageKey: string, actorUserId?: stri
     publishedBy: actorUserId ?? null,
     updatedAt: publishedAt,
     updatedBy: actorUserId ?? null,
+    history,
   };
 
   const saved = await writePage(updated);
@@ -264,6 +276,34 @@ export async function discardBuilderDraft(rawPageKey: string, actorUserId?: stri
     updatedBy: actorUserId ?? null,
   };
 
+  const saved = await writePage(updated);
+  return normalizeAdminBuilderPage(saved);
+}
+
+export async function getBuilderPageHistory(rawPageKey: string) {
+  const pageKey = parsePageKey(rawPageKey);
+  const existing = await readPage(pageKey);
+  const history: BuilderHistoryEntry[] = Array.isArray((existing as any)?.history) ? (existing as any).history : [];
+  return history.map(({ version, publishedAt, publishedBy }) => ({ version, publishedAt, publishedBy }));
+}
+
+export async function restoreBuilderPageVersion(rawPageKey: string, targetVersion: number, actorUserId?: string | null) {
+  const pageKey = parsePageKey(rawPageKey);
+  const existing = await readPage(pageKey);
+  if (!existing) {
+    throw new AppError(404, "Builder page not found", "BUILDER_PAGE_NOT_FOUND");
+  }
+  const history: BuilderHistoryEntry[] = Array.isArray((existing as any).history) ? (existing as any).history : [];
+  const entry = history.find((h) => h.version === targetVersion);
+  if (!entry) {
+    throw new AppError(404, "Version not found in history", "BUILDER_VERSION_NOT_FOUND");
+  }
+  const updated: BuilderPageRecord = {
+    ...existing,
+    draftContent: entry.content,
+    updatedAt: nowIso(),
+    updatedBy: actorUserId ?? null,
+  };
   const saved = await writePage(updated);
   return normalizeAdminBuilderPage(saved);
 }

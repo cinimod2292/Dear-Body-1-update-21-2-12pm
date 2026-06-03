@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const BUILDER_PAGE_KEYS = ["home"] as const;
+export const BUILDER_PAGE_KEYS = ["home", "about", "contact"] as const;
 export type BuilderPageKey = (typeof BUILDER_PAGE_KEYS)[number];
 
 export const BUILDER_SECTION_TYPES = [
@@ -123,6 +123,13 @@ export const builderPageContentSchema = z.object({
   seo: builderSeoSchema,
 });
 
+export const builderHistoryEntrySchema = z.object({
+  version: z.number().int().min(1),
+  publishedAt: z.string().datetime(),
+  publishedBy: z.string().nullable().optional(),
+  content: builderPageContentSchema,
+});
+
 export const builderPageSchema = z.object({
   pageKey: z.enum(BUILDER_PAGE_KEYS),
   publishedContent: builderPageContentSchema,
@@ -132,6 +139,11 @@ export const builderPageSchema = z.object({
   publishedBy: z.string().nullable().optional(),
   updatedAt: z.string().datetime().optional(),
   updatedBy: z.string().nullable().optional(),
+  history: z.array(builderHistoryEntrySchema).max(20).optional(),
+});
+
+export const restoreBuilderVersionSchema = z.object({
+  version: z.number().int().min(1),
 });
 
 export const updateBuilderDraftSchema = z.object({

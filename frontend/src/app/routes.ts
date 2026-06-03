@@ -18,6 +18,7 @@ const CustomerDashboard = lazy(() => import("./pages/CustomerDashboard"));
 const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
+const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
 
 const AdminLogin = lazy(() => import("./admin/pages/AdminLogin"));
 const AdminLayout = lazy(() => import("./admin/components/AdminLayout"));
@@ -34,11 +35,16 @@ const AdminOrders = lazy(() => import("./admin/pages/AdminOrders"));
 const AdminOrderDetail = lazy(() => import("./admin/pages/AdminOrderDetail"));
 const AdminCmsEditor = lazy(() => import("./admin/pages/AdminCmsEditor"));
 const AdminBuilderHome = lazy(() => import("./admin/pages/AdminBuilderHome"));
+const AdminBuilderPagesList = lazy(() => import("./admin/pages/AdminBuilderPagesList"));
 const AdminOperations = lazy(() => import("./admin/pages/AdminOperations"));
 const AdminShippingMethods = lazy(() => import("./admin/pages/AdminShippingMethods"));
 const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates"));
 
 export const router = createBrowserRouter([
+  {
+    path: "/builder-preview",
+    Component: BuilderPreview,
+  },
   {
     path: "/",
     Component: Root,
@@ -94,7 +100,8 @@ export const router = createBrowserRouter([
           { path: "media", Component: AdminMedia },
           { path: "settings", Component: AdminSettings },
           { path: "cms", Component: AdminCmsEditor },
-          { path: "builder/home", Component: AdminBuilderHome },
+          { path: "builder", Component: AdminBuilderPagesList },
+          { path: "builder/:pageKey", Component: AdminBuilderHome },
           { path: "operations", Component: AdminOperations },
           { path: "shipping-methods", Component: AdminShippingMethods },
           { path: "email-templates", Component: AdminEmailTemplates },

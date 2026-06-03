@@ -97,6 +97,7 @@ export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("store");
   const [storeName, setStoreName] = useState("");
   const [storeEmail, setStoreEmail] = useState("");
   const [saving, setSaving] = useState(false);
@@ -480,186 +481,215 @@ export default function AdminSettings() {
   if (loading) return <LoadingState label="Loading settings..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
+  const TABS = [
+    ["store", "Store"],
+    ["stitch", "Stitch Payments"],
+    ["payfast", "PayFast"],
+    ["storage", "Storage"],
+    ["sendgrid", "SendGrid Email"],
+    ["abandoned-cart", "Abandoned Cart"],
+    ["xero", "Xero"],
+  ] as const;
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
         <h2 className="text-2xl font-black text-gray-900">Settings</h2>
-        <p className="text-sm text-gray-500 mb-3">Configure your store, payments, email, and integrations.</p>
-        <div className="flex flex-wrap gap-2 text-xs">
-          {[
-            ["#store", "Store"],
-            ["#stitch", "Stitch Payments"],
-            ["#payfast", "PayFast"],
-            ["#storage", "Storage"],
-            ["#sendgrid", "SendGrid Email"],
-            ["#abandoned-cart", "Abandoned Cart"],
-            ["#xero", "Xero"],
-          ].map(([href, label]) => (
-            <a key={href} href={href} className="px-2.5 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">{label}</a>
+        <p className="text-sm text-gray-500 mb-4">Configure your store, payments, email, and integrations.</p>
+        <div className="flex flex-wrap border-b border-gray-200">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === id
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              {label}
+            </button>
           ))}
         </div>
       </div>
 
-      <form id="store" onSubmit={saveStore} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">Store Settings</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
+      {activeTab === "store" && (
+        <form onSubmit={saveStore} className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">Store Settings</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Support Email</label>
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} required />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Support Email</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} required />
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
+        </form>
+      )}
+
+      {activeTab === "stitch" && (
+        <div className="space-y-6">
+          <form onSubmit={saveStitch} className="space-y-4">
+            <h2 className="text-xl font-black text-gray-900">Stitch Payments</h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />Enable Stitch</label>
+              <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production")}><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Merchant ID" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
+              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${apiKeyConfigured ? "(configured)" : "(required)"}`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Webhook Secret ${webhookConfigured ? "(configured)" : "(optional)"}`} value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URL" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Callback URL" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
+            </div>
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
+          </form>
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-gray-900">Recent Payment Events</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+              {paymentEvents.length === 0 ? <p className="text-sm text-gray-500">No payment events yet.</p> : paymentEvents.map((event) => (
+                <div key={event.id} className="text-sm border border-gray-100 rounded-lg p-2">
+                  <p className="font-medium">{event.gateway.toUpperCase()} · {event.eventType} · {event.status}</p>
+                  <p className="text-xs text-gray-500">{event.order?.orderNumber ? `Order #${event.order.orderNumber} · ` : ""}{new Date(event.createdAt).toLocaleString()}</p>
+                  {event.error ? <p className="text-xs text-red-600 mt-1">{event.error}</p> : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeTab === "payfast" && (
+        <form onSubmit={savePayfast} className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">PayFast Payments</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payfastEnabled} onChange={(e) => setPayfastEnabled(e.target.checked)} />Enable PayFast</label>
+            <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live")}><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
+            <p className="text-xs text-gray-500">Keep sandbox and live credentials separate to avoid accidental cross-environment usage.</p>
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Sandbox Merchant ID" value={sandboxMerchantId} onChange={(e) => setSandboxMerchantId(e.target.value)} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Merchant Key ${sandboxMerchantKeyConfigured ? "(configured)" : ""}`} value={sandboxMerchantKey} onChange={(e) => setSandboxMerchantKey(e.target.value)} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Passphrase ${sandboxPassphraseConfigured ? "(configured)" : "(optional)"}`} value={sandboxPassphrase} onChange={(e) => setSandboxPassphrase(e.target.value)} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Live Merchant ID" value={liveMerchantId} onChange={(e) => setLiveMerchantId(e.target.value)} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Merchant Key ${liveMerchantKeyConfigured ? "(configured)" : ""}`} value={liveMerchantKey} onChange={(e) => setLiveMerchantKey(e.target.value)} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Passphrase ${livePassphraseConfigured ? "(configured)" : "(optional)"}`} value={livePassphrase} onChange={(e) => setLivePassphrase(e.target.value)} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Return URL" value={payfastReturnUrl} onChange={(e) => setPayfastReturnUrl(e.target.value)} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancel URL" value={payfastCancelUrl} onChange={(e) => setPayfastCancelUrl(e.target.value)} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Notify URL (webhook)" value={payfastNotifyUrl} onChange={(e) => setPayfastNotifyUrl(e.target.value)} />
           </div>
-        </div>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
-      </form>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save PayFast Settings"}</button>
+        </form>
+      )}
 
-      <form id="stitch" onSubmit={saveStitch} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">Stitch Payments</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />Enable Stitch</label>
-          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production") }><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Merchant ID" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${apiKeyConfigured ? "(configured)" : "(required)"}`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Webhook Secret ${webhookConfigured ? "(configured)" : "(optional)"}`} value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URL" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Callback URL" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
-        </div>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
-      </form>
-
-      <form id="payfast" onSubmit={savePayfast} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">PayFast Payments</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payfastEnabled} onChange={(e) => setPayfastEnabled(e.target.checked)} />Enable PayFast</label>
-          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live") }><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
-          <p className="text-xs text-gray-500">Keep sandbox and live credentials separate to avoid accidental cross-environment usage.</p>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Sandbox Merchant ID" value={sandboxMerchantId} onChange={(e) => setSandboxMerchantId(e.target.value)} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Merchant Key ${sandboxMerchantKeyConfigured ? "(configured)" : ""}`} value={sandboxMerchantKey} onChange={(e) => setSandboxMerchantKey(e.target.value)} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Passphrase ${sandboxPassphraseConfigured ? "(configured)" : "(optional)"}`} value={sandboxPassphrase} onChange={(e) => setSandboxPassphrase(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Live Merchant ID" value={liveMerchantId} onChange={(e) => setLiveMerchantId(e.target.value)} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Merchant Key ${liveMerchantKeyConfigured ? "(configured)" : ""}`} value={liveMerchantKey} onChange={(e) => setLiveMerchantKey(e.target.value)} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Passphrase ${livePassphraseConfigured ? "(configured)" : "(optional)"}`} value={livePassphrase} onChange={(e) => setLivePassphrase(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Return URL" value={payfastReturnUrl} onChange={(e) => setPayfastReturnUrl(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancel URL" value={payfastCancelUrl} onChange={(e) => setPayfastCancelUrl(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Notify URL (webhook)" value={payfastNotifyUrl} onChange={(e) => setPayfastNotifyUrl(e.target.value)} />
-        </div>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save PayFast Settings"}</button>
-      </form>
-
-      <form id="storage" onSubmit={saveStorage} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">Storage Settings</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
-          <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
-            const provider = e.target.value as StorageSettings["provider"];
-            setStorageConfig((prev) => ({
-              ...prev,
-              provider,
-              endpoint: provider === "cloudflare-r2" && prev.accountId ? `https://${prev.accountId}.r2.cloudflarestorage.com` : prev.endpoint,
-            }));
-          }}>
-            <option value="local">local</option>
-            <option value="s3">s3</option>
-            <option value="cloudflare-r2">cloudflare-r2</option>
-          </select>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Bucket Name" value={storageConfig.bucket} onChange={(e) => setStorageConfig((prev) => ({ ...prev, bucket: e.target.value }))} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Account ID (Cloudflare R2)" value={storageConfig.accountId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accountId: e.target.value, endpoint: prev.provider === "cloudflare-r2" && e.target.value ? `https://${e.target.value}.r2.cloudflarestorage.com` : prev.endpoint }))} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Access Key ID ${storageConfig.accessKeyIdMasked ? `(current ${storageConfig.accessKeyIdMasked})` : ""}`} value={storageConfig.accessKeyId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accessKeyId: e.target.value }))} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Secret Access Key ${storageConfig.secretAccessKeyConfigured ? "(configured, leave blank to keep)" : ""}`} value={storageSecret} onChange={(e) => setStorageSecret(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Endpoint URL" value={storageConfig.endpoint} onChange={(e) => setStorageConfig((prev) => ({ ...prev, endpoint: e.target.value }))} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Public Base URL (optional public origin)" value={storageConfig.publicBaseUrl} onChange={(e) => setStorageConfig((prev) => ({ ...prev, publicBaseUrl: e.target.value }))} />
-          <input type="number" min={60} max={86400} className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Signed URL TTL (seconds)" value={storageConfig.signedUrlTtlSeconds} onChange={(e) => setStorageConfig((prev) => ({ ...prev, signedUrlTtlSeconds: Number(e.target.value) }))} />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={storageConfig.forcePathStyle} onChange={(e) => setStorageConfig((prev) => ({ ...prev, forcePathStyle: e.target.checked }))} />Force path style</label>
-          <p className="text-xs text-amber-700">Cloudflare R2 endpoint suggestion: https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</p>
-          <p className="text-xs text-amber-700">Browser uploads require bucket CORS for PUT from your admin origin.</p>
-          <p className="text-xs text-amber-700">Local storage is not durable in production.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Storage Settings"}</button>
-          <button type="button" onClick={testStorage} disabled={saving} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Test Connection</button>
-        </div>
-      </form>
-
-      <form id="sendgrid" onSubmit={saveSendgrid} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">SendGrid Email</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.enabled} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable SendGrid provider settings</label>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="From Email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="From Name" value={sendgridConfig.fromName} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromName: e.target.value }))} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Reply-To Email (optional)" value={sendgridConfig.replyToEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, replyToEmail: e.target.value }))} />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${sendgridConfig.apiKeyConfigured ? "(configured, leave blank to keep)" : "(required to send)"}`} value={sendgridApiKey} onChange={(e) => setSendgridApiKey(e.target.value)} />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.sandboxMode} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, sandboxMode: e.target.checked }))} />Use SendGrid sandbox mode</label>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Test recipient email" value={sendgridTestTo} onChange={(e) => setSendgridTestTo(e.target.value)} />
+      {activeTab === "storage" && (
+        <form onSubmit={saveStorage} className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">Storage Settings</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+            <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
+              const provider = e.target.value as StorageSettings["provider"];
+              setStorageConfig((prev) => ({
+                ...prev,
+                provider,
+                endpoint: provider === "cloudflare-r2" && prev.accountId ? `https://${prev.accountId}.r2.cloudflarestorage.com` : prev.endpoint,
+              }));
+            }}>
+              <option value="local">local</option>
+              <option value="s3">s3</option>
+              <option value="cloudflare-r2">cloudflare-r2</option>
+            </select>
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Bucket Name" value={storageConfig.bucket} onChange={(e) => setStorageConfig((prev) => ({ ...prev, bucket: e.target.value }))} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Account ID (Cloudflare R2)" value={storageConfig.accountId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accountId: e.target.value, endpoint: prev.provider === "cloudflare-r2" && e.target.value ? `https://${e.target.value}.r2.cloudflarestorage.com` : prev.endpoint }))} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Access Key ID ${storageConfig.accessKeyIdMasked ? `(current ${storageConfig.accessKeyIdMasked})` : ""}`} value={storageConfig.accessKeyId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accessKeyId: e.target.value }))} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Secret Access Key ${storageConfig.secretAccessKeyConfigured ? "(configured, leave blank to keep)" : ""}`} value={storageSecret} onChange={(e) => setStorageSecret(e.target.value)} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Endpoint URL" value={storageConfig.endpoint} onChange={(e) => setStorageConfig((prev) => ({ ...prev, endpoint: e.target.value }))} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Public Base URL (optional public origin)" value={storageConfig.publicBaseUrl} onChange={(e) => setStorageConfig((prev) => ({ ...prev, publicBaseUrl: e.target.value }))} />
+            <input type="number" min={60} max={86400} className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Signed URL TTL (seconds)" value={storageConfig.signedUrlTtlSeconds} onChange={(e) => setStorageConfig((prev) => ({ ...prev, signedUrlTtlSeconds: Number(e.target.value) }))} />
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={storageConfig.forcePathStyle} onChange={(e) => setStorageConfig((prev) => ({ ...prev, forcePathStyle: e.target.checked }))} />Force path style</label>
+            <p className="text-xs text-amber-700">Cloudflare R2 endpoint suggestion: https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</p>
+            <p className="text-xs text-amber-700">Browser uploads require bucket CORS for PUT from your admin origin.</p>
+            <p className="text-xs text-amber-700">Local storage is not durable in production.</p>
+          </div>
           <div className="flex items-center gap-2">
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save SendGrid Settings"}</button>
-            <button type="button" onClick={testSendgrid} disabled={saving || !sendgridTestTo.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Send Test Email</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Storage Settings"}</button>
+            <button type="button" onClick={testStorage} disabled={saving} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Test Connection</button>
           </div>
-          <p className="text-xs text-gray-500">Set backend EMAIL_PROVIDER=sendgrid to use SendGrid for outbound mail.</p>
-        </div>
-      </form>
+        </form>
+      )}
 
-      <section className="space-y-3">
-        <h3 className="text-lg font-bold text-gray-900">Recent Payment Events</h3>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
-          {paymentEvents.length === 0 ? <p className="text-sm text-gray-500">No payment events yet.</p> : paymentEvents.map((event) => (
-            <div key={event.id} className="text-sm border border-gray-100 rounded-lg p-2">
-              <p className="font-medium">{event.gateway.toUpperCase()} · {event.eventType} · {event.status}</p>
-              <p className="text-xs text-gray-500">{event.order?.orderNumber ? `Order #${event.order.orderNumber} · ` : ""}{new Date(event.createdAt).toLocaleString()}</p>
-              {event.error ? <p className="text-xs text-red-600 mt-1">{event.error}</p> : null}
+      {activeTab === "sendgrid" && (
+        <form onSubmit={saveSendgrid} className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">SendGrid Email</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.enabled} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable SendGrid provider settings</label>
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="From Email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="From Name" value={sendgridConfig.fromName} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromName: e.target.value }))} />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Reply-To Email (optional)" value={sendgridConfig.replyToEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, replyToEmail: e.target.value }))} />
+            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${sendgridConfig.apiKeyConfigured ? "(configured, leave blank to keep)" : "(required to send)"}`} value={sendgridApiKey} onChange={(e) => setSendgridApiKey(e.target.value)} />
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.sandboxMode} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, sandboxMode: e.target.checked }))} />Use SendGrid sandbox mode</label>
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Test recipient email" value={sendgridTestTo} onChange={(e) => setSendgridTestTo(e.target.value)} />
+            <div className="flex items-center gap-2">
+              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save SendGrid Settings"}</button>
+              <button type="button" onClick={testSendgrid} disabled={saving || !sendgridTestTo.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Send Test Email</button>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <form id="abandoned-cart" onSubmit={saveAbandonedCartConfig} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">Abandoned Cart Automation</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.enabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable abandoned cart handling</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.reminderEnabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderEnabled: e.target.checked }))} />Enable reminder email</label>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.inactivityThresholdMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, inactivityThresholdMinutes: Number(e.target.value) }))} placeholder="Inactivity threshold (minutes)" />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.reminderDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderDelayMinutes: Number(e.target.value) }))} placeholder="Reminder delay (minutes)" />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.clearDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, clearDelayMinutes: Number(e.target.value) }))} placeholder="Clear/release delay (minutes)" />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.templateKey} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, templateKey: e.target.value }))} placeholder="Abandoned cart email template key" />
-          <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.helpText} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, helpText: e.target.value }))} />
-        </div>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Abandoned Cart Settings"}</button>
-      </form>
-
-      <form id="xero" onSubmit={saveXero} className="space-y-4">
-        <h2 className="text-xl font-black text-gray-900">Xero Accounting</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={xeroEnabled} onChange={(e) => setXeroEnabled(e.target.checked)} />Enable Xero</label>
-            <span className={`text-xs px-2 py-1 rounded ${xeroConnectionStatus === "connected" ? "bg-emerald-100 text-emerald-700" : xeroConnectionStatus === "expired" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"}`}>{xeroConnectionStatus.toUpperCase()}</span>
+            <p className="text-xs text-gray-500">Set backend EMAIL_PROVIDER=sendgrid to use SendGrid for outbound mail.</p>
           </div>
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Client ID" value={xeroClientId} onChange={(e) => setXeroClientId(e.target.value)} required />
-          <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Client Secret ${xeroSecretConfigured ? "(configured)" : "(required)"}`} value={xeroClientSecret} onChange={(e) => setXeroClientSecret(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URI" value={xeroRedirectUri} onChange={(e) => setXeroRedirectUri(e.target.value)} required />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Tenant ID" value={xeroTenantId} onChange={(e) => setXeroTenantId(e.target.value)} />
-          <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Scopes (space separated)" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
-          <p className="text-xs text-gray-500">Token expiry: {xeroTokenExpiresAt ? new Date(xeroTokenExpiresAt).toLocaleString() : "Not connected"}</p>
-          <button type="button" onClick={connectXero} className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm">Connect / Reconnect Xero</button>
-        </div>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Xero Settings"}</button>
-      </form>
+        </form>
+      )}
 
-      <section className="space-y-3">
-        <h3 className="text-lg font-bold text-gray-900">Xero Sync History</h3>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
-          {xeroSyncRecords.length === 0 ? <p className="text-sm text-gray-500">No sync records yet.</p> : xeroSyncRecords.map((record) => (
-            <div key={record.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium">{record.entityType} · {record.action} · {record.status}</p>
-                <p className="text-xs text-gray-500">Entity: {record.entityId} · Attempts: {record.attempts} · {new Date(record.updatedAt).toLocaleString()}</p>
-                {record.lastError ? <p className="text-xs text-red-600 mt-1">{record.lastError}</p> : null}
+      {activeTab === "abandoned-cart" && (
+        <form onSubmit={saveAbandonedCartConfig} className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">Abandoned Cart Automation</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.enabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable abandoned cart handling</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.reminderEnabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderEnabled: e.target.checked }))} />Enable reminder email</label>
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.inactivityThresholdMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, inactivityThresholdMinutes: Number(e.target.value) }))} placeholder="Inactivity threshold (minutes)" />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.reminderDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderDelayMinutes: Number(e.target.value) }))} placeholder="Reminder delay (minutes)" />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.clearDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, clearDelayMinutes: Number(e.target.value) }))} placeholder="Clear/release delay (minutes)" />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.templateKey} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, templateKey: e.target.value }))} placeholder="Abandoned cart email template key" />
+            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.helpText} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, helpText: e.target.value }))} />
+          </div>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Abandoned Cart Settings"}</button>
+        </form>
+      )}
+
+      {activeTab === "xero" && (
+        <div className="space-y-6">
+          <form onSubmit={saveXero} className="space-y-4">
+            <h2 className="text-xl font-black text-gray-900">Xero Accounting</h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={xeroEnabled} onChange={(e) => setXeroEnabled(e.target.checked)} />Enable Xero</label>
+                <span className={`text-xs px-2 py-1 rounded ${xeroConnectionStatus === "connected" ? "bg-emerald-100 text-emerald-700" : xeroConnectionStatus === "expired" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"}`}>{xeroConnectionStatus.toUpperCase()}</span>
               </div>
-              <button type="button" onClick={() => retryXeroSync(record.id)} className="px-2 py-1 rounded border border-gray-300 text-xs">Retry</button>
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Client ID" value={xeroClientId} onChange={(e) => setXeroClientId(e.target.value)} required />
+              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Client Secret ${xeroSecretConfigured ? "(configured)" : "(required)"}`} value={xeroClientSecret} onChange={(e) => setXeroClientSecret(e.target.value)} />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URI" value={xeroRedirectUri} onChange={(e) => setXeroRedirectUri(e.target.value)} required />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Tenant ID" value={xeroTenantId} onChange={(e) => setXeroTenantId(e.target.value)} />
+              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Scopes (space separated)" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
+              <p className="text-xs text-gray-500">Token expiry: {xeroTokenExpiresAt ? new Date(xeroTokenExpiresAt).toLocaleString() : "Not connected"}</p>
+              <button type="button" onClick={connectXero} className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm">Connect / Reconnect Xero</button>
             </div>
-          ))}
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Xero Settings"}</button>
+          </form>
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-gray-900">Xero Sync History</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+              {xeroSyncRecords.length === 0 ? <p className="text-sm text-gray-500">No sync records yet.</p> : xeroSyncRecords.map((record) => (
+                <div key={record.id} className="text-sm border border-gray-100 rounded-lg p-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{record.entityType} · {record.action} · {record.status}</p>
+                    <p className="text-xs text-gray-500">Entity: {record.entityId} · Attempts: {record.attempts} · {new Date(record.updatedAt).toLocaleString()}</p>
+                    {record.lastError ? <p className="text-xs text-red-600 mt-1">{record.lastError}</p> : null}
+                  </div>
+                  <button type="button" onClick={() => retryXeroSync(record.id)} className="px-2 py-1 rounded border border-gray-300 text-xs">Retry</button>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
+      )}
     </div>
   );
 }

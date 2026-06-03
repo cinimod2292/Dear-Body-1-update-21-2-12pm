@@ -3,9 +3,11 @@ import {
   addCustomerInteractionSchema,
   addCustomerNoteSchema,
   addCustomerTagSchema,
+  createAddressSchema,
   createCustomerSchema,
   customerListQuerySchema,
   supportInquirySchema,
+  updateAddressSchema,
   updateCustomerSchema,
 } from "./crm.schemas.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
@@ -177,4 +179,41 @@ export async function exportCustomersCsv(rawQuery: unknown) {
   }
 
   return lines.join("\n");
+}
+
+export async function listCustomerAddresses(customerId: string) {
+  return prisma.address.findMany({
+    where: { customerId },
+    orderBy: [{ isDefaultShipping: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+export async function createCustomerAddress(customerId: string, rawBody: unknown) {
+  const body = createAddressSchema.parse(rawBody);
+  if (body.isDefaultShipping) {
+    await prisma.address.updateMany({ where: { customerId }, data: { isDefaultShipping: false } });
+  }
+  if (body.isDefaultBilling) {
+    await prisma.address.updateMany({ where: { customerId }, data: { isDefaultBilling: false } });
+  }
+  return prisma.address.create({ data: { customerId, ...body } });
+}
+
+export async function updateAddress(addressId: string, rawBody: unknown) {
+  const address = await prisma.address.findUnique({ where: { id: addressId } });
+  if (!address) throw new AppError(404, "Address not found", "ADDRESS_NOT_FOUND");
+  const body = updateAddressSchema.parse(rawBody);
+  if (body.isDefaultShipping && address.customerId) {
+    await prisma.address.updateMany({ where: { customerId: address.customerId }, data: { isDefaultShipping: false } });
+  }
+  if (body.isDefaultBilling && address.customerId) {
+    await prisma.address.updateMany({ where: { customerId: address.customerId }, data: { isDefaultBilling: false } });
+  }
+  return prisma.address.update({ where: { id: addressId }, data: body });
+}
+
+export async function deleteAddress(addressId: string) {
+  const address = await prisma.address.findUnique({ where: { id: addressId } });
+  if (!address) throw new AppError(404, "Address not found", "ADDRESS_NOT_FOUND");
+  return prisma.address.delete({ where: { id: addressId } });
 }

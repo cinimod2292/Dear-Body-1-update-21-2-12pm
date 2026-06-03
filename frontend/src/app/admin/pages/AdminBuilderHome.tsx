@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link, useNavigate } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Eye, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Tablet, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Eye, Heart, Leaf, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Sparkles, Shield, Tablet, Trash2, Truck, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, publishBuilderDraft, saveBuilderDraft } from "../../builder/api";
@@ -39,6 +39,14 @@ const BENEFIT_ICON_LABELS: Record<BenefitIconName, string> = {
   heart: "Heart",
   leaf: "Leaf",
   truck: "Truck",
+};
+
+const BENEFIT_ICON_COMPONENTS: Record<BenefitIconName, React.ElementType> = {
+  sparkles: Sparkles,
+  shield: Shield,
+  heart: Heart,
+  leaf: Leaf,
+  truck: Truck,
 };
 
 const OPTION_LABEL_MAP: Record<string, string> = {
@@ -671,9 +679,9 @@ function BenefitItemsEditor({
                   key={icon}
                   type="button"
                   title={BENEFIT_ICON_LABELS[icon]}
-                  className={`py-1 rounded border text-[10px] ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"}`}
+                  className={`py-1 rounded border flex items-center justify-center ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-600"}`}
                   onClick={() => updateItem(index, { icon })}
-                >{icon.slice(0, 4)}</button>
+                >{(() => { const Icon = BENEFIT_ICON_COMPONENTS[icon]; return <Icon size={14} />; })()}</button>
               ))}
             </div>
           </div>
@@ -1185,6 +1193,7 @@ export default function AdminBuilderHome() {
   const [meta, setMeta] = useState<{ updatedAt?: string | null; publishedAt?: string | null; version?: number | null }>({});
   const [seoData, setSeoData] = useState<import("../../builder/types").BuilderSeo>({});
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [backConfirm, setBackConfirm] = useState(false);
 
   const unsaved = useMemo(() => {
     const current: BuilderPageContent = { ...craftNodesToPageContent(serialized), seo: seoData };
@@ -1337,19 +1346,29 @@ export default function AdminBuilderHome() {
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
       <div className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (unsaved) {
-                if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
-              }
-              void navigate("/admin");
-            }}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm inline-flex items-center gap-2 hover:border-gray-400 transition"
-          >
-            <ArrowLeft size={14} />
-            Back to admin
-          </button>
+          {backConfirm ? (
+            <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <span className="text-amber-700 text-xs">Unsaved changes — leave anyway?</span>
+              <button
+                type="button"
+                onClick={() => { setBackConfirm(false); void navigate("/admin"); }}
+                className="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition"
+              >Leave</button>
+              <button type="button" onClick={() => setBackConfirm(false)} className="px-2 py-0.5 rounded border border-amber-200 text-amber-700 text-xs hover:bg-amber-100 transition">Stay</button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (unsaved) { setBackConfirm(true); return; }
+                void navigate("/admin");
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm inline-flex items-center gap-2 hover:border-gray-400 transition"
+            >
+              <ArrowLeft size={14} />
+              Back to admin
+            </button>
+          )}
           <div className="flex items-center gap-1.5 text-sm">
             <span className="text-gray-500">Viewport:</span>
             <button className={`px-2 py-1 rounded border text-xs ${viewport === "desktop" ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 hover:border-gray-400"} transition`} onClick={() => setViewport("desktop")} title="Desktop"><Monitor size={14} /></button>

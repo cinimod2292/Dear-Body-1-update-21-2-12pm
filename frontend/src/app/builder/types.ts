@@ -1,4 +1,4 @@
-export type BuilderPageKey = "home";
+export type BuilderPageKey = "home" | "about" | "contact";
 
 export type BuilderSectionType =
   | "hero_banner"
@@ -35,6 +35,12 @@ export type BuilderPageRecord = {
   publishedBy?: string | null;
   updatedAt?: string;
   updatedBy?: string | null;
+};
+
+export type BuilderHistoryEntry = {
+  version: number;
+  publishedAt: string;
+  publishedBy?: string | null;
 };
 
 export type BenefitIconName = "sparkles" | "shield" | "heart" | "leaf" | "truck";

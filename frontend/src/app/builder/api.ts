@@ -1,6 +1,6 @@
 import { apiRequest } from "../admin/api/client";
 import { API_BASE } from "../lib/api";
-import { BuilderPageKey, BuilderPageRecord } from "./types";
+import { BuilderHistoryEntry, BuilderPageKey, BuilderPageRecord } from "./types";
 
 export async function fetchStoreBuilderPage(pageKey: BuilderPageKey) {
   const response = await fetch(`${API_BASE}/store/builder/pages/${pageKey}`, { cache: "no-store" });
@@ -30,4 +30,19 @@ export async function publishBuilderDraft(pageKey: BuilderPageKey, token: string
 export async function discardBuilderDraft(pageKey: BuilderPageKey, token: string) {
   const payload = await apiRequest<{ data: BuilderPageRecord }>(`/admin/builder/pages/${pageKey}/discard-draft`, { method: "POST" }, token);
   return payload.data;
+}
+
+export async function fetchBuilderHistory(pageKey: string, token: string): Promise<BuilderHistoryEntry[]> {
+  const payload = await apiRequest<{ data: BuilderHistoryEntry[] }>(`/admin/builder/pages/${pageKey}/history`, {}, token);
+  return payload.data ?? [];
+}
+
+export async function restoreBuilderVersion(pageKey: string, version: number, token: string): Promise<BuilderPageRecord> {
+  const payload = await apiRequest<{ data: BuilderPageRecord }>(`/admin/builder/pages/${pageKey}/restore/${version}`, { method: "POST" }, token);
+  return payload.data;
+}
+
+export async function listBuilderPages(token: string) {
+  const payload = await apiRequest<{ data: Array<{ pageKey: BuilderPageKey; version: number; updatedAt?: string; publishedAt?: string | null }> }>("/admin/builder/pages", {}, token);
+  return payload.data ?? [];
 }

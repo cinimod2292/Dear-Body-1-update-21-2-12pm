@@ -1,17 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
-import { Link, useNavigate } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Eye, Heart, Leaf, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Sparkles, Shield, Tablet, Trash2, Truck, Undo2, X } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Copy, Eye, Heart, Leaf, Link2, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Sparkles, Shield, Tablet, Trash2, Truck, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
-import { discardBuilderDraft, fetchAdminBuilderPage, publishBuilderDraft, saveBuilderDraft } from "../../builder/api";
+import { discardBuilderDraft, fetchAdminBuilderPage, fetchBuilderHistory, publishBuilderDraft, restoreBuilderVersion, saveBuilderDraft } from "../../builder/api";
 import { dearBodySectionRegistry } from "../../builder/registry";
 import { BenefitIconsSection } from "../../builder/sections/BenefitIconsSection";
 import { FeaturedProductsSection } from "../../builder/sections/FeaturedProductsSection";
 import { HeroBannerSection } from "../../builder/sections/HeroBannerSection";
 import { ImageTextSection } from "../../builder/sections/ImageTextSection";
 import { PromoBannerSection } from "../../builder/sections/PromoBannerSection";
-import { BenefitIconName, BenefitItem, BuilderPageContent, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
+import { BenefitIconName, BenefitItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -628,6 +628,55 @@ function InspectorImageField({
   );
 }
 
+const STOREFRONT_ROUTE_SUGGESTIONS = [
+  { label: "Home", href: "/" },
+  { label: "Shop", href: "/shop" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
+  { label: "Account", href: "/account" },
+];
+
+function UrlField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          placeholder="/path or https://..."
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className={`px-2.5 rounded-lg border text-gray-500 hover:text-gray-800 hover:border-gray-400 transition ${open ? "border-gray-400 bg-gray-50" : "border-gray-200"}`}
+          title="Browse pages"
+        >
+          <Link2 size={14} />
+        </button>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 overflow-hidden">
+          <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide font-semibold">Storefront pages</p>
+          {STOREFRONT_ROUTE_SUGGESTIONS.map((route) => (
+            <button
+              key={route.href}
+              type="button"
+              onClick={() => { onChange(route.href); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center justify-between gap-2"
+            >
+              <span className="text-gray-800">{route.label}</span>
+              <span className="text-gray-400 font-mono">{route.href}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BenefitItemsEditor({
   value,
   selectedNodeId,
@@ -805,6 +854,10 @@ function renderFieldControl(args: {
 
   if (field.type === "image") {
     return <InspectorImageField label={field.label} value={value} selectedNodeId={selectedNodeId} keyName={keyName} sectionType={sectionType} actions={actions} query={query} accessToken={accessToken} />;
+  }
+
+  if (field.type === "url") {
+    return <UrlField value={toFieldValue(value)} onChange={(v) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = v; })} />;
   }
 
   return <input type="text" value={toFieldValue(value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" onChange={(event) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props[keyName] = event.target.value; })} />;
@@ -1119,7 +1172,72 @@ function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/typ
   );
 }
 
-function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken, unsaved, seoData, onSeoChange }: {
+function HistoryPanel({ pageKey, accessToken, onRestore }: {
+  pageKey: string;
+  accessToken?: string;
+  onRestore: (version: number) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState<BuilderHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [restoring, setRestoring] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open || !accessToken) return;
+    setLoadingHistory(true);
+    fetchBuilderHistory(pageKey, accessToken)
+      .then(setHistory)
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, [open, accessToken, pageKey]);
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition text-left"
+      >
+        <span className="text-xs font-semibold text-gray-700 flex items-center gap-1.5"><Clock size={12} /> Publish History</span>
+        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="p-3">
+          {loadingHistory ? (
+            <p className="text-xs text-gray-400 py-2 text-center">Loading...</p>
+          ) : history.length === 0 ? (
+            <p className="text-xs text-gray-400 py-2 text-center">No publish history yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {history.map((entry) => (
+                <div key={entry.version} className="flex items-center justify-between gap-2 py-1.5 border-b border-gray-100 last:border-0">
+                  <div>
+                    <span className="text-xs font-medium text-gray-800">v{entry.version}</span>
+                    <span className="ml-2 text-[11px] text-gray-400">{new Date(entry.publishedAt).toLocaleString()}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={restoring !== null}
+                    onClick={async () => {
+                      setRestoring(entry.version);
+                      try { await onRestore(entry.version); }
+                      finally { setRestoring(null); }
+                    }}
+                    className="text-[11px] px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:border-gray-400 disabled:opacity-40 transition whitespace-nowrap"
+                  >
+                    {restoring === entry.version ? "..." : "Restore"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, onDiscard, onNodesChange, status, updatedAt, publishedAt, version, accessToken, unsaved, seoData, onSeoChange, pageKey, previewContent, onRestore }: {
   initialData: SerializedNodes;
   viewport: "desktop" | "tablet" | "mobile";
   products: Product[];
@@ -1135,8 +1253,31 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   unsaved: boolean;
   seoData: import("../../builder/types").BuilderSeo;
   onSeoChange: (next: import("../../builder/types").BuilderSeo) => void;
+  pageKey: string;
+  previewContent: BuilderPageContent;
+  onRestore: (version: number) => Promise<void>;
 }) {
-  const widthClass = viewport === "mobile" ? "max-w-[390px]" : viewport === "tablet" ? "max-w-[820px]" : "max-w-[1200px]";
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeDocHeight, setIframeDocHeight] = useState(2400);
+
+  // Receive height reports from preview iframe
+  useEffect(() => {
+    const handler = (ev: MessageEvent) => {
+      if (ev.data?.type === "BUILDER_PREVIEW_HEIGHT") {
+        setIframeDocHeight(Math.max(Number(ev.data.height) || 2400, 400));
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // Push current content into the iframe whenever it changes or viewport switches
+  useEffect(() => {
+    if (viewport === "desktop") return;
+    iframeRef.current?.contentWindow?.postMessage({ type: "BUILDER_PREVIEW_CONTENT", content: previewContent }, "*");
+  }, [previewContent, viewport]);
+
+  const targetWidth = viewport === "mobile" ? 390 : 768;
 
   return (
     <CraftProductsContext.Provider value={products}>
@@ -1161,13 +1302,40 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
               <SectionList />
             </div>
             <SeoPanel seoData={seoData} onSeoChange={onSeoChange} />
+            <HistoryPanel pageKey={pageKey} accessToken={accessToken} onRestore={onRestore} />
           </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto">
-            <div className={`mx-auto ${widthClass} transition-all duration-300`}>
+            {/* Craft.js editor canvas — always mounted so editor state is preserved */}
+            <div
+              className={viewport === "desktop" ? "mx-auto max-w-[1200px] transition-all duration-300" : ""}
+              style={viewport !== "desktop" ? { position: "absolute", visibility: "hidden", pointerEvents: "none", width: "1px", height: "1px", overflow: "hidden" } : undefined}
+            >
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <Frame data={initialData}><Element is={BuilderCanvas} canvas /></Frame>
               </div>
             </div>
+
+            {/* Scaled iframe for mobile/tablet — shows true responsive breakpoints */}
+            {viewport !== "desktop" && (
+              <div className="flex flex-col items-center gap-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-gray-500 bg-white border border-gray-200 rounded-full px-3 py-1">
+                  {viewport === "mobile" ? <Smartphone size={12} /> : <Tablet size={12} />}
+                  <span>{viewport === "mobile" ? "Mobile · 390px" : "Tablet · 768px"} — true responsive preview · edit in Desktop mode</span>
+                </div>
+                <div className="shadow-xl rounded-xl overflow-hidden border border-gray-300" style={{ width: targetWidth }}>
+                  <iframe
+                    key={viewport}
+                    ref={iframeRef}
+                    src="/builder-preview"
+                    style={{ width: targetWidth, height: iframeDocHeight, border: "none", display: "block" }}
+                    title={`${viewport} preview`}
+                    onLoad={() => {
+                      iframeRef.current?.contentWindow?.postMessage({ type: "BUILDER_PREVIEW_CONTENT", content: previewContent }, "*");
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </main>
           <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto">
             <p className="text-sm font-semibold text-gray-900 mb-3">Inspector</p>
@@ -1182,6 +1350,8 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
 export default function AdminBuilderHome() {
   const { session } = useAdminAuth();
   const navigate = useNavigate();
+  const { pageKey: rawPageKey } = useParams<{ pageKey?: string }>();
+  const pageKey = (rawPageKey ?? "home") as BuilderPageKey;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1192,6 +1362,7 @@ export default function AdminBuilderHome() {
   const [status, setStatus] = useState<Status>("saved");
   const [meta, setMeta] = useState<{ updatedAt?: string | null; publishedAt?: string | null; version?: number | null }>({});
   const [seoData, setSeoData] = useState<import("../../builder/types").BuilderSeo>({});
+  const previewContent = useMemo(() => craftNodesToPageContent(serialized), [serialized]);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [backConfirm, setBackConfirm] = useState(false);
 
@@ -1229,7 +1400,7 @@ export default function AdminBuilderHome() {
       if (!session?.accessToken) return;
       try {
         const content = { ...craftNodesToPageContent(serialized), seo: seoData };
-        const saved = await saveBuilderDraft("home", content, session.accessToken);
+        const saved = await saveBuilderDraft(pageKey, content, session.accessToken);
         setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
         setSerialized(pageContentToCraftNodes(saved.draftContent));
         setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
@@ -1252,7 +1423,7 @@ export default function AdminBuilderHome() {
       setError(null);
       logBuildMarker("AdminBuilderHome:load");
 
-      const page = await fetchAdminBuilderPage("home", session.accessToken);
+      const page = await fetchAdminBuilderPage(pageKey, session.accessToken);
       const productsResponse = await fetchStoreProducts();
 
       const draftContent = normalizeLoadContent(page?.draftContent);
@@ -1278,14 +1449,14 @@ export default function AdminBuilderHome() {
     }
   };
 
-  useEffect(() => { void load(); }, [session?.accessToken]);
+  useEffect(() => { void load(); }, [session?.accessToken, pageKey]);
 
   const onSave = async (nodes: SerializedNodes) => {
     if (!session?.accessToken) return;
     try {
       setStatus("saving");
       const content = { ...craftNodesToPageContent(nodes), seo: seoData };
-      const saved = await saveBuilderDraft("home", content, session.accessToken);
+      const saved = await saveBuilderDraft(pageKey, content, session.accessToken);
       const mappedNodes = pageContentToCraftNodes(saved.draftContent);
       setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
@@ -1305,15 +1476,15 @@ export default function AdminBuilderHome() {
     try {
       setStatus("publishing");
       const content = { ...craftNodesToPageContent(nodes), seo: seoData };
-      await saveBuilderDraft("home", content, session.accessToken);
-      const published = await publishBuilderDraft("home", session.accessToken);
+      await saveBuilderDraft(pageKey, content, session.accessToken);
+      const published = await publishBuilderDraft(pageKey, session.accessToken);
       const mappedNodes = pageContentToCraftNodes(published.draftContent);
       setSavedSnapshot({ ...published.draftContent, sections: normalizeList<BuilderSection>((published.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
       setMeta({ updatedAt: published.updatedAt ?? null, publishedAt: published.publishedAt ?? null, version: published.version ?? null });
       setStatus("published");
       setEditorVersion((v) => v + 1);
-      toast.success("Homepage published and live");
+      toast.success("Page published and live");
     } catch (err) {
       setStatus("error");
       toast.error(err instanceof Error ? err.message : "Publish failed");
@@ -1324,7 +1495,7 @@ export default function AdminBuilderHome() {
     if (!session?.accessToken) return;
     try {
       setStatus("saving");
-      const page = await discardBuilderDraft("home", session.accessToken);
+      const page = await discardBuilderDraft(pageKey, session.accessToken);
       const mappedNodes = pageContentToCraftNodes(page.draftContent);
       setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
       setSerialized(mappedNodes);
@@ -1339,8 +1510,27 @@ export default function AdminBuilderHome() {
     }
   };
 
+  const onRestore = async (version: number) => {
+    if (!session?.accessToken) return;
+    try {
+      const page = await restoreBuilderVersion(pageKey, version, session.accessToken);
+      const mappedNodes = pageContentToCraftNodes(page.draftContent);
+      setSavedSnapshot({ ...page.draftContent, sections: normalizeList<BuilderSection>((page.draftContent as any)?.sections) });
+      setSerialized(mappedNodes);
+      setSeoData((page.draftContent as any)?.seo ?? {});
+      setMeta({ updatedAt: page.updatedAt ?? null, publishedAt: page.publishedAt ?? null, version: page.version ?? null });
+      setStatus("saved");
+      setEditorVersion((v) => v + 1);
+      toast.success(`Version ${version} restored as draft`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Restore failed");
+    }
+  };
+
   if (loading) return <LoadingState label="Loading page builder..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
+
+  const PAGE_LABELS: Record<string, string> = { home: "Homepage", about: "About Us", contact: "Contact" };
 
   return (
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
@@ -1351,7 +1541,7 @@ export default function AdminBuilderHome() {
               <span className="text-amber-700 text-xs">Unsaved changes — leave anyway?</span>
               <button
                 type="button"
-                onClick={() => { setBackConfirm(false); void navigate("/admin"); }}
+                onClick={() => { setBackConfirm(false); void navigate("/admin/builder"); }}
                 className="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition"
               >Leave</button>
               <button type="button" onClick={() => setBackConfirm(false)} className="px-2 py-0.5 rounded border border-amber-200 text-amber-700 text-xs hover:bg-amber-100 transition">Stay</button>
@@ -1361,14 +1551,15 @@ export default function AdminBuilderHome() {
               type="button"
               onClick={() => {
                 if (unsaved) { setBackConfirm(true); return; }
-                void navigate("/admin");
+                void navigate("/admin/builder");
               }}
               className="px-3 py-2 rounded-lg border border-gray-200 text-sm inline-flex items-center gap-2 hover:border-gray-400 transition"
             >
               <ArrowLeft size={14} />
-              Back to admin
+              All pages
             </button>
           )}
+          <span className="text-sm font-semibold text-gray-800">{PAGE_LABELS[pageKey] ?? pageKey}</span>
           <div className="flex items-center gap-1.5 text-sm">
             <span className="text-gray-500">Viewport:</span>
             <button className={`px-2 py-1 rounded border text-xs ${viewport === "desktop" ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 hover:border-gray-400"} transition`} onClick={() => setViewport("desktop")} title="Desktop"><Monitor size={14} /></button>
@@ -1396,6 +1587,9 @@ export default function AdminBuilderHome() {
         unsaved={unsaved}
         seoData={seoData}
         onSeoChange={setSeoData}
+        pageKey={pageKey}
+        previewContent={previewContent}
+        onRestore={onRestore}
       />
     </div>
   );

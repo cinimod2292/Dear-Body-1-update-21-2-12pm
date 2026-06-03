@@ -6,9 +6,11 @@ import { resolvePublicUrlForStorageKey, resolveUploadConfig, sanitizeStorageKey,
 import {
   discardBuilderDraft,
   getAdminBuilderPage,
+  getBuilderPageHistory,
   getStoreBuilderPage,
   listBuilderPages,
   publishBuilderDraft,
+  restoreBuilderPageVersion,
   updateBuilderDraft,
 } from "./builder.service.js";
 
@@ -111,6 +113,25 @@ export async function builderRoutes(app: FastifyInstance) {
       const { pageKey } = request.params as { pageKey: string };
       const actorUserId = (request.user as { sub?: string } | undefined)?.sub ?? null;
       return reply.send({ data: await discardBuilderDraft(pageKey, actorUserId) });
+    },
+  );
+
+  app.get(
+    "/admin/builder/pages/:pageKey/history",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
+    async (request, reply) => {
+      const { pageKey } = request.params as { pageKey: string };
+      return reply.send({ data: await getBuilderPageHistory(pageKey) });
+    },
+  );
+
+  app.post(
+    "/admin/builder/pages/:pageKey/restore/:version",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => {
+      const { pageKey, version } = request.params as { pageKey: string; version: string };
+      const actorUserId = (request.user as { sub?: string } | undefined)?.sub ?? null;
+      return reply.send({ data: await restoreBuilderPageVersion(pageKey, Number(version), actorUserId) });
     },
   );
 

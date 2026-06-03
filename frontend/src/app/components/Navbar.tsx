@@ -11,7 +11,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [announcement, setAnnouncement] = useState("🌈 FREE SHIPPING on orders over R50 · Use code DEARBODY20 for 20% off!");
+  const [announcement, setAnnouncement] = useState("✨ Free shipping available on qualifying orders · Secure checkout via PayFast & Stitch");
   const [logoUrl, setLogoUrl] = useState("");
   const [logo2xUrl, setLogo2xUrl] = useState("");
   const [navItems, setNavItems] = useState<Array<{ label: string; href: string }>>([

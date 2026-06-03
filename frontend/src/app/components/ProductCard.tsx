@@ -125,7 +125,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
             <Heart size={16} fill={wished ? "currentColor" : "none"} />
           </button>
 
-          {/* Add to cart overlay */}
+          {/* Add to cart overlay — visible on hover (desktop) or always on touch devices */}
           <button
             type="button"
             onClick={handleAddToCart}
@@ -134,7 +134,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
               added
                 ? "bg-green-500 text-white scale-95"
                 : purchasable
-                  ? "bg-white/95 text-gray-800 hover:bg-gradient-to-r hover:from-pink-500 hover:to-orange-400 hover:text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                  ? "bg-white/95 text-gray-800 hover:bg-gradient-to-r hover:from-pink-500 hover:to-orange-400 hover:text-white [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:translate-y-2 [@media(hover:hover)]:group-hover:translate-y-0"
                   : "bg-gray-200 text-gray-500 cursor-not-allowed"
             }`}
           >
@@ -151,19 +151,21 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
           </h3>
           <p className="text-sm text-gray-500 mb-3 truncate">{product.tagline}</p>
 
-          {/* Rating */}
-          <div className="flex items-center gap-1.5 mb-3">
-            <div className="flex items-center gap-0.5">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  size={12}
-                  className={i < Math.floor(product.rating) ? "text-yellow-400 fill-yellow-400" : "text-gray-200 fill-gray-200"}
-                />
-              ))}
+          {/* Rating — only show when there are actual reviews */}
+          {product.reviews > 0 && (
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="flex items-center gap-0.5">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    size={12}
+                    className={i < Math.floor(product.rating) ? "text-yellow-400 fill-yellow-400" : "text-gray-200 fill-gray-200"}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-gray-400">({product.reviews})</span>
             </div>
-            <span className="text-xs text-gray-400">({product.reviews})</span>
-          </div>
+          )}
 
           {/* Price */}
           <div className="flex items-center gap-2">

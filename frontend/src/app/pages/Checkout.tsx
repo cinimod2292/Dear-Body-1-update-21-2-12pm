@@ -67,7 +67,6 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
-  const [orderNumber] = useState(() => Math.floor(Math.random() * 900000) + 100000);
   const { customer, token } = useCustomerAuth();
   const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
@@ -130,11 +129,10 @@ export default function Checkout() {
       })
       .catch(() => undefined);
   }, []);
-  const finalizeSuccessfulCheckout = useCallback((orderId: string, source: "initial_load" | "poll") => {
-    console.info("[checkout] successful payment/order completion detection", { orderId, source });
+  const finalizeSuccessfulCheckout = useCallback((_orderId: string, _source: "initial_load" | "poll") => {
     setProcessingPayment(false);
     setOrderPlaced(true);
-    clearCart(`checkout_success_${source}`);
+    clearCart("checkout_success");
   }, [clearCart]);
 
   const loadExistingOrder = async (orderId: string) => {
@@ -156,13 +154,6 @@ export default function Checkout() {
     }
     setOrderPlaced(false);
     setProcessingPayment(["AWAITING_PAYMENT", "PENDING"].includes(o.paymentStatus));
-    if (searchParams.get("cancelled") || o.paymentStatus === "FAILED") {
-      console.info("[checkout] abandoned cart restore trigger", {
-        orderId,
-        cancelled: Boolean(searchParams.get("cancelled")),
-        paymentStatus: o.paymentStatus,
-      });
-    }
   };
 
   useEffect(() => {
@@ -175,7 +166,6 @@ export default function Checkout() {
       .then((r) => r.json())
       .then((payload) => {
         const methods = (payload?.data || []) as StoreShippingMethod[];
-        console.info("[checkout] fetched storefront shipping methods", { count: methods.length, methods });
         if (!methods.length) return;
         setShippingMethods(methods);
       })
@@ -214,7 +204,6 @@ export default function Checkout() {
       .then((payload) => {
         const q = payload?.data as QuoteTotals | undefined;
         if (!q) return;
-        console.info("[checkout] quote shipping methods", { count: q.shippingMethods?.length ?? 0, methods: q.shippingMethods });
         setQuote(q);
         setShippingMethods(q.shippingMethods || []);
         if (q.shippingMethodInvalid) {
@@ -235,24 +224,6 @@ export default function Checkout() {
     }
   }, [shippingMethods, selectedShippingMethodId]);
 
-  useEffect(() => {
-    console.info("[checkout] summary shipping state", {
-      selectedShippingMethodId: selectedShippingMethodId || null,
-      selectedShippingMethodName: selectedShippingMethod?.name ?? null,
-      summaryShippingDisplay,
-      freeShippingApplied: quote?.freeShippingApplied ?? false,
-    });
-  }, [selectedShippingMethodId, selectedShippingMethod?.name, summaryShippingDisplay, quote?.freeShippingApplied]);
-
-  useEffect(() => {
-    console.info("[checkout] totals recomputed with shipping amount", {
-      subtotalForDisplay,
-      discountForDisplay,
-      shipping,
-      taxForDisplay,
-      total,
-    });
-  }, [subtotalForDisplay, discountForDisplay, shipping, taxForDisplay, total]);
 
 
   useEffect(() => {
@@ -315,20 +286,12 @@ export default function Checkout() {
         const payload = await res.json().catch(() => null);
         if (!res.ok || !payload?.data) return;
         const status = payload.data.paymentStatus;
-        console.info("[checkout] processing poll payload", payload.data);
-        console.info("[checkout] processing poll", {
-          orderId,
-          orderStatus: payload.data.status,
-          orderPaymentStatus: payload.data.paymentStatus,
-          shouldClearProcessing: status === "PAID" || status === "FAILED",
-        });
         setOrderInfo((prev) => prev ? { ...prev, paymentStatus: status, status: payload.data.status } : prev);
         if (status === "PAID") {
           finalizeSuccessfulCheckout(orderId, "poll");
         }
         if (status === "FAILED") {
           setProcessingPayment(false);
-          console.info("[checkout] abandoned cart restore trigger", { orderId, cancelled: returnCancelled, paymentStatus: status });
         }
         if (attempts >= 20) {
           setProcessingTimedOut(true);
@@ -359,9 +322,6 @@ export default function Checkout() {
     e.preventDefault();
     if (submitting) return;
     setCheckoutError(null);
-    const checkoutSubmitStartedAt = performance.now();
-    console.info("[checkout-timing] submit handler started", { t0: checkoutSubmitStartedAt });
-
     try {
       setSubmitting(true);
 
@@ -386,7 +346,6 @@ export default function Checkout() {
       });
       const resolvePayload = await resolveRes.json().catch(() => null);
       if (!resolveRes.ok) throw new Error(resolvePayload?.error?.message || "Unable to resolve product variants for checkout");
-      console.info("[checkout-timing] resolve-items response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt) });
 
       const cartRes = await fetch(`${API_BASE}/store/cart`, {
         method: "POST",
@@ -397,7 +356,6 @@ export default function Checkout() {
       if (!cartRes.ok) throw new Error(cartPayload?.error?.message || "Failed to create checkout cart");
       const cartId = cartPayload?.data?.id as string | undefined;
       if (!cartId) throw new Error("Checkout cart missing");
-      console.info("[checkout-timing] checkout cart created", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       for (const item of resolvePayload.data.items as Array<{ variantId: string; quantity: number }>) {
         const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
@@ -411,7 +369,6 @@ export default function Checkout() {
         }
       }
 
-      console.info("[checkout-timing] backend payment-init started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -437,28 +394,10 @@ export default function Checkout() {
       });
       const checkoutPayload = await checkoutRes.json().catch(() => null);
       if (!checkoutRes.ok) throw new Error(checkoutPayload?.error?.message || "Checkout failed");
-      console.info("[checkout-timing] backend response received", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), cartId });
 
       const order = checkoutPayload?.data?.order;
       const payment = checkoutPayload?.data?.payment;
       if (!order?.id) throw new Error("Order creation failed");
-      const backendTotal = Number(order.totalAmount ?? 0);
-      if (Math.abs(backendTotal - total) > 0.001) {
-        console.warn("[checkout] frontend/backend total mismatch", {
-          orderId: order.id,
-          frontendTotal: total,
-          backendTotal,
-          cartSubtotal: Number(quote?.subtotalAmount ?? cartTotal),
-          shipping,
-        });
-      } else {
-        console.info("[checkout] frontend/backend total match", {
-          orderId: order.id,
-          frontendTotal: total,
-          backendTotal,
-        });
-      }
-
       const finalReturnUrl = `${window.location.origin}/checkout?orderId=${order.id}`;
       if (payment && !payment.checkoutUrl) {
         const retryRes = await fetch(`${API_BASE}/store/orders/${order.id}/payments/initiate`, {
@@ -468,11 +407,6 @@ export default function Checkout() {
         });
         const retryPayload = await retryRes.json().catch(() => null);
         if (retryRes.ok && retryPayload?.data?.checkoutUrl) {
-          console.info("[checkout-timing] redirect to gateway started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "retry-initiate", gateway: selectedGateway || null });
-          console.info("[checkout] retry redirect", {
-            checkoutUrlFromBackend: retryPayload.data.checkoutUrl,
-            redirectTarget: retryPayload.data.checkoutUrl,
-          });
           window.location.href = retryPayload.data.checkoutUrl;
           return;
         }
@@ -489,11 +423,6 @@ export default function Checkout() {
       setOrderPlaced(order.paymentStatus === "PAID");
 
       if (payment?.checkoutUrl) {
-        console.info("[checkout-timing] redirect to gateway started", { elapsedMs: Math.round(performance.now() - checkoutSubmitStartedAt), source: "checkout-response", gateway: selectedGateway || null });
-        console.info("[checkout] initial redirect", {
-          checkoutUrlFromBackend: payment.checkoutUrl,
-          redirectTarget: payment.checkoutUrl,
-        });
         window.location.href = payment.checkoutUrl;
       }
     } catch (err) {
@@ -547,7 +476,7 @@ export default function Checkout() {
             Thank you for your order! We're getting your goodies ready.
           </p>
           <p className="text-gray-400 text-sm mb-8">
-            Order #{orderInfo?.orderNumber || orderNumber} · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
+            Order #{orderInfo?.orderNumber} · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
           </p>
           <p className="text-sm mb-4">
             Payment status: <strong>{orderInfo?.paymentStatus || "PENDING"}</strong>
@@ -715,7 +644,6 @@ export default function Checkout() {
                             onChange={() => {
                               setSelectedShippingMethodId(opt.id);
                               setShippingStepError(null);
-                              console.info("[checkout] shipping method selected", { shippingMethodId: opt.id, shippingMethodName: opt.name, shippingMethodPrice: Number(opt.price) });
                             }}
                             className="accent-pink-500"
                           />
@@ -741,7 +669,6 @@ export default function Checkout() {
                   <button
                     onClick={() => {
                       if (!canProceedToPayment) {
-                        console.info("[checkout] continue blocked due to no shipping method", { selectedShippingMethodId: selectedShippingMethodId || null });
                         setShippingStepError("Please select a shipping method to continue.");
                         return;
                       }
@@ -790,7 +717,6 @@ export default function Checkout() {
                   <button
                     type="submit"
                     disabled={submitting || !canProceedToPayment}
-                    onClick={() => console.info("[checkout-timing] pay button clicked", { step: "payment", canProceedToPayment, submitting })}
                     className="flex-1 py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Lock size={16} />

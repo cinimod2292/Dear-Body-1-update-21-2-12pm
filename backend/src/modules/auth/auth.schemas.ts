@@ -25,3 +25,12 @@ export const customerLoginSchema = z.object({
 export const customerRefreshSchema = z.object({
   refreshToken: z.string().min(20),
 });
+
+export const customerForgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const customerResetPasswordSchema = z.object({
+  token: z.string().min(32),
+  password: z.string().min(8),
+});

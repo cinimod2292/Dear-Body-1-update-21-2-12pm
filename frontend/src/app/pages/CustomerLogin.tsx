@@ -82,8 +82,8 @@ export default function CustomerLogin() {
           </form>
 
           <div className="mt-6 flex flex-col items-center gap-3 text-sm text-gray-500">
-            <Link to="/pages/contact" className="text-pink-600 hover:underline">
-              Forgot your password? Contact us
+            <Link to="/account/forgot-password" className="text-pink-600 hover:underline">
+              Forgot your password?
             </Link>
             <p>
               No account?{" "}

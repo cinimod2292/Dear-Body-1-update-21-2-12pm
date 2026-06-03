@@ -475,9 +475,22 @@ model Customer {
   carts                Cart[]
   ordersV2             Order[]
   addresses            Address[]
+  passwordResets       CustomerPasswordReset[]
 
   @@index([status])
   @@index([lastOrderAt])
+}
+
+model CustomerPasswordReset {
+  id         String    @id @default(cuid())
+  customerId String
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
 }
 
 model CustomerOrder {

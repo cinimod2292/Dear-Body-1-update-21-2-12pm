@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
-import { customerLoginSchema, customerRefreshSchema, customerRegisterSchema, loginSchema, refreshSchema } from "./auth.schemas.js";
-import { getCustomerById, login, loginCustomer, logoutAdminSession, refreshAdminSession, refreshCustomerSession, registerCustomer } from "./auth.service.js";
+import { customerForgotPasswordSchema, customerLoginSchema, customerRefreshSchema, customerRegisterSchema, customerResetPasswordSchema, loginSchema, refreshSchema } from "./auth.schemas.js";
+import { getCustomerById, login, loginCustomer, logoutAdminSession, refreshAdminSession, refreshCustomerSession, registerCustomer, requestCustomerPasswordReset, resetCustomerPassword } from "./auth.service.js";
+import { env } from "../../config/env.js";
 
 export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/admin/login", async (request, reply) => {
@@ -58,5 +59,19 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get("/auth/customer/me", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     return reply.send({ data: await getCustomerById(request.customer.id) });
+  });
+
+  app.post("/auth/customer/forgot-password", async (request, reply) => {
+    const body = customerForgotPasswordSchema.parse(request.body);
+    const siteUrl = env.PUBLIC_BASE_URL || `${request.protocol}://${request.hostname}`;
+    await requestCustomerPasswordReset(body.email, siteUrl);
+    // Always return 200 to prevent email enumeration
+    return reply.send({ data: { message: "If an account exists for that email, a reset link has been sent." } });
+  });
+
+  app.post("/auth/customer/reset-password", async (request, reply) => {
+    const body = customerResetPasswordSchema.parse(request.body);
+    await resetCustomerPassword(body.token, body.password);
+    return reply.send({ data: { message: "Password updated successfully. You can now log in." } });
   });
 }

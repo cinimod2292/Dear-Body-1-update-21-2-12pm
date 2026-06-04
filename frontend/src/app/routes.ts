@@ -39,6 +39,7 @@ const AdminBuilderPagesList = lazy(() => import("./admin/pages/AdminBuilderPages
 const AdminOperations = lazy(() => import("./admin/pages/AdminOperations"));
 const AdminShippingMethods = lazy(() => import("./admin/pages/AdminShippingMethods"));
 const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates"));
+const AdminStaffUsers = lazy(() => import("./admin/pages/AdminStaffUsers"));
 
 export const router = createBrowserRouter([
   {
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
           { path: "operations", Component: AdminOperations },
           { path: "shipping-methods", Component: AdminShippingMethods },
           { path: "email-templates", Component: AdminEmailTemplates },
+          { path: "staff-users", Component: AdminStaffUsers },
         ],
       },
     ],

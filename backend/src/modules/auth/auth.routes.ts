@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { customerForgotPasswordSchema, customerLoginSchema, customerRefreshSchema, customerRegisterSchema, customerResetPasswordSchema, loginSchema, refreshSchema } from "./auth.schemas.js";
-import { getCustomerById, login, loginCustomer, logoutAdminSession, refreshAdminSession, refreshCustomerSession, registerCustomer, requestCustomerPasswordReset, resetCustomerPassword } from "./auth.service.js";
+import { createStaffUser, deactivateStaffUser, getCustomerById, listStaffUsers, login, loginCustomer, logoutAdminSession, refreshAdminSession, refreshCustomerSession, registerCustomer, requestCustomerPasswordReset, resetCustomerPassword, updateStaffUser } from "./auth.service.js";
 import { env } from "../../config/env.js";
 
 export async function authRoutes(app: FastifyInstance) {
@@ -37,6 +37,25 @@ export async function authRoutes(app: FastifyInstance) {
         permissions: request.user.permissions,
       },
     });
+  });
+
+  app.get("/admin/staff-users", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => {
+    return reply.send({ data: await listStaffUsers() });
+  });
+
+  app.post("/admin/staff-users", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    return reply.status(201).send({ data: await createStaffUser(request.body as Parameters<typeof createStaffUser>[0]) });
+  });
+
+  app.patch("/admin/staff-users/:id", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    return reply.send({ data: await updateStaffUser(id, request.body as Parameters<typeof updateStaffUser>[1]) });
+  });
+
+  app.delete("/admin/staff-users/:id", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await deactivateStaffUser(id, request.user.sub);
+    return reply.status(204).send();
   });
 
   app.post("/auth/customer/register", async (request, reply) => {

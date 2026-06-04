@@ -4,11 +4,15 @@ import {
   addCustomerNote,
   addCustomerTag,
   createCustomer,
+  createCustomerAddress,
   createSupportInquiry,
+  deleteAddress,
   exportCustomersCsv,
   getCustomerById,
+  listCustomerAddresses,
   listCustomers,
   removeCustomerTag,
+  updateAddress,
   updateCustomer,
 } from "./crm.service.js";
 
@@ -69,5 +73,26 @@ export async function crmRoutes(app: FastifyInstance) {
   app.post("/admin/support/inquiries", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => {
     const data = await createSupportInquiry(request.body);
     return reply.status(201).send({ data });
+  });
+
+  app.get("/admin/customers/:customerId/addresses", { preHandler: [app.verifyAdmin, app.requirePermission("crm:read")] }, async (request, reply) => {
+    const { customerId } = request.params as { customerId: string };
+    return reply.send({ data: await listCustomerAddresses(customerId) });
+  });
+
+  app.post("/admin/customers/:customerId/addresses", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => {
+    const { customerId } = request.params as { customerId: string };
+    return reply.status(201).send({ data: await createCustomerAddress(customerId, request.body) });
+  });
+
+  app.patch("/admin/addresses/:addressId", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => {
+    const { addressId } = request.params as { addressId: string };
+    return reply.send({ data: await updateAddress(addressId, request.body) });
+  });
+
+  app.delete("/admin/addresses/:addressId", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => {
+    const { addressId } = request.params as { addressId: string };
+    await deleteAddress(addressId);
+    return reply.status(204).send();
   });
 }

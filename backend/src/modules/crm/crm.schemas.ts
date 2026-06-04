@@ -50,3 +50,23 @@ export const supportInquirySchema = z.object({
   message: z.string().min(5),
   customerId: z.string().cuid().optional(),
 });
+
+const addressFields = {
+  line1: z.string().min(1),
+  line2: z.string().optional().nullable(),
+  city: z.string().min(1),
+  state: z.string().optional().nullable(),
+  postalCode: z.string().min(1),
+  country: z.string().min(2),
+  recipientName: z.string().optional().nullable(),
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  company: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  deliveryNotes: z.string().optional().nullable(),
+  isDefaultShipping: z.boolean().optional(),
+  isDefaultBilling: z.boolean().optional(),
+};
+
+export const createAddressSchema = z.object(addressFields);
+export const updateAddressSchema = z.object(addressFields).partial();

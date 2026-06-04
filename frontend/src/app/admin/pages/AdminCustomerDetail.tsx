@@ -26,6 +26,24 @@ interface CustomerDetail {
   inquiries: Array<{ id: string; email: string; subject: string; message: string; status: string; createdAt: string }>;
 }
 
+interface CustomerAddress {
+  id: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+  recipientName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  isDefaultShipping: boolean;
+  isDefaultBilling: boolean;
+}
+
+const emptyAddressForm = { line1: "", line2: "", city: "", state: "", postalCode: "", country: "ZA", recipientName: "", phone: "", isDefaultShipping: false, isDefaultBilling: false };
+
 interface TagOption { id: string; name: string }
 
 export default function AdminCustomerDetail() {
@@ -38,6 +56,11 @@ export default function AdminCustomerDetail() {
   const [note, setNote] = useState("");
   const [interaction, setInteraction] = useState({ type: "NOTE", channel: "", subject: "", summary: "" });
   const [inquiry, setInquiry] = useState({ email: "", subject: "", message: "" });
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [editAddress, setEditAddress] = useState<Partial<CustomerAddress>>({});
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  const [newAddress, setNewAddress] = useState(emptyAddressForm);
 
   const load = async () => {
     if (!session?.accessToken || !customerId) return;
@@ -59,6 +82,18 @@ export default function AdminCustomerDetail() {
   };
 
   useEffect(() => { load(); }, [session?.accessToken, customerId]);
+
+  const loadAddresses = async () => {
+    if (!session?.accessToken || !customerId) return;
+    try {
+      const res = await apiRequest<{ data: CustomerAddress[] }>(`/admin/customers/${customerId}/addresses`, {}, session.accessToken);
+      setAddresses(res.data);
+    } catch {
+      // Addresses section is non-critical
+    }
+  };
+
+  useEffect(() => { void loadAddresses(); }, [session?.accessToken, customerId]);
 
   const addNote = async (e: FormEvent) => {
     e.preventDefault();
@@ -100,6 +135,44 @@ export default function AdminCustomerDetail() {
     await load();
   };
 
+  const saveAddressEdit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || !editingAddressId) return;
+    try {
+      await apiRequest(`/admin/addresses/${editingAddressId}`, { method: "PATCH", body: JSON.stringify(editAddress) }, session.accessToken);
+      toast.success("Address updated");
+      setEditingAddressId(null);
+      await loadAddresses();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update address");
+    }
+  };
+
+  const createAddress = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || !customerId) return;
+    try {
+      await apiRequest(`/admin/customers/${customerId}/addresses`, { method: "POST", body: JSON.stringify(newAddress) }, session.accessToken);
+      toast.success("Address added");
+      setShowAddAddress(false);
+      setNewAddress(emptyAddressForm);
+      await loadAddresses();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add address");
+    }
+  };
+
+  const deleteAddressFn = async (id: string) => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest(`/admin/addresses/${id}`, { method: "DELETE" }, session.accessToken);
+      toast.success("Address removed");
+      await loadAddresses();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete address");
+    }
+  };
+
   const createInquiry = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken || !customerId) return;
@@ -131,6 +204,78 @@ export default function AdminCustomerDetail() {
         <div><p className="text-xs text-gray-400">Email</p><p className="font-semibold">{customer.email}</p></div>
         <div><p className="text-xs text-gray-400">Phone</p><p className="font-semibold">{customer.phone || "—"}</p></div>
         <div><p className="text-xs text-gray-400">Marketing</p><p className="font-semibold">Email {customer.marketingEmailConsent ? "Yes" : "No"} · SMS {customer.marketingSmsConsent ? "Yes" : "No"}</p></div>
+      </section>
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold">Saved Addresses</h3>
+          <button type="button" onClick={() => setShowAddAddress(true)} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200">+ Add Address</button>
+        </div>
+        {addresses.length === 0 && !showAddAddress && <p className="text-sm text-gray-400">No saved addresses.</p>}
+        <div className="space-y-2">
+          {addresses.map((addr) => (
+            <div key={addr.id} className="border border-gray-100 rounded-lg p-3">
+              {editingAddressId === addr.id ? (
+                <form onSubmit={saveAddressEdit} className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Line 1" value={(editAddress.line1 ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, line1: e.target.value }))} />
+                  <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Line 2" value={(editAddress.line2 ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, line2: e.target.value }))} />
+                  <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="City" value={(editAddress.city ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, city: e.target.value }))} />
+                  <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="State / Province" value={(editAddress.state ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, state: e.target.value }))} />
+                  <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Postal Code" value={(editAddress.postalCode ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, postalCode: e.target.value }))} />
+                  <input required minLength={2} className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Country (e.g. ZA)" value={(editAddress.country ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, country: e.target.value }))} />
+                  <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Recipient name" value={(editAddress.recipientName ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, recipientName: e.target.value }))} />
+                  <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Phone" value={(editAddress.phone ?? "")} onChange={(e) => setEditAddress((a) => ({ ...a, phone: e.target.value }))} />
+                  <div className="flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-1"><input type="checkbox" checked={!!editAddress.isDefaultShipping} onChange={(e) => setEditAddress((a) => ({ ...a, isDefaultShipping: e.target.checked }))} /> Default shipping</label>
+                    <label className="flex items-center gap-1"><input type="checkbox" checked={!!editAddress.isDefaultBilling} onChange={(e) => setEditAddress((a) => ({ ...a, isDefaultBilling: e.target.checked }))} /> Default billing</label>
+                  </div>
+                  <div className="md:col-span-3 flex gap-2">
+                    <button type="submit" className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs">Save</button>
+                    <button type="button" onClick={() => setEditingAddressId(null)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    {addr.recipientName && <p className="font-medium text-sm">{addr.recipientName}</p>}
+                    <p className="text-sm">{addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}</p>
+                    <p className="text-sm">{addr.city}{addr.state ? `, ${addr.state}` : ""} {addr.postalCode}, {addr.country}</p>
+                    {addr.phone && <p className="text-xs text-gray-500">{addr.phone}</p>}
+                    <div className="flex gap-2 mt-1">
+                      {addr.isDefaultShipping && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Default shipping</span>}
+                      {addr.isDefaultBilling && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">Default billing</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => { setEditingAddressId(addr.id); setEditAddress(addr); }} className="px-2 py-1 rounded border border-gray-200 text-xs">Edit</button>
+                    <button onClick={() => deleteAddressFn(addr.id)} className="px-2 py-1 rounded border border-red-200 text-red-700 text-xs">Delete</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {showAddAddress && (
+          <form onSubmit={createAddress} className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 border border-dashed border-gray-300 rounded-lg p-3">
+            <p className="md:col-span-3 text-sm font-medium text-gray-700">New Address</p>
+            <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Line 1" value={newAddress.line1} onChange={(e) => setNewAddress((a) => ({ ...a, line1: e.target.value }))} />
+            <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Line 2" value={newAddress.line2} onChange={(e) => setNewAddress((a) => ({ ...a, line2: e.target.value }))} />
+            <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="City" value={newAddress.city} onChange={(e) => setNewAddress((a) => ({ ...a, city: e.target.value }))} />
+            <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="State / Province" value={newAddress.state} onChange={(e) => setNewAddress((a) => ({ ...a, state: e.target.value }))} />
+            <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Postal Code" value={newAddress.postalCode} onChange={(e) => setNewAddress((a) => ({ ...a, postalCode: e.target.value }))} />
+            <input required minLength={2} className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Country (e.g. ZA)" value={newAddress.country} onChange={(e) => setNewAddress((a) => ({ ...a, country: e.target.value }))} />
+            <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Recipient name" value={newAddress.recipientName} onChange={(e) => setNewAddress((a) => ({ ...a, recipientName: e.target.value }))} />
+            <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Phone" value={newAddress.phone} onChange={(e) => setNewAddress((a) => ({ ...a, phone: e.target.value }))} />
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1"><input type="checkbox" checked={newAddress.isDefaultShipping} onChange={(e) => setNewAddress((a) => ({ ...a, isDefaultShipping: e.target.checked }))} /> Default shipping</label>
+              <label className="flex items-center gap-1"><input type="checkbox" checked={newAddress.isDefaultBilling} onChange={(e) => setNewAddress((a) => ({ ...a, isDefaultBilling: e.target.checked }))} /> Default billing</label>
+            </div>
+            <div className="md:col-span-3 flex gap-2">
+              <button type="submit" className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs">Save Address</button>
+              <button type="button" onClick={() => { setShowAddAddress(false); setNewAddress(emptyAddressForm); }} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Cancel</button>
+            </div>
+          </form>
+        )}
       </section>
 
       <section className="bg-white border border-gray-200 rounded-xl p-5">

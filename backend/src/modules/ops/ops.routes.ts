@@ -4,6 +4,7 @@ import {
   createNewsletterSubscriber,
   createAdminShippingMethod,
   deactivateAdminShippingMethod,
+  deleteTaxRate,
   exportNewsletterCsv,
   getCustomerReport,
   getDashboardKpis,
@@ -61,6 +62,11 @@ export async function opsRoutes(app: FastifyInstance) {
 
   app.get("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => reply.send({ data: await listTaxRates() }));
   app.post("/admin/ops/tax-rates", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => reply.send({ data: await upsertTaxRate(request.body) }));
+  app.delete("/admin/ops/tax-rates/:id", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await deleteTaxRate(id);
+    return reply.status(204).send();
+  });
 
   app.get("/admin/ops/inquiries", { preHandler: [app.verifyAdmin, app.requirePermission("crm:read")] }, async (_request, reply) => reply.send({ data: await listInquiries() }));
   app.patch("/admin/ops/inquiries/:id", { preHandler: [app.verifyAdmin, app.requirePermission("crm:write")] }, async (request, reply) => {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -105,6 +105,9 @@ export default function AdminProductEditor() {
 
   const [adjustQty, setAdjustQty] = useState<Record<string, string>>({});
   const [movements, setMovements] = useState<Record<string, Array<{ id: string; quantityDelta: number; reason?: string; createdAt: string }>>>({});
+
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [editVariant, setEditVariant] = useState({ title: "", sku: "", price: "", salePrice: "", costPrice: "" });
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -446,6 +449,50 @@ export default function AdminProductEditor() {
     }
   };
 
+  const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+  const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setProduct((p) => ({
+      ...p,
+      name,
+      slug: (!p.slug || p.slug === slugify(p.name)) ? slugify(name) : p.slug,
+    }));
+  };
+
+  const startEditVariant = (v: Variant) => {
+    setEditingVariantId(v.id);
+    setEditVariant({
+      title: v.title ?? "",
+      sku: v.sku,
+      price: String(Number(v.price).toFixed(2)),
+      salePrice: v.salePrice ? String(Number(v.salePrice).toFixed(2)) : "",
+      costPrice: v.costPrice ? String(Number(v.costPrice).toFixed(2)) : "",
+    });
+  };
+
+  const saveVariant = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || !editingVariantId) return;
+    try {
+      await apiRequest(`/admin/variants/${editingVariantId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: editVariant.title || undefined,
+          sku: editVariant.sku,
+          price: Number(editVariant.price),
+          salePrice: editVariant.salePrice ? Number(editVariant.salePrice) : null,
+          costPrice: editVariant.costPrice ? Number(editVariant.costPrice) : null,
+        }),
+      }, session.accessToken);
+      toast.success("Variant updated");
+      setEditingVariantId(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update variant");
+    }
+  };
+
   const loadMovements = async (variantId: string) => {
     if (!session?.accessToken) return;
     try {
@@ -473,7 +520,7 @@ export default function AdminProductEditor() {
         <section className="bg-white border border-gray-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Name</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={product.name} onChange={(e) => setProduct((p) => ({ ...p, name: e.target.value }))} required />
+            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={product.name} onChange={handleNameChange} required />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Slug</label>
@@ -681,18 +728,35 @@ export default function AdminProductEditor() {
             <div className="space-y-3">
               {(product.variants ?? []).map((v) => (
                 <div key={v.id} className="rounded-lg border border-gray-100 p-3">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-sm">{v.title || "Variant"} · {v.sku}</p>
-                      <p className="text-xs text-gray-500">Price {formatRand(Number(v.price))}{v.salePrice ? ` · Sale ${formatRand(Number(v.salePrice))}` : ""}{v.costPrice ? ` · Cost ${formatRand(Number(v.costPrice))}` : ""}</p>
-                      <p className="text-xs text-gray-500">Stock {v.inventoryLevel?.quantityOnHand ?? 0} (Low stock at {v.inventoryLevel?.lowStockThreshold ?? 0})</p>
+                  {editingVariantId === v.id ? (
+                    <form onSubmit={saveVariant} className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Title" value={editVariant.title} onChange={(e) => setEditVariant((ev) => ({ ...ev, title: e.target.value }))} />
+                        <input required className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="SKU" value={editVariant.sku} onChange={(e) => setEditVariant((ev) => ({ ...ev, sku: e.target.value }))} />
+                        <input required type="number" min="0" step="0.01" className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Price" value={editVariant.price} onChange={(e) => setEditVariant((ev) => ({ ...ev, price: e.target.value }))} />
+                        <input type="number" min="0" step="0.01" className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Sale price" value={editVariant.salePrice} onChange={(e) => setEditVariant((ev) => ({ ...ev, salePrice: e.target.value }))} />
+                        <input type="number" min="0" step="0.01" className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" placeholder="Cost price" value={editVariant.costPrice} onChange={(e) => setEditVariant((ev) => ({ ...ev, costPrice: e.target.value }))} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="submit" className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs">Save</button>
+                        <button type="button" onClick={() => setEditingVariantId(null)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Cancel</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{v.title || "Variant"} · {v.sku}</p>
+                        <p className="text-xs text-gray-500">Price {formatRand(Number(v.price))}{v.salePrice ? ` · Sale ${formatRand(Number(v.salePrice))}` : ""}{v.costPrice ? ` · Cost ${formatRand(Number(v.costPrice))}` : ""}</p>
+                        <p className="text-xs text-gray-500">Stock {v.inventoryLevel?.quantityOnHand ?? 0} (Low stock at {v.inventoryLevel?.lowStockThreshold ?? 0})</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button type="button" onClick={() => startEditVariant(v)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Edit</button>
+                        <input className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm" placeholder="±Qty" value={adjustQty[v.id] ?? ""} onChange={(e) => setAdjustQty((p) => ({ ...p, [v.id]: e.target.value }))} />
+                        <button type="button" className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs" onClick={() => adjustStock(v.id)}>Adjust Stock</button>
+                        <button type="button" className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs" onClick={() => loadMovements(v.id)}>Movements</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm" placeholder="±Qty" value={adjustQty[v.id] ?? ""} onChange={(e) => setAdjustQty((p) => ({ ...p, [v.id]: e.target.value }))} />
-                      <button className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs" onClick={() => adjustStock(v.id)}>Adjust</button>
-                      <button className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs" onClick={() => loadMovements(v.id)}>Movements</button>
-                    </div>
-                  </div>
+                  )}
 
                   {movements[v.id]?.length ? (
                     <div className="mt-3 border-t border-gray-100 pt-3 space-y-1">

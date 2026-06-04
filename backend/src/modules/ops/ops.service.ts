@@ -376,6 +376,10 @@ export async function upsertTaxRate(rawBody: unknown) {
   return prisma.taxRate.create({ data: body });
 }
 
+export async function deleteTaxRate(id: string) {
+  return prisma.taxRate.delete({ where: { id } });
+}
+
 export async function listInquiries() {
   return prisma.supportInquiry.findMany({
     orderBy: { createdAt: "desc" },

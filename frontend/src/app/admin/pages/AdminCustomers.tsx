@@ -6,6 +6,7 @@ import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { formatRand } from "../../lib/currency";
+import { toast } from "sonner";
 
 interface CustomerListItem {
   id: string;
@@ -74,6 +75,25 @@ export default function AdminCustomers() {
       });
   }, [session?.accessToken]);
 
+  const exportCsv = async () => {
+    if (!session?.accessToken) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/customers/export.csv`, {
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "customers.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    }
+  };
+
   const createCustomer = async (e: FormEvent) => {
     e.preventDefault();
     if (!session?.accessToken) return;
@@ -98,7 +118,7 @@ export default function AdminCustomers() {
           <p className="text-sm text-gray-500">Search, segment, and manage customer relationships at scale.</p>
         </div>
         <div className="flex items-center gap-2">
-          <a href={`${API_BASE}/admin/customers/export.csv`} target="_blank" rel="noreferrer" className="px-4 py-2 border border-gray-200 rounded-lg text-sm">Export CSV</a>
+          <button onClick={exportCsv} className="px-4 py-2 border border-gray-200 rounded-lg text-sm">Export CSV</button>
           <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm">New Customer</button>
         </div>
       </div>

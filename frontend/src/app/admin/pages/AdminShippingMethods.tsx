@@ -124,11 +124,29 @@ export default function AdminShippingMethods() {
     }
   };
 
+  const enable = async (method: ShippingMethod) => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest(`/admin/shipping-methods/${method.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: method.name, price: Number(method.price), description: method.description || null, isActive: true }),
+      }, session.accessToken);
+      toast.success("Shipping method enabled");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to enable shipping method");
+    }
+  };
+
   if (loading) return <LoadingState label="Loading shipping methods..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   return (
     <div className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-black text-gray-900">Shipping Methods</h2>
+        <p className="text-sm text-gray-500">Manage shipping options and free shipping rules for your store.</p>
+      </div>
       <section className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="font-bold mb-3">Free Shipping Rules</h3>
         <form onSubmit={saveShippingSettings} className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -170,7 +188,10 @@ export default function AdminShippingMethods() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => startEdit(method)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Edit</button>
-                  {method.isActive ? <button onClick={() => deactivate(method.id)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs">Disable</button> : null}
+                  {method.isActive
+                    ? <button onClick={() => deactivate(method.id)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs">Disable</button>
+                    : <button onClick={() => enable(method)} className="px-3 py-1.5 rounded-lg border border-green-200 text-green-700 text-xs">Enable</button>
+                  }
                 </div>
               </div>
             )}

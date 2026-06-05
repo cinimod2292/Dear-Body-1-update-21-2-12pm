@@ -358,17 +358,19 @@ export default function Checkout() {
       const cartId = cartPayload?.data?.id as string | undefined;
       if (!cartId) throw new Error("Checkout cart missing");
 
-      for (const item of resolvePayload.data.items as Array<{ variantId: string; quantity: number }>) {
-        const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ variantId: item.variantId, quantity: item.quantity }),
-        });
-        if (!addRes.ok) {
-          const payload = await addRes.json().catch(() => null);
-          throw new Error(payload?.error?.message || "Failed to add item to checkout cart");
-        }
-      }
+      await Promise.all(
+        (resolvePayload.data.items as Array<{ variantId: string; quantity: number }>).map(async (item) => {
+          const addRes = await fetch(`${API_BASE}/store/cart/${cartId}/items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ variantId: item.variantId, quantity: item.quantity }),
+          });
+          if (!addRes.ok) {
+            const payload = await addRes.json().catch(() => null);
+            throw new Error(payload?.error?.message || "Failed to add item to checkout cart");
+          }
+        })
+      );
 
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",

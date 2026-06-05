@@ -495,17 +495,21 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
 export async function initiateOrderPayment(orderId: string, rawBody: unknown, actorId?: string) {
   const paymentInitStartedAt = Date.now();
   const body = paymentInitiationSchema.parse(rawBody);
-  const enabledState = await getGatewayEnabledState();
-  const selectedGateway = resolveGatewayForRequest(enabledState, body.gateway);
-  const gateway = getGateway(selectedGateway);
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+
+  // Fetch enabled gateway state and the order in parallel
+  const [enabledState, order] = await Promise.all([
+    getGatewayEnabledState(),
+    prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } }),
+  ]);
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
   console.info("[checkout-timing] auth/user/cart lookup complete", {
     orderId,
     elapsedMs: Date.now() - paymentInitStartedAt,
   });
 
-  const config = await getGatewayRuntimeConfig(selectedGateway);
+  const selectedGateway = resolveGatewayForRequest(enabledState, body.gateway);
+  const gateway = getGateway(selectedGateway);
+
   if (order.paymentStatus === "PAID") {
     throw new AppError(400, "Order is already paid", "ORDER_ALREADY_PAID");
   }
@@ -513,7 +517,11 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     throw new AppError(400, "Order is not eligible for payment retry", "ORDER_PAYMENT_RETRY_NOT_ALLOWED");
   }
 
-  const latestAttempt = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } });
+  // Fetch gateway config and latest payment attempt in parallel
+  const [config, latestAttempt] = await Promise.all([
+    getGatewayRuntimeConfig(selectedGateway),
+    prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: gateway.name }, orderBy: { createdAt: "desc" } }),
+  ]);
   const idempotencyKey = `${gateway.name}:init:${order.id}:${latestAttempt ? latestAttempt.id : "first"}:${body.force ? "force" : "normal"}`;
   const latestCheckoutUrl = (latestAttempt?.metadata as { checkoutUrl?: string } | null)?.checkoutUrl;
   const canReuseCheckoutUrl = gateway.name === "stitch" ? isReusableStitchCheckoutUrl(latestCheckoutUrl) : Boolean(latestCheckoutUrl);
@@ -626,34 +634,35 @@ export async function initiateOrderPayment(orderId: string, rawBody: unknown, ac
     transaction = existingByKey;
   }
 
-  await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      stitchReference: gateway.name === "stitch" ? result.referenceId : undefined,
-      paymentStatus: "AWAITING_PAYMENT",
-      status: "AWAITING_PAYMENT",
-    },
-  });
-
-  await writePaymentEventLog({
-    gateway: gateway.name,
-    eventType: "payment.initiated",
-    status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
-    orderId: order.id,
-    transactionId: transaction.id,
-    idempotencyKey,
-    payload: result.raw,
-  });
-
-  await prisma.orderEvent.create({
-    data: {
+  // These three writes are independent — run them in parallel
+  await Promise.all([
+    prisma.order.update({
+      where: { id: order.id },
+      data: {
+        stitchReference: gateway.name === "stitch" ? result.referenceId : undefined,
+        paymentStatus: "AWAITING_PAYMENT",
+        status: "AWAITING_PAYMENT",
+      },
+    }),
+    writePaymentEventLog({
+      gateway: gateway.name,
+      eventType: "payment.initiated",
+      status: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
       orderId: order.id,
-      actorId,
-      eventType: "PAYMENT_INITIATED",
-      nextValue: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
-      details: { provider: gateway.name, referenceId: result.referenceId } as Prisma.InputJsonValue,
-    },
-  });
+      transactionId: transaction.id,
+      idempotencyKey,
+      payload: result.raw,
+    }),
+    prisma.orderEvent.create({
+      data: {
+        orderId: order.id,
+        actorId,
+        eventType: "PAYMENT_INITIATED",
+        nextValue: result.status === "PENDING" ? "AWAITING_PAYMENT" : result.status,
+        details: { provider: gateway.name, referenceId: result.referenceId } as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
   console.info("[checkout-timing] response returned to frontend", {
     orderId: order.id,
     reusedCheckoutUrl: false,

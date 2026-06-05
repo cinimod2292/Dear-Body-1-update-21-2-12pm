@@ -51,6 +51,19 @@ export async function buildApp() {
     preflight: true,
   });
 
+  if (env.MAINTENANCE_MODE) {
+    app.addHook("onRequest", async (request, reply) => {
+      const { url } = request;
+      if (url === "/ping" || url === `${env.API_PREFIX}/health`) return;
+      reply.status(503).send({
+        error: {
+          code: "MAINTENANCE",
+          message: "The service is temporarily unavailable for maintenance. Please check back soon.",
+        },
+      });
+    });
+  }
+
   app.register(multipart, {
     limits: {
       fileSize: 50 * 1024 * 1024,

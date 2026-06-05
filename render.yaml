@@ -25,6 +25,10 @@ services:
       #   https://your-shop.vercel.app,https://yourdomain.com
       - key: CORS_ORIGIN
         sync: false
+      # ── Maintenance mode ──────────────────────────────────────────────────
+      # Set to "true" to return 503 on all API routes (except /ping and /health)
+      - key: MAINTENANCE_MODE
+        value: "false"
       # ── Optional – uncomment and fill in as needed ────────────────────────
       # - key: UPLOAD_PROVIDER
       #   value: cloudflare-r2

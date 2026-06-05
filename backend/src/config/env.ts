@@ -34,6 +34,7 @@ const envSchema = z.object({
   STORAGE_ENCRYPTION_SECRET: z.string().min(16).optional(),
   SETUP_TOKEN: z.string().min(16).optional(),
   MEDIA_BACKFILL_TOKEN: z.string().min(16).optional(),
+  MAINTENANCE_MODE: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);

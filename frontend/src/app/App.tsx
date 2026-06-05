@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { CustomerAuthProvider } from "./context/CustomerAuthContext";
 import { FavoritesProvider } from "./context/FavoritesContext";
 import { BUILD_MARKER } from "./lib/build-marker";
+import MaintenancePage from "./pages/MaintenancePage";
 
 type AppErrorBoundaryState = { error: Error | null };
 
@@ -40,6 +41,10 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
 }
 
 export default function App() {
+  if (import.meta.env.VITE_MAINTENANCE_MODE === "true") {
+    return <MaintenancePage />;
+  }
+
   return (
     <AppErrorBoundary>
       <CartProvider>

@@ -19,6 +19,8 @@ const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
 const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
+const MaintenancePage = lazy(() => import("./pages/MaintenancePage"));
+const UnderConstructionPage = lazy(() => import("./pages/UnderConstructionPage"));
 
 const AdminLogin = lazy(() => import("./admin/pages/AdminLogin"));
 const AdminLayout = lazy(() => import("./admin/components/AdminLayout"));
@@ -42,6 +44,14 @@ const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates
 const AdminStaffUsers = lazy(() => import("./admin/pages/AdminStaffUsers"));
 
 export const router = createBrowserRouter([
+  {
+    path: "/maintenance",
+    Component: MaintenancePage,
+  },
+  {
+    path: "/coming-soon",
+    Component: UnderConstructionPage,
+  },
   {
     path: "/builder-preview",
     Component: BuilderPreview,

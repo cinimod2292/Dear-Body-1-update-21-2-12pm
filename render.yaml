@@ -10,8 +10,17 @@ services:
       # ── Required ──────────────────────────────────────────────────────────
       - key: NODE_ENV
         value: production
+      # Supabase connection POOLER URL — used by the app at runtime.
+      # Get this from: Supabase dashboard → Project Settings → Database → Connection Pooling
+      # Use "Session mode" (port 5432) or "Transaction mode" (port 6543, add ?pgbouncer=true)
+      # Format: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require
       - key: DATABASE_URL
-        sync: false          # Set in Render dashboard — must include ?sslmode=require
+        sync: false
+      # Supabase DIRECT connection URL — used only by prisma migrate deploy in the build step.
+      # This is the original db.[project-ref].supabase.co:5432 URL you copied from Cloud Run.
+      # Format: postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres?sslmode=require
+      - key: DIRECT_URL
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true  # Render auto-generates a secure random value
       - key: JWT_REFRESH_SECRET

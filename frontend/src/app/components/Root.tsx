@@ -1,11 +1,16 @@
 import { Outlet, useLocation } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
 import { fetchCmsBootstrap } from "../lib/cms";
+import MaintenancePage from "../pages/MaintenancePage";
+import UnderConstructionPage from "../pages/UnderConstructionPage";
+
+type SiteStatus = { maintenanceMode: boolean; comingSoon: boolean };
 
 export function Root() {
   const { pathname } = useLocation();
+  const [siteStatus, setSiteStatus] = useState<SiteStatus | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -33,11 +38,18 @@ export function Root() {
           }
           link.href = branding.faviconUrl;
         }
+        setSiteStatus(bootstrap.siteConfig.siteStatus ?? { maintenanceMode: false, comingSoon: false });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        setSiteStatus({ maintenanceMode: false, comingSoon: false });
+      });
   }, []);
 
   const hideFooter = pathname === "/checkout";
+
+  if (siteStatus === null) return <div className="min-h-screen bg-white" aria-busy="true" />;
+  if (siteStatus.maintenanceMode) return <MaintenancePage />;
+  if (siteStatus.comingSoon) return <UnderConstructionPage />;
 
   return (
     <div className="flex flex-col min-h-screen">

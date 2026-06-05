@@ -54,7 +54,12 @@ export async function buildApp() {
   if (env.MAINTENANCE_MODE) {
     app.addHook("onRequest", async (request, reply) => {
       const { url } = request;
-      if (url === "/ping" || url === `${env.API_PREFIX}/health`) return;
+      // Allow health probes and the CMS bootstrap (so the frontend can read the maintenance flag)
+      if (
+        url === "/ping" ||
+        url === `${env.API_PREFIX}/health` ||
+        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`)
+      ) return;
       reply.status(503).send({
         error: {
           code: "MAINTENANCE",

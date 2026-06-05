@@ -68,6 +68,10 @@ export const siteConfigSchema = z.object({
     phone: z.string().optional(),
     address: z.string().optional(),
   }),
+  siteStatus: z.object({
+    maintenanceMode: z.boolean().default(false),
+    comingSoon: z.boolean().default(false),
+  }).default({ maintenanceMode: false, comingSoon: false }),
 });
 
 export const staticPageSchema = z.object({

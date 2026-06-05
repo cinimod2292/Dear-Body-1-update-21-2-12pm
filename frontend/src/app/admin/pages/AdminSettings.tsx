@@ -3,6 +3,8 @@ import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
+import { Switch } from "../../components/ui/switch";
+import { clearCmsBootstrapCache } from "../../lib/cms";
 
 interface PaymentEvent {
   id: string;
@@ -97,7 +99,7 @@ export default function AdminSettings() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("store");
+  const [activeTab, setActiveTab] = useState("status");
   const [storeName, setStoreName] = useState("");
   const [storeEmail, setStoreEmail] = useState("");
   const [saving, setSaving] = useState(false);
@@ -171,6 +173,8 @@ export default function AdminSettings() {
   });
   const [sendgridApiKey, setSendgridApiKey] = useState("");
   const [sendgridTestTo, setSendgridTestTo] = useState("");
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [comingSoon, setComingSoon] = useState(false);
 
   const buildStoragePayload = () => ({
     provider: storageConfig.provider,
@@ -189,7 +193,7 @@ export default function AdminSettings() {
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes, siteConfigRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: PayfastSettings }>("/admin/payments/settings/payfast", {}, session.accessToken),
@@ -199,6 +203,7 @@ export default function AdminSettings() {
         apiRequest<{ data: AbandonedCartConfig }>("/admin/ops/abandoned-carts/config", {}, session.accessToken),
         apiRequest<{ data: StorageSettings }>("/admin/settings/storage", {}, session.accessToken),
         apiRequest<{ data: SendgridSettings }>("/admin/settings/email/sendgrid", {}, session.accessToken),
+        apiRequest<{ data: { siteStatus?: { maintenanceMode: boolean; comingSoon: boolean } } }>("/admin/cms/site-config", {}, session.accessToken),
       ]);
 
       if (settingsRes.status === "fulfilled") {
@@ -244,6 +249,11 @@ export default function AdminSettings() {
       if (abandonedConfigRes.status === "fulfilled") setAbandonedConfig(abandonedConfigRes.value.data);
       if (storageRes.status === "fulfilled") setStorageConfig(storageRes.value.data);
       if (sendgridRes.status === "fulfilled") setSendgridConfig(sendgridRes.value.data);
+      if (siteConfigRes.status === "fulfilled") {
+        const status = siteConfigRes.value.data?.siteStatus;
+        setMaintenanceMode(status?.maintenanceMode ?? false);
+        setComingSoon(status?.comingSoon ?? false);
+      }
 
       const failed = [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
@@ -274,6 +284,22 @@ export default function AdminSettings() {
       toast.error(err instanceof Error ? err.message : "Failed to save settings");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveSiteStatus = async (nextMaintenance: boolean, nextComingSoon: boolean) => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest("/admin/cms/site-status", {
+        method: "PATCH",
+        body: JSON.stringify({ maintenanceMode: nextMaintenance, comingSoon: nextComingSoon }),
+      }, session.accessToken);
+      setMaintenanceMode(nextMaintenance);
+      setComingSoon(nextComingSoon);
+      clearCmsBootstrapCache();
+      toast.success("Site status updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update site status");
     }
   };
 
@@ -482,6 +508,7 @@ export default function AdminSettings() {
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   const TABS = [
+    ["status", "Site Status"],
     ["store", "Store"],
     ["stitch", "Stitch Payments"],
     ["payfast", "PayFast"],
@@ -513,6 +540,62 @@ export default function AdminSettings() {
           ))}
         </div>
       </div>
+
+      {activeTab === "status" && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">Site Status</h2>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-5">
+            {/* Maintenance Mode */}
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Maintenance Mode</p>
+                <p className="text-xs text-gray-500 mt-0.5 max-w-sm">
+                  Show a "We'll be right back" page to all storefront visitors. The admin panel stays accessible.
+                </p>
+              </div>
+              <Switch
+                checked={maintenanceMode}
+                onCheckedChange={(checked) => saveSiteStatus(checked, comingSoon)}
+                className="data-[state=checked]:!bg-orange-500 shrink-0 mt-0.5"
+              />
+            </div>
+
+            {maintenanceMode && (
+              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-xs text-orange-700">
+                Maintenance mode is active — customers are seeing the maintenance page.
+              </div>
+            )}
+
+            <div className="h-px bg-gray-100" />
+
+            {/* Coming Soon */}
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Coming Soon</p>
+                <p className="text-xs text-gray-500 mt-0.5 max-w-sm">
+                  Show a pre-launch page instead of the storefront. Useful before the site goes live.
+                </p>
+              </div>
+              <Switch
+                checked={comingSoon}
+                onCheckedChange={(checked) => saveSiteStatus(maintenanceMode, checked)}
+                className="data-[state=checked]:!bg-pink-500 shrink-0 mt-0.5"
+              />
+            </div>
+
+            {comingSoon && (
+              <div className="rounded-lg bg-pink-50 border border-pink-200 px-3 py-2 text-xs text-pink-700">
+                Coming Soon mode is active — customers are seeing the pre-launch page.
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Changes take effect within ~60 seconds. If both are enabled, Maintenance Mode takes priority.
+          </p>
+        </div>
+      )}
 
       {activeTab === "store" && (
         <form onSubmit={saveStore} className="space-y-4">

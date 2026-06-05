@@ -45,6 +45,8 @@ interface OrderDetail {
   fulfillmentStatus: string;
   trackingNumber?: string | null;
   courier?: string | null;
+  pudoLockerCode?: string | null;
+  pudoLockerName?: string | null;
   shippedAt?: string | null;
   deliveredAt?: string | null;
   currency: string;
@@ -129,6 +131,16 @@ export default function AdminOrderDetail() {
           setPudoRecipientName(fullName || "");
           setPudoRecipientPhone(res.data.customer.phone ?? "");
           setPudoRecipientEmail(res.data.customer.email ?? "");
+        }
+        // Pre-fill locker from customer's checkout selection
+        if (res.data.pudoLockerCode) {
+          setPudoSelectedLocker({
+            lockerCode: res.data.pudoLockerCode,
+            name: res.data.pudoLockerName ?? res.data.pudoLockerCode,
+            address: res.data.shippingAddress?.line1 ?? "",
+            city: res.data.shippingAddress?.city ?? "",
+            postalCode: res.data.shippingAddress?.postalCode,
+          });
         }
       }
     } catch (err) {
@@ -277,6 +289,12 @@ export default function AdminOrderDetail() {
         <div><p className="text-xs text-gray-400">Fulfillment</p><p className="font-semibold">{order.fulfillmentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{formatRand(order.totalAmount)}</p></div>
         <div><p className="text-xs text-gray-400">Placed</p><p className="font-semibold">{new Date(order.placedAt).toLocaleString()}</p></div>
+        {order.pudoLockerCode && (
+          <div className="md:col-span-2 bg-indigo-50 rounded-lg px-3 py-2">
+            <p className="text-xs text-indigo-500 font-semibold">Customer chose PUDO locker</p>
+            <p className="font-semibold text-indigo-900 text-sm">{order.pudoLockerName ?? order.pudoLockerCode}</p>
+          </div>
+        )}
         {order.customer && (
           <div className="md:col-span-3">
             <p className="text-xs text-gray-400">Customer</p>

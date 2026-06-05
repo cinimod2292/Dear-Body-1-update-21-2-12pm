@@ -41,6 +41,9 @@ export async function buildApp() {
       if (!origin) return cb(null, true);
       if (/^https?:\/\/localhost(?::\d+)?$/i.test(origin)) return cb(null, true);
       if (/\.vercel\.app$/i.test(origin)) return cb(null, true);
+      if (/\.onrender\.com$/i.test(origin)) return cb(null, true);
+      const allowed = env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
+      if (allowed.includes(origin)) return cb(null, true);
       return cb(null, false);
     },
     credentials: true,
@@ -156,6 +159,8 @@ export async function buildApp() {
       );
     }
   });
+
+  app.get("/ping", async (_request, reply) => reply.status(200).send({ ok: true }));
 
   app.get("/__debug/routes", async () => {
     const expectedAdminLoginPath = `${env.API_PREFIX}/auth/admin/login`;

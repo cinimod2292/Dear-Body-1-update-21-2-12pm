@@ -51,6 +51,8 @@ export const checkoutSchema = z.object({
   couponCode: z.string().optional(),
   paymentReference: z.string().optional(),
   notes: z.string().optional(),
+  pudoLockerCode: z.string().optional(),
+  pudoLockerName: z.string().optional(),
 });
 
 export const orderListQuerySchema = z.object({

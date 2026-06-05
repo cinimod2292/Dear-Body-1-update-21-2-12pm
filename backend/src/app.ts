@@ -24,6 +24,7 @@ import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
+import { pudoRoutes } from "./modules/pudo/pudo.routes.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
@@ -208,6 +209,7 @@ export async function buildApp() {
     await api.register(xeroRoutes);
     await api.register(cmsRoutes);
     await api.register(opsRoutes);
+    await api.register(pudoRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });

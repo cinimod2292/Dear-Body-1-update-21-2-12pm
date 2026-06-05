@@ -28,4 +28,6 @@ export const previewSchema = z.object({
 export const testSendSchema = z.object({
   to: z.string().email(),
   sampleData: z.record(z.string(), z.any()).default({}),
+  htmlBody: z.string().optional(),
+  subject: z.string().optional(),
 });

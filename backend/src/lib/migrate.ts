@@ -114,15 +114,28 @@ export async function runManualMigrations() {
 
     console.info(`[migrations] Applying ${file} (${statements.length} statements)`);
 
-    await prisma.$transaction(async (tx) => {
+    // CONCURRENTLY index builds cannot run inside a transaction block
+    const needsNoTx = statements.some((s) => /\bCONCURRENTLY\b/i.test(s));
+
+    if (needsNoTx) {
       for (const stmt of statements) {
-        await tx.$executeRawUnsafe(stmt);
+        await prisma.$executeRawUnsafe(stmt);
       }
-      await tx.$executeRawUnsafe(
+      await prisma.$executeRawUnsafe(
         `INSERT INTO "_manual_migrations" ("name") VALUES ($1)`,
         file,
       );
-    });
+    } else {
+      await prisma.$transaction(async (tx) => {
+        for (const stmt of statements) {
+          await tx.$executeRawUnsafe(stmt);
+        }
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "_manual_migrations" ("name") VALUES ($1)`,
+          file,
+        );
+      });
+    }
 
     console.info(`[migrations] Applied ${file}`);
   }

@@ -285,10 +285,18 @@ export async function sendTestEmailTemplate(id: string, rawBody: unknown) {
   const body = testSendSchema.parse(rawBody);
   const template = await previewTemplate(id, { sampleData: body.sampleData });
 
+  const mergedData = withMergedSampleData(body.sampleData);
+  const htmlBody = body.htmlBody
+    ? renderTemplateString(body.htmlBody, mergedData)
+    : template.htmlBody;
+  const subject = body.subject
+    ? renderTemplateString(body.subject, mergedData)
+    : template.subject;
+
   await sendEmail({
     to: body.to,
-    subject: `[TEST] ${template.subject}`,
-    html: template.htmlBody,
+    subject: `[TEST] ${subject}`,
+    html: htmlBody,
     meta: {
       templateId: id,
       templateKey: template.key,
@@ -300,7 +308,7 @@ export async function sendTestEmailTemplate(id: string, rawBody: unknown) {
   return {
     sent: true,
     to: body.to,
-    subject: `[TEST] ${template.subject}`,
+    subject: `[TEST] ${subject}`,
     templateKey: template.key,
     source: template.source,
   };

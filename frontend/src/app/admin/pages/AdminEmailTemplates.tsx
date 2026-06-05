@@ -389,7 +389,7 @@ export default function AdminEmailTemplates() {
       const merged = { ...sampleData, companyName: theme.brandName, supportEmail: theme.supportEmail, siteUrl: theme.siteUrl };
       await apiRequest(`/admin/email-templates/${form.id}/test-send`, {
         method: "POST",
-        body: JSON.stringify({ to: testEmail.trim(), sampleData: merged }),
+        body: JSON.stringify({ to: testEmail.trim(), sampleData: merged, htmlBody: effectiveHtml, subject: form.subject }),
       }, session.accessToken);
       toast.success("Test email queued");
     } catch (err) {

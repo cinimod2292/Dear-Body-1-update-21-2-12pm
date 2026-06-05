@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { API_BASE } from "../admin/api/client";
 
 interface CmsPagePayload {
@@ -38,7 +40,9 @@ export default function CmsPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-16">
       <h1 className="text-4xl font-black text-gray-900 mb-6">{page.title}</h1>
-      <div className="prose max-w-none text-gray-700 whitespace-pre-line">{page.content}</div>
+      <div className="prose prose-gray max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{page.content}</ReactMarkdown>
+      </div>
     </div>
   );
 }

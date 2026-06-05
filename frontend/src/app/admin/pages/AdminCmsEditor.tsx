@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Bold, Italic, Heading1, Heading2, List, ListOrdered, Link, Code, Eye, Pencil } from "lucide-react";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -114,6 +117,41 @@ export default function AdminCmsEditor() {
   const [pageTitle, setPageTitle] = useState("");
   const [pageStatus, setPageStatus] = useState<"draft" | "published">("published");
   const [pageContent, setPageContent] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const applyFormat = (format: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const { selectionStart: s, selectionEnd: e } = el;
+    const val = el.value;
+    const sel = val.slice(s, e);
+    const wrapMap: Record<string, [string, string]> = {
+      bold: ["**", "**"],
+      italic: ["_", "_"],
+      link: ["[", "](https://)"],
+      code: ["`", "`"],
+    };
+    const prefixMap: Record<string, string> = {
+      h1: "# ", h2: "## ", ul: "- ", ol: "1. ",
+    };
+    let newVal: string;
+    let cursor: number;
+    if (wrapMap[format]) {
+      const [before, after] = wrapMap[format];
+      newVal = val.slice(0, s) + before + sel + after + val.slice(e);
+      cursor = sel ? s + before.length + sel.length + after.length : s + before.length;
+    } else if (prefixMap[format]) {
+      const prefix = prefixMap[format];
+      const insertText = (s > 0 && val[s - 1] !== "\n") ? "\n" + prefix : prefix;
+      newVal = val.slice(0, s) + insertText + val.slice(s);
+      cursor = s + insertText.length;
+    } else {
+      return;
+    }
+    setPageContent(newVal);
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(cursor, cursor); });
+  };
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -409,7 +447,61 @@ export default function AdminCmsEditor() {
             <option value="draft">Draft (not visible on site)</option>
           </select>
         </div>
-        <textarea className="w-full min-h-[180px] rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pageContent} onChange={(e) => setPageContent(e.target.value)} placeholder="Page body content" />
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200 flex-wrap">
+            {([
+              { fmt: "bold", Icon: Bold, label: "Bold" },
+              { fmt: "italic", Icon: Italic, label: "Italic" },
+            ] as const).map(({ fmt, Icon, label }) => (
+              <button key={fmt} type="button" title={label} onClick={() => applyFormat(fmt)}
+                className="p-1.5 rounded hover:bg-gray-200 text-gray-600 transition-colors">
+                <Icon size={14} />
+              </button>
+            ))}
+            <span className="w-px h-4 bg-gray-300 mx-1" />
+            {([
+              { fmt: "h1", Icon: Heading1, label: "Heading 1" },
+              { fmt: "h2", Icon: Heading2, label: "Heading 2" },
+            ] as const).map(({ fmt, Icon, label }) => (
+              <button key={fmt} type="button" title={label} onClick={() => applyFormat(fmt)}
+                className="p-1.5 rounded hover:bg-gray-200 text-gray-600 transition-colors">
+                <Icon size={14} />
+              </button>
+            ))}
+            <span className="w-px h-4 bg-gray-300 mx-1" />
+            {([
+              { fmt: "ul", Icon: List, label: "Bullet list" },
+              { fmt: "ol", Icon: ListOrdered, label: "Numbered list" },
+            ] as const).map(({ fmt, Icon, label }) => (
+              <button key={fmt} type="button" title={label} onClick={() => applyFormat(fmt)}
+                className="p-1.5 rounded hover:bg-gray-200 text-gray-600 transition-colors">
+                <Icon size={14} />
+              </button>
+            ))}
+            <span className="w-px h-4 bg-gray-300 mx-1" />
+            {([
+              { fmt: "link", Icon: Link, label: "Link" },
+              { fmt: "code", Icon: Code, label: "Inline code" },
+            ] as const).map(({ fmt, Icon, label }) => (
+              <button key={fmt} type="button" title={label} onClick={() => applyFormat(fmt)}
+                className="p-1.5 rounded hover:bg-gray-200 text-gray-600 transition-colors">
+                <Icon size={14} />
+              </button>
+            ))}
+            <button type="button" title={showPreview ? "Edit" : "Preview"} onClick={() => setShowPreview(!showPreview)}
+              className={`ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${showPreview ? "bg-pink-100 text-pink-700" : "hover:bg-gray-200 text-gray-600"}`}>
+              {showPreview ? <Pencil size={12} /> : <Eye size={12} />}
+              {showPreview ? "Edit" : "Preview"}
+            </button>
+          </div>
+          {showPreview ? (
+            <div className="w-full min-h-[180px] px-4 py-3 text-sm prose prose-sm max-w-none bg-white overflow-auto">
+              {pageContent ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{pageContent}</ReactMarkdown> : <span className="text-gray-400 italic">Nothing to preview</span>}
+            </div>
+          ) : (
+            <textarea ref={textareaRef} className="w-full min-h-[180px] px-3 py-2 text-sm font-mono bg-white resize-y outline-none" value={pageContent} onChange={(e) => setPageContent(e.target.value)} placeholder="Page body content — supports Markdown formatting" />
+          )}
+        </div>
         <button onClick={savePage} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm">Save Page</button>
       </section>
     </div>

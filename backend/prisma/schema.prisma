@@ -810,6 +810,7 @@ model PaymentTransaction {
   paymentEvents    PaymentEventLog[]
 
   @@index([orderId, createdAt])
+  @@index([orderId, provider, createdAt])
   @@index([provider, referenceId])
 }
 

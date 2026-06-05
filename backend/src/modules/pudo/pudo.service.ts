@@ -12,6 +12,7 @@ export interface PudoSettings {
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string;
+  allowCustomerLockerSelection: boolean;
 }
 
 export interface PudoLocker {
@@ -43,7 +44,7 @@ export async function getPudoSettings(): Promise<PudoSettings> {
   const setting = await prisma.setting.findUnique({
     where: { scope_key: { scope: "integrations", key: "pudo" } },
   });
-  if (!setting) return { enabled: false, apiKey: "", sandbox: true };
+  if (!setting) return { enabled: false, apiKey: "", sandbox: true, allowCustomerLockerSelection: false };
   const v = setting.value as Record<string, unknown>;
   return {
     enabled: Boolean(v.enabled),
@@ -53,6 +54,7 @@ export async function getPudoSettings(): Promise<PudoSettings> {
     senderName: v.senderName ? String(v.senderName) : undefined,
     senderPhone: v.senderPhone ? String(v.senderPhone) : undefined,
     senderEmail: v.senderEmail ? String(v.senderEmail) : undefined,
+    allowCustomerLockerSelection: Boolean(v.allowCustomerLockerSelection),
   };
 }
 
@@ -66,6 +68,7 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
     senderName: b.senderName ? String(b.senderName) : undefined,
     senderPhone: b.senderPhone ? String(b.senderPhone) : undefined,
     senderEmail: b.senderEmail ? String(b.senderEmail) : undefined,
+    allowCustomerLockerSelection: Boolean(b.allowCustomerLockerSelection),
   };
   await prisma.setting.upsert({
     where: { scope_key: { scope: "integrations", key: "pudo" } },

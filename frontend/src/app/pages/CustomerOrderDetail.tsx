@@ -209,13 +209,21 @@ export default function CustomerOrderDetail() {
       </div>
 
       {/* Shipping info */}
-      {(addr || order.trackingNumber || order.courier) && (
+      {(addr || order.trackingNumber || order.courier || order.pudoLockerCode) && (
         <div className="bg-white rounded-2xl border p-6">
           <div className="flex items-center gap-2 mb-4">
             <Truck size={18} className="text-pink-500" />
             <h2 className="font-bold text-gray-900">Shipping</h2>
           </div>
-          {addr && (
+
+          {/* PUDO locker destination */}
+          {order.pudoLockerCode ? (
+            <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
+              <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Locker Collection</p>
+              <p className="font-semibold text-indigo-900">{order.pudoLockerName || order.pudoLockerCode}</p>
+              {addr && <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>}
+            </div>
+          ) : addr ? (
             <div className="text-sm text-gray-700 mb-4">
               {addr.recipientName ? <p className="font-semibold">{addr.recipientName}</p> : null}
               <p>{addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}</p>
@@ -224,7 +232,8 @@ export default function CustomerOrderDetail() {
               </p>
               {addr.country ? <p>{addr.country}</p> : null}
             </div>
-          )}
+          ) : null}
+
           {(order.trackingNumber || order.courier) && (
             <div className="text-sm">
               <p className="text-gray-500 text-xs uppercase tracking-wide font-semibold mb-1">Tracking</p>
@@ -232,6 +241,16 @@ export default function CustomerOrderDetail() {
                 {order.courier ? `${order.courier} — ` : ""}
                 {order.trackingNumber ?? "Not yet assigned"}
               </p>
+              {order.trackingNumber && order.courier?.toLowerCase().includes("pudo") && (
+                <a
+                  href={`https://pudo.co.za/track/${order.trackingNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 text-xs text-pink-600 hover:underline font-medium"
+                >
+                  Track on PUDO →
+                </a>
+              )}
             </div>
           )}
         </div>

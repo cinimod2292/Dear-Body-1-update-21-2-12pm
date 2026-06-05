@@ -23,6 +23,7 @@ type PudoSettings = {
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string;
+  allowCustomerLockerSelection: boolean;
 };
 
 export default function AdminShippingMethods() {
@@ -50,6 +51,7 @@ export default function AdminShippingMethods() {
     enabled: false,
     apiKey: "",
     sandbox: true,
+    allowCustomerLockerSelection: false,
   });
   const [pudoSaving, setPudoSaving] = useState(false);
   const [pudoTesting, setPudoTesting] = useState(false);
@@ -294,15 +296,26 @@ export default function AdminShippingMethods() {
               </div>
             </div>
 
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={pudoSettings.sandbox}
-                onChange={(e) => setPudoSettings((s) => ({ ...s, sandbox: e.target.checked }))}
-              />
-              <span>Sandbox / test mode</span>
-              <span className="text-xs text-gray-400">(disable for live production shipments)</span>
-            </label>
+            <div className="flex flex-col gap-2">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={pudoSettings.sandbox}
+                  onChange={(e) => setPudoSettings((s) => ({ ...s, sandbox: e.target.checked }))}
+                />
+                <span>Sandbox / test mode</span>
+                <span className="text-xs text-gray-400">(disable for live production shipments)</span>
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={pudoSettings.allowCustomerLockerSelection}
+                  onChange={(e) => setPudoSettings((s) => ({ ...s, allowCustomerLockerSelection: e.target.checked }))}
+                />
+                <span>Allow customers to select a PUDO locker at checkout</span>
+                <span className="text-xs text-gray-400">(shows a locker picker in the shipping step)</span>
+              </label>
+            </div>
 
             <div className="flex gap-2">
               <button

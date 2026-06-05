@@ -711,6 +711,8 @@ model Order {
   stitchReference  String?           @unique
   trackingNumber   String?
   courier          String?
+  pudoLockerCode   String?
+  pudoLockerName   String?
   shippedAt        DateTime?
   deliveredAt      DateTime?
   fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)

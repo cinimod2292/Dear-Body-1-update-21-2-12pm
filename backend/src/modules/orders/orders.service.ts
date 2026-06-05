@@ -322,10 +322,13 @@ export async function sendOrderCreatedEmailSafe(orderId: string) {
 async function sendShippingEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email || !order.trackingNumber) return;
+  const isPudo = order.courier?.toLowerCase().includes("pudo") ?? false;
   const template = await resolveTemplateByKey("shipping_confirmation", {
     orderNumber: order.orderNumber,
     carrier: order.courier ?? "Carrier",
     trackingNumber: order.trackingNumber,
+    pudoLockerName: order.pudoLockerName ?? null,
+    trackingUrl: isPudo ? `https://pudo.co.za/track/${order.trackingNumber}` : null,
   });
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
@@ -419,6 +422,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         shippingMethodId: cart.shippingMethodId,
         shippingAddressId: shippingAddress.id,
         billingAddressId: billingAddress.id,
+        pudoLockerCode: body.pudoLockerCode ?? null,
+        pudoLockerName: body.pudoLockerName ?? null,
         subtotalAmount: cart.subtotalAmount,
         discountAmount: cart.discountAmount,
         shippingAmount: cart.shippingAmount,
@@ -664,6 +669,8 @@ export async function getStoreOrderById(orderId: string) {
     fulfillmentStatus: order.fulfillmentStatus,
     trackingNumber: order.trackingNumber,
     courier: order.courier,
+    pudoLockerCode: order.pudoLockerCode,
+    pudoLockerName: order.pudoLockerName,
     shippedAt: order.shippedAt,
     deliveredAt: order.deliveredAt,
     currency: order.currency,

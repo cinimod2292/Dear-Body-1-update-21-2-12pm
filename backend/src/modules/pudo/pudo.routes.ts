@@ -8,6 +8,26 @@ import {
 } from "./pudo.service.js";
 
 export async function pudoRoutes(app: FastifyInstance) {
+  // Public store endpoints — no auth required
+  app.get("/store/pudo/config", async (_request, reply) => {
+    const settings = await getPudoSettings();
+    return reply.send({
+      data: {
+        enabled: settings.enabled,
+        allowCustomerLockerSelection: settings.allowCustomerLockerSelection,
+      },
+    });
+  });
+
+  app.get("/store/pudo/lockers", async (request, reply) => {
+    const settings = await getPudoSettings();
+    if (!settings.enabled || !settings.allowCustomerLockerSelection) {
+      return reply.status(403).send({ error: { message: "PUDO locker selection is not enabled" } });
+    }
+    const { search } = request.query as { search?: string };
+    return reply.send({ data: await getPudoLockers(search) });
+  });
+
   app.get(
     "/admin/integrations/pudo/settings",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },

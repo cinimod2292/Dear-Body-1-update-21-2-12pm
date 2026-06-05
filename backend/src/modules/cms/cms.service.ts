@@ -100,6 +100,10 @@ const defaultSiteConfig = {
     phone: "+1 (800) DEAR-BODY",
     address: "123 Bloom Avenue, Miami, FL 33101, USA",
   },
+  siteStatus: {
+    maintenanceMode: false,
+    comingSoon: false,
+  },
 };
 
 const defaultStaticPages = [
@@ -259,6 +263,13 @@ export async function getStaticPageBySlug(slug: string, includeDraft = false) {
     throw new AppError(404, "Page not published", "CMS_PAGE_NOT_PUBLISHED");
   }
   return page;
+}
+
+export async function updateSiteStatus(maintenanceMode: boolean, comingSoon: boolean) {
+  const current = await getSiteConfig();
+  const updated = siteConfigSchema.parse({ ...current, siteStatus: { maintenanceMode, comingSoon } });
+  await writeSetting(SITE_CONFIG_KEY, updated);
+  return updated.siteStatus;
 }
 
 export async function upsertStaticPage(rawBody: unknown) {

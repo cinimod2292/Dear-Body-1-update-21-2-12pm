@@ -41,12 +41,33 @@ export async function buildApp() {
       if (!origin) return cb(null, true);
       if (/^https?:\/\/localhost(?::\d+)?$/i.test(origin)) return cb(null, true);
       if (/\.vercel\.app$/i.test(origin)) return cb(null, true);
+      if (/\.onrender\.com$/i.test(origin)) return cb(null, true);
+      const allowed = env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
+      if (allowed.includes(origin)) return cb(null, true);
       return cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     preflight: true,
   });
+
+  if (env.MAINTENANCE_MODE) {
+    app.addHook("onRequest", async (request, reply) => {
+      const { url } = request;
+      // Allow health probes and the CMS bootstrap (so the frontend can read the maintenance flag)
+      if (
+        url === "/ping" ||
+        url === `${env.API_PREFIX}/health` ||
+        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`)
+      ) return;
+      reply.status(503).send({
+        error: {
+          code: "MAINTENANCE",
+          message: "The service is temporarily unavailable for maintenance. Please check back soon.",
+        },
+      });
+    });
+  }
 
   app.register(multipart, {
     limits: {
@@ -156,6 +177,8 @@ export async function buildApp() {
       );
     }
   });
+
+  app.get("/ping", async (_request, reply) => reply.status(200).send({ ok: true }));
 
   app.get("/__debug/routes", async () => {
     const expectedAdminLoginPath = `${env.API_PREFIX}/auth/admin/login`;

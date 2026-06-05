@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: dear-body-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /ping
+    envVars:
+      # ── Required ──────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false          # Set in Render dashboard — must include ?sslmode=require
+      - key: JWT_ACCESS_SECRET
+        generateValue: true  # Render auto-generates a secure random value
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: EMAIL_FROM
+        sync: false          # e.g. hello@yourdomain.com
+      - key: WEBHOOK_SIGNING_SECRET
+        generateValue: true
+      # ── CORS ──────────────────────────────────────────────────────────────
+      # Comma-separated list of allowed frontend origins, e.g.:
+      #   https://your-shop.vercel.app,https://yourdomain.com
+      - key: CORS_ORIGIN
+        sync: false
+      # ── Maintenance mode ──────────────────────────────────────────────────
+      # Set to "true" to return 503 on all API routes (except /ping and /health)
+      - key: MAINTENANCE_MODE
+        value: "false"
+      # ── Optional – uncomment and fill in as needed ────────────────────────
+      # - key: UPLOAD_PROVIDER
+      #   value: cloudflare-r2
+      # - key: UPLOAD_BUCKET
+      #   sync: false
+      # - key: UPLOAD_ENDPOINT
+      #   sync: false
+      # - key: UPLOAD_ACCESS_KEY_ID
+      #   sync: false
+      # - key: UPLOAD_SECRET_ACCESS_KEY
+      #   sync: false
+      # - key: UPLOAD_PUBLIC_BASE_URL
+      #   sync: false
+      # - key: EMAIL_PROVIDER
+      #   value: resend
+      # - key: RESEND_API_KEY
+      #   sync: false
+      # - key: SETUP_TOKEN
+      #   generateValue: true
+      # - key: PAYMENTS_ENCRYPTION_SECRET
+      #   generateValue: true
+      # - key: STORAGE_ENCRYPTION_SECRET
+      #   generateValue: true

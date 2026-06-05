@@ -4,8 +4,88 @@ import { prisma } from "./prisma.js";
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), "prisma/migrations/manual");
 
+/**
+ * Splits a SQL file into individual statements, correctly handling:
+ *   - Dollar-quoted blocks: DO $$ ... END $$;  or  $body$ ... $body$
+ *   - Single-quoted string literals (with '' escapes)
+ *   - Line comments  (--)
+ *   - Block comments (/ * ... * /)
+ * None of those may contain a `;` that counts as a statement terminator.
+ */
+function splitStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let i = 0;
+
+  while (i < sql.length) {
+    // Line comment — consume to end of line
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      const end = sql.indexOf("\n", i);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+
+    // Block comment — consume to */
+    if (sql[i] === "/" && sql[i + 1] === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      i = end === -1 ? sql.length : end + 2;
+      continue;
+    }
+
+    // Dollar-quoted string: $$...$$ or $tag$...$tag$
+    if (sql[i] === "$") {
+      const tagMatch = sql.slice(i).match(/^\$([A-Za-z_0-9]*)\$/);
+      if (tagMatch) {
+        const tag = tagMatch[0];
+        const closePos = sql.indexOf(tag, i + tag.length);
+        if (closePos !== -1) {
+          current += sql.slice(i, closePos + tag.length);
+          i = closePos + tag.length;
+          continue;
+        }
+      }
+    }
+
+    // Single-quoted string literal
+    if (sql[i] === "'") {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; }
+        else if (sql[j] === "'") { j++; break; }
+        else { j++; }
+      }
+      current += sql.slice(i, j);
+      i = j;
+      continue;
+    }
+
+    // Statement terminator
+    if (sql[i] === ";") {
+      const stmt = current.trim();
+      if (stmt.length > 0 && !/^(BEGIN|COMMIT|ROLLBACK)$/i.test(stmt)) {
+        statements.push(stmt);
+      }
+      current = "";
+      i++;
+      continue;
+    }
+
+    current += sql[i];
+    i++;
+  }
+
+  // Trailing statement with no closing semicolon
+  const trailing = current.trim();
+  if (trailing.length > 0 && !/^(BEGIN|COMMIT|ROLLBACK)$/i.test(trailing)) {
+    statements.push(trailing);
+  }
+
+  return statements;
+}
+
 export async function runManualMigrations() {
-  // Create a tracking table the first time this runs
+  // Create tracking table on first run
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "_manual_migrations" (
       "name"   TEXT        PRIMARY KEY,
@@ -23,7 +103,6 @@ export async function runManualMigrations() {
     const entries = await fs.readdir(MIGRATIONS_DIR);
     files = entries.filter((f) => f.endsWith(".sql")).sort();
   } catch {
-    // No migrations directory — nothing to do
     return;
   }
 
@@ -31,12 +110,7 @@ export async function runManualMigrations() {
     if (applied.has(file)) continue;
 
     const sql = await fs.readFile(path.join(MIGRATIONS_DIR, file), "utf-8");
-
-    // Strip line comments, split on semicolons, drop BEGIN/COMMIT/empty lines
-    const statements = sql
-      .split(";")
-      .map((s) => s.replace(/--[^\n]*/g, "").trim())
-      .filter((s) => s.length > 0 && !/^(BEGIN|COMMIT|ROLLBACK)$/i.test(s));
+    const statements = splitStatements(sql);
 
     console.info(`[migrations] Applying ${file} (${statements.length} statements)`);
 

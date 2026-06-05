@@ -11,6 +11,15 @@ const iconMap: Record<string, any> = {
   youtube: Youtube,
 };
 
+const DEFAULT_INFO_LINKS = [
+  { label: "About", href: "/pages/about" },
+  { label: "Contact", href: "/pages/contact" },
+  { label: "Privacy Policy", href: "/pages/privacy-policy" },
+  { label: "Returns", href: "/pages/returns" },
+  { label: "Shipping", href: "/pages/shipping" },
+  { label: "Terms", href: "/pages/terms" },
+];
+
 export function Footer() {
   const [logoUrl, setLogoUrl] = useState("");
   const [logo2xUrl, setLogo2xUrl] = useState("");
@@ -22,6 +31,7 @@ export function Footer() {
     { platform: "instagram", url: "#" },
     { platform: "facebook", url: "#" },
   ]);
+  const [infoLinks, setInfoLinks] = useState(DEFAULT_INFO_LINKS);
 
   useEffect(() => {
     fetchCmsBootstrap()
@@ -34,6 +44,10 @@ export function Footer() {
         setCopyright(bootstrap.siteConfig.footer.copyrightText || copyright);
         if (bootstrap.siteConfig.footer.socialLinks.length > 0) {
           setSocialLinks(bootstrap.siteConfig.footer.socialLinks);
+        }
+        const publishedPages = bootstrap.staticPages.filter((p) => p.status === "published");
+        if (publishedPages.length > 0) {
+          setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: `/pages/${p.slug}` })));
         }
       })
       .catch(() => undefined);
@@ -84,15 +98,8 @@ export function Footer() {
           <div>
             <h4 className="font-bold mb-5 text-white uppercase tracking-wider text-sm">Info</h4>
             <ul className="space-y-3 text-gray-400 text-sm">
-              {[
-                { label: "About", href: "/pages/about" },
-                { label: "Contact", href: "/pages/contact" },
-                { label: "Privacy Policy", href: "/pages/privacy-policy" },
-                { label: "Returns", href: "/pages/returns" },
-                { label: "Shipping", href: "/pages/shipping" },
-                { label: "Terms", href: "/pages/terms" },
-              ].map((item) => (
-                <li key={item.label}><Link to={item.href} className="hover:text-pink-400 transition-colors">{item.label}</Link></li>
+              {infoLinks.map((item) => (
+                <li key={item.href}><Link to={item.href} className="hover:text-pink-400 transition-colors">{item.label}</Link></li>
               ))}
             </ul>
           </div>

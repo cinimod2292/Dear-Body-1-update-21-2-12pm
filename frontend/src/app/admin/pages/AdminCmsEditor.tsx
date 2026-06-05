@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -295,6 +295,11 @@ export default function AdminCmsEditor() {
             <h4 className="text-sm font-semibold text-gray-700">Navigation Menu</h4>
             <button type="button" onClick={addNavItem} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200">+ Add Link</button>
           </div>
+          {pages.length > 0 && (
+            <p className="text-xs text-gray-400 mb-2">
+              Available page paths: {pages.filter((p) => p.status === "published").map((p) => <code key={p.slug} className="bg-gray-100 px-1 rounded">/pages/{p.slug}</code>).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}
+            </p>
+          )}
           {config.navigation.items.length === 0 ? (
             <p className="text-xs text-gray-400">No nav items yet. Click Add Link to create one.</p>
           ) : (
@@ -386,7 +391,7 @@ export default function AdminCmsEditor() {
 
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <h3 className="font-bold text-gray-900">Static Pages</h3>
-        <p className="text-xs text-gray-500">Edit the content of About, Contact, Privacy Policy, Returns, Shipping, and Terms pages.</p>
+        <p className="text-xs text-gray-500">Edit the content of your static pages. The page title is the display name shown on the site and in the footer — the URL path (e.g. <code className="bg-gray-100 px-1 rounded">/pages/about</code>) is fixed and cannot be changed.</p>
         <div className="flex flex-wrap gap-2">
           {pages.map((page) => (
             <button key={page.slug} onClick={() => selectPage(page.slug)} className={`px-3 py-1 rounded-full text-xs ${selectedSlug === page.slug ? "bg-pink-100 text-pink-700 font-semibold" : "bg-gray-100 text-gray-700"}`}>
@@ -394,8 +399,11 @@ export default function AdminCmsEditor() {
             </button>
           ))}
         </div>
+        {selectedSlug && (
+          <p className="text-xs text-gray-400">URL: <code className="bg-gray-100 px-1 rounded">/pages/{selectedSlug}</code></p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input className="rounded-lg border border-gray-200 px-3 py-2" value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} placeholder="Page title" />
+          <input className="rounded-lg border border-gray-200 px-3 py-2" value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} placeholder="Page title (display name)" />
           <select className="rounded-lg border border-gray-200 px-3 py-2" value={pageStatus} onChange={(e) => setPageStatus(e.target.value as "draft" | "published")}>
             <option value="published">Published</option>
             <option value="draft">Draft (not visible on site)</option>

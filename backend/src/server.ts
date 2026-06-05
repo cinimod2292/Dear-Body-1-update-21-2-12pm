@@ -1,6 +1,7 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
+import { runManualMigrations } from "./lib/migrate.js";
 
 process.on("unhandledRejection", (reason) => {
   console.error("[startup] Unhandled promise rejection", reason);
@@ -24,6 +25,10 @@ try {
   app.log.info("[startup] Checking database connectivity");
   await prisma.$connect();
   app.log.info("[startup] Database connectivity OK");
+
+  app.log.info("[startup] Running pending manual migrations");
+  await runManualMigrations();
+  app.log.info("[startup] Migrations complete");
 
   const address = await app.listen({ port: env.PORT, host: "0.0.0.0" });
 

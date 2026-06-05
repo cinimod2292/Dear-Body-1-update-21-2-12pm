@@ -1,0 +1,46 @@
+import { FastifyInstance } from "fastify";
+import {
+  createPudoShipment,
+  getPudoLockers,
+  getPudoSettings,
+  trackPudoShipment,
+  upsertPudoSettings,
+} from "./pudo.service.js";
+
+export async function pudoRoutes(app: FastifyInstance) {
+  app.get(
+    "/admin/integrations/pudo/settings",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
+    async (_request, reply) => reply.send({ data: await getPudoSettings() }),
+  );
+
+  app.put(
+    "/admin/integrations/pudo/settings",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => reply.send({ data: await upsertPudoSettings(request.body) }),
+  );
+
+  app.get(
+    "/admin/pudo/lockers",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const { search } = request.query as { search?: string };
+      return reply.send({ data: await getPudoLockers(search) });
+    },
+  );
+
+  app.post(
+    "/admin/pudo/shipment",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] },
+    async (request, reply) => reply.send({ data: await createPudoShipment(request.body as Parameters<typeof createPudoShipment>[0]) }),
+  );
+
+  app.get(
+    "/admin/pudo/track/:waybill",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const { waybill } = request.params as { waybill: string };
+      return reply.send({ data: await trackPudoShipment(waybill) });
+    },
+  );
+}

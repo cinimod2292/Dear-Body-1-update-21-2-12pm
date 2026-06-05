@@ -1,10 +1,26 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { formatRand } from "../../lib/currency";
+
+type PudoLocker = {
+  lockerCode: string;
+  name: string;
+  address: string;
+  city: string;
+  province?: string;
+  postalCode?: string;
+};
+
+type PudoSettings = {
+  enabled: boolean;
+  senderName?: string;
+  senderPhone?: string;
+  senderEmail?: string;
+};
 
 interface OrderAddress {
   firstName?: string | null;
@@ -67,6 +83,23 @@ export default function AdminOrderDetail() {
   const [verificationReference, setVerificationReference] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
+  // PUDO state
+  const [pudoSettings, setPudoSettings] = useState<PudoSettings | null>(null);
+  const [pudoLockerSearch, setPudoLockerSearch] = useState("");
+  const [pudoLockers, setPudoLockers] = useState<PudoLocker[]>([]);
+  const [pudoLockersLoading, setPudoLockersLoading] = useState(false);
+  const [pudoSelectedLocker, setPudoSelectedLocker] = useState<PudoLocker | null>(null);
+  const [pudoSenderName, setPudoSenderName] = useState("");
+  const [pudoSenderPhone, setPudoSenderPhone] = useState("");
+  const [pudoSenderEmail, setPudoSenderEmail] = useState("");
+  const [pudoRecipientName, setPudoRecipientName] = useState("");
+  const [pudoRecipientPhone, setPudoRecipientPhone] = useState("");
+  const [pudoRecipientEmail, setPudoRecipientEmail] = useState("");
+  const [pudoWeight, setPudoWeight] = useState("0.5");
+  const [pudoPieces, setPudoPieces] = useState("1");
+  const [pudoShipmentLoading, setPudoShipmentLoading] = useState(false);
+  const [pudoResult, setPudoResult] = useState<{ waybillNumber: string; labelUrl?: unknown } | null>(null);
+
   const latestPaymentReference = useMemo(() => order?.payments?.[0]?.referenceId ?? "", [order?.payments]);
 
   const load = async () => {
@@ -74,7 +107,10 @@ export default function AdminOrderDetail() {
     try {
       setLoading(true);
       setError(null);
-      const res = await apiRequest<{ data: OrderDetail }>(`/admin/orders/${orderId}`, {}, session.accessToken);
+      const [res, pudoRes] = await Promise.all([
+        apiRequest<{ data: OrderDetail }>(`/admin/orders/${orderId}`, {}, session.accessToken),
+        apiRequest<{ data: PudoSettings }>("/admin/integrations/pudo/settings", {}, session.accessToken).catch(() => null),
+      ]);
       setOrder(res.data);
       setStatusValue(res.data.status);
       setPaymentValue(res.data.paymentStatus);
@@ -83,10 +119,70 @@ export default function AdminOrderDetail() {
       setCourier(res.data.courier ?? "");
       setRefundAmount(String(Number(res.data.totalAmount).toFixed(2)));
       setVerificationReference(res.data.payments?.[0]?.referenceId ?? "");
+      if (pudoRes) {
+        setPudoSettings(pudoRes.data);
+        setPudoSenderName(pudoRes.data.senderName ?? "");
+        setPudoSenderPhone(pudoRes.data.senderPhone ?? "");
+        setPudoSenderEmail(pudoRes.data.senderEmail ?? "");
+        if (res.data.customer) {
+          const fullName = [res.data.customer.firstName, res.data.customer.lastName].filter(Boolean).join(" ");
+          setPudoRecipientName(fullName || "");
+          setPudoRecipientPhone(res.data.customer.phone ?? "");
+          setPudoRecipientEmail(res.data.customer.email ?? "");
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load order");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const searchPudoLockers = useCallback(async () => {
+    if (!session?.accessToken) return;
+    try {
+      setPudoLockersLoading(true);
+      const q = pudoLockerSearch.trim() ? `?search=${encodeURIComponent(pudoLockerSearch.trim())}` : "";
+      const res = await apiRequest<{ data: PudoLocker[] }>(`/admin/pudo/lockers${q}`, {}, session.accessToken);
+      setPudoLockers(res.data ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to fetch PUDO lockers");
+    } finally {
+      setPudoLockersLoading(false);
+    }
+  }, [session?.accessToken, pudoLockerSearch]);
+
+  const createPudoShipment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session?.accessToken || !orderId || !pudoSelectedLocker) return;
+    try {
+      setPudoShipmentLoading(true);
+      const res = await apiRequest<{ data: { waybillNumber: string; labelUrl?: unknown } }>(
+        "/admin/pudo/shipment",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            orderId,
+            lockerCode: pudoSelectedLocker.lockerCode,
+            senderName: pudoSenderName,
+            senderPhone: pudoSenderPhone,
+            senderEmail: pudoSenderEmail || undefined,
+            recipientName: pudoRecipientName,
+            recipientPhone: pudoRecipientPhone,
+            recipientEmail: pudoRecipientEmail || undefined,
+            weight: Number(pudoWeight),
+            pieces: Number(pudoPieces),
+          }),
+        },
+        session.accessToken,
+      );
+      setPudoResult(res.data);
+      toast.success(`PUDO shipment created — waybill ${res.data.waybillNumber}`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create PUDO shipment");
+    } finally {
+      setPudoShipmentLoading(false);
     }
   };
 
@@ -255,6 +351,122 @@ export default function AdminOrderDetail() {
           <form onSubmit={cancelOrder} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancellation reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /><button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm">Cancel Order</button></form>
         </section>
       </div>
+
+      {/* PUDO Shipment Panel — only shown when PUDO integration is enabled */}
+      {pudoSettings?.enabled && (
+        <section className="bg-white border border-indigo-200 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-indigo-900">PUDO — The Courier Guy</h3>
+              <p className="text-xs text-indigo-600">Create a PUDO locker shipment for this order</p>
+            </div>
+            {pudoResult && (
+              <div className="text-right text-sm">
+                <p className="font-semibold text-green-700">Waybill: {pudoResult.waybillNumber}</p>
+                {pudoResult.labelUrl && (
+                  <a href={String(pudoResult.labelUrl)} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 underline">Download Label</a>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Locker search */}
+          <div>
+            <p className="text-xs font-medium text-gray-600 mb-1">Search PUDO Locker</p>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                placeholder="Search by area, city or locker name…"
+                value={pudoLockerSearch}
+                onChange={(e) => setPudoLockerSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void searchPudoLockers(); } }}
+              />
+              <button
+                type="button"
+                onClick={() => void searchPudoLockers()}
+                disabled={pudoLockersLoading}
+                className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm disabled:opacity-60"
+              >
+                {pudoLockersLoading ? "Searching…" : "Search"}
+              </button>
+            </div>
+            {pudoLockers.length > 0 && (
+              <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                {pudoLockers.map((locker) => (
+                  <button
+                    key={locker.lockerCode}
+                    type="button"
+                    onClick={() => { setPudoSelectedLocker(locker); setPudoLockers([]); }}
+                    className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 hover:bg-indigo-50 ${pudoSelectedLocker?.lockerCode === locker.lockerCode ? "bg-indigo-50" : ""}`}
+                  >
+                    <p className="font-medium">{locker.name}</p>
+                    <p className="text-xs text-gray-500">{locker.address}, {locker.city}{locker.postalCode ? ` ${locker.postalCode}` : ""}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {pudoSelectedLocker && (
+              <div className="mt-2 flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium text-indigo-900">{pudoSelectedLocker.name}</p>
+                  <p className="text-xs text-indigo-600">{pudoSelectedLocker.address}, {pudoSelectedLocker.city} · Code: {pudoSelectedLocker.lockerCode}</p>
+                </div>
+                <button type="button" onClick={() => setPudoSelectedLocker(null)} className="text-xs text-gray-500 hover:text-gray-800">Clear</button>
+              </div>
+            )}
+          </div>
+
+          {/* Shipment form */}
+          <form onSubmit={createPudoShipment} className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Sender Name</p>
+                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderName} onChange={(e) => setPudoSenderName(e.target.value)} placeholder="Store name" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Sender Phone</p>
+                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderPhone} onChange={(e) => setPudoSenderPhone(e.target.value)} placeholder="0800 000 000" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Sender Email</p>
+                <input type="email" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderEmail} onChange={(e) => setPudoSenderEmail(e.target.value)} placeholder="store@example.com" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Name</p>
+                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientName} onChange={(e) => setPudoRecipientName(e.target.value)} placeholder="Customer name" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Phone</p>
+                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientPhone} onChange={(e) => setPudoRecipientPhone(e.target.value)} placeholder="0800 000 000" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Email</p>
+                <input type="email" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientEmail} onChange={(e) => setPudoRecipientEmail(e.target.value)} placeholder="customer@example.com" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Weight (kg)</p>
+                <input type="number" step="0.1" min="0.1" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoWeight} onChange={(e) => setPudoWeight(e.target.value)} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Pieces</p>
+                <input type="number" step="1" min="1" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoPieces} onChange={(e) => setPudoPieces(e.target.value)} />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={pudoShipmentLoading || !pudoSelectedLocker}
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm disabled:opacity-60"
+            >
+              {pudoShipmentLoading ? "Creating Shipment…" : "Create PUDO Shipment"}
+            </button>
+            {!pudoSelectedLocker && <p className="text-xs text-amber-600">Select a PUDO locker above before creating the shipment.</p>}
+          </form>
+        </section>
+      )}
 
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <h3 className="font-bold">Payments</h3>

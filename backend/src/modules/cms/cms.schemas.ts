@@ -39,7 +39,7 @@ export const siteConfigSchema = z.object({
     announcementText: z.string().optional(),
     logoUrl: z.string().optional(),
     logo2xUrl: z.string().optional(),
-    logoMediaAssetId: z.string().cuid().optional(),
+    logoMediaAssetId: z.string().optional(),
   }),
   footer: z.object({
     copyrightText: z.string().optional(),
@@ -55,7 +55,7 @@ export const siteConfigSchema = z.object({
     logoUrl: z.string().optional(),
     logo2xUrl: z.string().optional(),
     logoFooterUrl: z.string().optional(),
-    logoMediaAssetId: z.string().cuid().optional(),
+    logoMediaAssetId: z.string().optional(),
     faviconUrl: z.string().optional(),
   }),
   seoDefaults: z.object({

@@ -4,6 +4,19 @@ import { createAttributeSchema, createBrandSchema, createCategorySchema, createT
 import { listQuerySchema, toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 
 export async function taxonomyRoutes(app: FastifyInstance) {
+  // Public storefront endpoint — returns categories that have at least one active product
+  app.get("/store/categories", async (_request, reply) => {
+    const categories = await prisma.category.findMany({
+      where: {
+        isActive: true,
+        products: { some: { status: "ACTIVE" } },
+      },
+      select: { id: true, name: true, slug: true },
+      orderBy: { name: "asc" },
+    });
+    return reply.send({ data: categories });
+  });
+
   app.post("/admin/brands", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (request, reply) => {
     const body = createBrandSchema.parse(request.body);
     const brand = await prisma.brand.create({ data: body });

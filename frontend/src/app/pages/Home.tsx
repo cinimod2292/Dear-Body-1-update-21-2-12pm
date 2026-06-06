@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
@@ -294,16 +294,6 @@ export default function Home() {
         : builderContent
         ? <BuilderPageRenderer content={builderContent} products={products} />
         : <LegacyHomeContent products={products} />}
-
-      <DeferredSection minHeight={160}>
-        <section className="py-14 bg-gray-900 text-white">
-          <div className="max-w-5xl mx-auto px-4 text-center">
-            <p className="text-sm uppercase tracking-wide text-white/70 mb-2">Reviews</p>
-            <div className="flex justify-center gap-1 mb-2">{Array.from({ length: 5 }).map((_, idx) => <Star key={idx} size={18} className="text-yellow-400 fill-yellow-400" />)}</div>
-            <p className="text-white/80">Loved by thousands of customers worldwide.</p>
-          </div>
-        </section>
-      </DeferredSection>
     </div>
   );
 }

@@ -34,7 +34,7 @@ export function StatsBarSection(props: StatsBarProps) {
             {props.title}
           </p>
         ) : null}
-        <div className={`grid grid-cols-2 ${items.length >= 4 ? "md:grid-cols-4" : "md:grid-cols-" + items.length} gap-8`}>
+        <div className={`grid grid-cols-2 ${items.length <= 2 ? "md:grid-cols-2" : items.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4"} gap-8`}>
           {items.map((item, idx) => (
             <div key={idx} className="text-center">
               <p className={`text-4xl font-black mb-1 ${text.value}`}>{item.value}</p>

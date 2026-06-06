@@ -220,11 +220,21 @@ export async function updateBuilderDraft(rawPageKey: string, rawBody: unknown, a
   const existing = await readPage(pageKey);
   const base = existing ?? defaultPage(pageKey);
 
+  const now = nowIso();
+  const isFirstPublish = !base.publishedAt;
+
   const updated: BuilderPageRecord = {
     ...base,
     draftContent: body.content,
-    updatedAt: nowIso(),
+    updatedAt: now,
     updatedBy: actorUserId ?? null,
+    // Auto-publish on first save so non-home pages appear on the storefront
+    // without requiring a separate explicit Publish click.
+    ...(isFirstPublish ? {
+      publishedContent: body.content,
+      publishedAt: now,
+      publishedBy: actorUserId ?? null,
+    } : {}),
   };
 
   const saved = await writePage(updated);

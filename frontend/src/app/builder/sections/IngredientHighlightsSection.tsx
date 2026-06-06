@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import {
   Droplets,
   FlaskConical,
@@ -29,7 +30,7 @@ const ICON_MAP = {
   sparkles: Sparkles,
   flask: FlaskConical,
   wind: Wind,
-} satisfies Record<IngredientIconName, (props: { size?: number; className?: string }) => JSX.Element>;
+} satisfies Record<IngredientIconName, ComponentType<{ size?: number; className?: string }>>;
 
 const CARD_BG: Record<IngredientIconName, string> = {
   leaf: "bg-emerald-50",

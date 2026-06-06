@@ -11,7 +11,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [announcement, setAnnouncement] = useState("✨ Free shipping available on qualifying orders · Secure checkout via PayFast & Stitch");
+  const [announcement, setAnnouncement] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logo2xUrl, setLogo2xUrl] = useState("");
   const [navItems, setNavItems] = useState<Array<{ label: string; href: string }>>([
@@ -27,7 +27,7 @@ export function Navbar() {
   useEffect(() => {
     fetchCmsBootstrap()
       .then((bootstrap) => {
-        setAnnouncement(bootstrap.siteConfig.header.announcementText || announcement);
+        setAnnouncement(bootstrap.siteConfig.header.announcementText ?? "");
         setLogoUrl(bootstrap.siteConfig.branding.logoUrl || bootstrap.siteConfig.header.logoUrl || "");
         setLogo2xUrl(bootstrap.siteConfig.branding.logo2xUrl || bootstrap.siteConfig.header.logo2xUrl || "");
         const items = bootstrap.siteConfig.navigation.items.filter((i) => i.enabled).map((i) => ({ label: i.label, href: i.href }));

@@ -1609,8 +1609,9 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   );
 }
 
-function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void }) {
+function SeoPanel({ seoData, onSeoChange, accessToken }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void; accessToken?: string }) {
   const [open, setOpen] = useState(false);
+  const [showOgLibrary, setShowOgLibrary] = useState(false);
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
       <button
@@ -1647,18 +1648,63 @@ function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/typ
             <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.description ?? "").length}/320 chars · Ideal: 120–160</p>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image URL</label>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image</label>
+            {seoData.ogImage ? (
+              <div className="mb-1.5 relative rounded border border-gray-200 overflow-hidden bg-gray-50">
+                <img src={seoData.ogImage} alt="OG preview" className="w-full h-24 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => onSeoChange({ ...seoData, ogImage: undefined })}
+                  className="absolute top-1 right-1 bg-white/90 rounded p-0.5 text-gray-500 hover:text-red-500 transition"
+                  title="Remove image"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="mb-1.5 w-full h-16 rounded border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-[11px] text-gray-400">
+                No OG image set
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                disabled={!accessToken}
+                onClick={() => setShowOgLibrary(true)}
+                className="flex-1 text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-gray-400 transition disabled:opacity-40"
+              >
+                Choose from library
+              </button>
+              {seoData.ogImage ? (
+                <button
+                  type="button"
+                  onClick={() => onSeoChange({ ...seoData, ogImage: undefined })}
+                  className="text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-red-300 hover:text-red-600 transition"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
             <input
               type="text"
               value={seoData.ogImage ?? ""}
-              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value })}
-              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
-              placeholder="https://... or /images/og.jpg"
+              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value || undefined })}
+              className="mt-1.5 w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="Or paste a URL directly…"
             />
             <p className="text-[10px] text-gray-400 mt-0.5">Shown when shared on social media (1200×630 recommended)</p>
           </div>
         </div>
       ) : null}
+      <MediaLibraryModal
+        open={showOgLibrary}
+        accessToken={accessToken}
+        onClose={() => setShowOgLibrary(false)}
+        onSelect={(asset) => {
+          onSeoChange({ ...seoData, ogImage: asset.publicUrl ?? "" });
+          setShowOgLibrary(false);
+        }}
+      />
     </div>
   );
 }
@@ -1792,7 +1838,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
               <p className="text-sm font-semibold text-gray-900 mb-3">Page Sections</p>
               <SectionList />
             </div>
-            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} />
+            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} accessToken={accessToken} />
             <HistoryPanel pageKey={pageKey} accessToken={accessToken} onRestore={onRestore} />
           </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto">

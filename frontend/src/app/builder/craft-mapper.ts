@@ -8,6 +8,20 @@ const TYPE_TO_RESOLVED_NAME: Record<BuilderSectionType, string> = {
   image_text: "ImageTextCraftSection",
   benefit_icons: "BenefitIconsCraftSection",
   promo_banner: "PromoBannerCraftSection",
+  rich_text: "RichTextCraftSection",
+  faq_accordion: "FaqAccordionCraftSection",
+  newsletter_signup: "NewsletterSignupCraftSection",
+  testimonials: "TestimonialsCraftSection",
+  trust_badges: "TrustBadgesCraftSection",
+  countdown_banner: "CountdownBannerCraftSection",
+  image_gallery: "ImageGalleryCraftSection",
+  video_banner: "VideoBannerCraftSection",
+  icon_features: "IconFeaturesCraftSection",
+  contact_cta: "ContactCtaCraftSection",
+  spacer: "SpacerCraftSection",
+  announcement_bar: "AnnouncementBarCraftSection",
+  stats_bar: "StatsBarCraftSection",
+  ingredient_highlights: "IngredientHighlightsCraftSection",
 };
 
 const RESOLVED_NAME_TO_TYPE = Object.fromEntries(
@@ -65,8 +79,10 @@ export function pageContentToCraftNodes(content: BuilderPageContent): Serialized
 function sanitizeSectionPropsForCraft(section: BuilderSection): Record<string, unknown> {
   const props = { ...(section.props ?? {}) };
   for (const [key, value] of Object.entries(props)) {
-    if (!key.toLowerCase().includes("image")) continue;
-    props[key] = sanitizeBuilderImageUrl(value, { isHero: section.type === "hero_banner" || key.toLowerCase().includes("hero") });
+    if (!key.toLowerCase().includes("image") && !key.toLowerCase().includes("poster")) continue;
+    props[key] = sanitizeBuilderImageUrl(value, {
+      isHero: section.type === "hero_banner" || key.toLowerCase().includes("hero"),
+    });
   }
   return props;
 }
@@ -88,17 +104,16 @@ export function craftNodesToPageContent(serializedNodes: SerializedNodes): Build
       if (!node) return null;
 
       const resolvedName =
-        typeof node.type === "string"
-          ? node.type
-          : node.type?.resolvedName;
+        typeof node.type === "string" ? node.type : node.type?.resolvedName;
 
       const sectionType = resolvedName ? RESOLVED_NAME_TO_TYPE[String(resolvedName)] : undefined;
       if (!sectionType) return null;
 
       const props = { ...(node.props ?? {}) } as Record<string, unknown>;
-      const sectionId = typeof props.sectionId === "string" && props.sectionId.trim()
-        ? props.sectionId
-        : String(nodeId);
+      const sectionId =
+        typeof props.sectionId === "string" && props.sectionId.trim()
+          ? props.sectionId
+          : String(nodeId);
       const enabled = typeof props.enabled === "boolean" ? props.enabled : true;
 
       delete props.sectionId;
@@ -116,7 +131,10 @@ export function craftNodesToPageContent(serializedNodes: SerializedNodes): Build
   return { sections };
 }
 
-export function duplicateSectionInContent(content: BuilderPageContent, sectionId: string): BuilderPageContent {
+export function duplicateSectionInContent(
+  content: BuilderPageContent,
+  sectionId: string,
+): BuilderPageContent {
   const sections = [...content.sections];
   const index = sections.findIndex((section) => section.id === sectionId);
   if (index < 0) return content;

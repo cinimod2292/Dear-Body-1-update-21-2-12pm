@@ -5,6 +5,20 @@ import { FeaturedProductsSection } from "./sections/FeaturedProductsSection";
 import { ImageTextSection } from "./sections/ImageTextSection";
 import { BenefitIconsSection } from "./sections/BenefitIconsSection";
 import { PromoBannerSection } from "./sections/PromoBannerSection";
+import { RichTextSection } from "./sections/RichTextSection";
+import { FaqAccordionSection } from "./sections/FaqAccordionSection";
+import { NewsletterSignupSection } from "./sections/NewsletterSignupSection";
+import { TestimonialsSection } from "./sections/TestimonialsSection";
+import { TrustBadgesSection } from "./sections/TrustBadgesSection";
+import { CountdownBannerSection } from "./sections/CountdownBannerSection";
+import { ImageGallerySection } from "./sections/ImageGallerySection";
+import { VideoBannerSection } from "./sections/VideoBannerSection";
+import { IconFeaturesSection } from "./sections/IconFeaturesSection";
+import { ContactCtaSection } from "./sections/ContactCtaSection";
+import { SpacerSection } from "./sections/SpacerSection";
+import { AnnouncementBarSection } from "./sections/AnnouncementBarSection";
+import { StatsBarSection } from "./sections/StatsBarSection";
+import { IngredientHighlightsSection } from "./sections/IngredientHighlightsSection";
 import { DEAR_BODY_SECTION_META, DEAR_BODY_SECTION_META_LIST } from "./registry.meta";
 
 const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
@@ -13,15 +27,28 @@ const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
   image_text: ImageTextSection,
   benefit_icons: BenefitIconsSection,
   promo_banner: PromoBannerSection,
+  rich_text: RichTextSection,
+  faq_accordion: FaqAccordionSection,
+  newsletter_signup: NewsletterSignupSection,
+  testimonials: TestimonialsSection,
+  trust_badges: TrustBadgesSection,
+  countdown_banner: CountdownBannerSection,
+  image_gallery: ImageGallerySection,
+  video_banner: VideoBannerSection,
+  icon_features: IconFeaturesSection,
+  contact_cta: ContactCtaSection,
+  spacer: SpacerSection,
+  announcement_bar: AnnouncementBarSection,
+  stats_bar: StatsBarSection,
+  ingredient_highlights: IngredientHighlightsSection,
 };
 
-export const dearBodySectionRegistry = {
-  hero_banner: { ...DEAR_BODY_SECTION_META.hero_banner, component: sectionComponents.hero_banner },
-  featured_products: { ...DEAR_BODY_SECTION_META.featured_products, component: sectionComponents.featured_products },
-  image_text: { ...DEAR_BODY_SECTION_META.image_text, component: sectionComponents.image_text },
-  benefit_icons: { ...DEAR_BODY_SECTION_META.benefit_icons, component: sectionComponents.benefit_icons },
-  promo_banner: { ...DEAR_BODY_SECTION_META.promo_banner, component: sectionComponents.promo_banner },
-};
+export const dearBodySectionRegistry = Object.fromEntries(
+  (Object.keys(sectionComponents) as BuilderSectionType[]).map((type) => [
+    type,
+    { ...DEAR_BODY_SECTION_META[type], component: sectionComponents[type] },
+  ]),
+) as Record<BuilderSectionType, (typeof DEAR_BODY_SECTION_META)[BuilderSectionType] & { component: ComponentType<any> }>;
 
 export const DEAR_BODY_SECTION_LIBRARY = DEAR_BODY_SECTION_META_LIST.map((entry) => ({
   ...entry,

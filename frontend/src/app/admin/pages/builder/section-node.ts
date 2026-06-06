@@ -24,16 +24,67 @@ const NAME_TO_SECTION_TYPE: Record<string, BuilderSectionType> = {
   ImageTextCraftSection: "image_text",
   BenefitIconsCraftSection: "benefit_icons",
   PromoBannerCraftSection: "promo_banner",
+  RichTextCraftSection: "rich_text",
+  FaqAccordionCraftSection: "faq_accordion",
+  NewsletterSignupCraftSection: "newsletter_signup",
+  TestimonialsCraftSection: "testimonials",
+  TrustBadgesCraftSection: "trust_badges",
+  CountdownBannerCraftSection: "countdown_banner",
+  ImageGalleryCraftSection: "image_gallery",
+  VideoBannerCraftSection: "video_banner",
+  IconFeaturesCraftSection: "icon_features",
+  ContactCtaCraftSection: "contact_cta",
+  SpacerCraftSection: "spacer",
+  AnnouncementBarCraftSection: "announcement_bar",
+  StatsBarCraftSection: "stats_bar",
+  IngredientHighlightsCraftSection: "ingredient_highlights",
   "Hero Banner": "hero_banner",
   "Featured Products": "featured_products",
   "Image + Text": "image_text",
   "Benefit Icons": "benefit_icons",
   "Promo Banner": "promo_banner",
+  "Rich Text": "rich_text",
+  "FAQ Accordion": "faq_accordion",
+  "Newsletter Signup": "newsletter_signup",
+  Testimonials: "testimonials",
+  "Trust Badges": "trust_badges",
+  "Countdown Banner": "countdown_banner",
+  "Countdown Timer": "countdown_banner",
+  "Image Gallery": "image_gallery",
+  "Video Banner": "video_banner",
+  "Icon Features": "icon_features",
+  "Contact CTA": "contact_cta",
+  Spacer: "spacer",
+  "Announcement Bar": "announcement_bar",
+  "Stats Bar": "stats_bar",
+  "Ingredient Highlights": "ingredient_highlights",
 };
 
+const VALID_SECTION_TYPES = new Set<string>([
+  "hero_banner",
+  "featured_products",
+  "image_text",
+  "benefit_icons",
+  "promo_banner",
+  "rich_text",
+  "faq_accordion",
+  "newsletter_signup",
+  "testimonials",
+  "trust_badges",
+  "countdown_banner",
+  "image_gallery",
+  "video_banner",
+  "icon_features",
+  "contact_cta",
+  "spacer",
+  "announcement_bar",
+  "stats_bar",
+  "ingredient_highlights",
+]);
+
 function normalizeSectionType(value: unknown): BuilderSectionType | null {
-  if (value === "hero_banner" || value === "featured_products" || value === "image_text" || value === "benefit_icons" || value === "promo_banner") {
-    return value;
+  if (typeof value === "string" && VALID_SECTION_TYPES.has(value)) {
+    return value as BuilderSectionType;
   }
   return null;
 }

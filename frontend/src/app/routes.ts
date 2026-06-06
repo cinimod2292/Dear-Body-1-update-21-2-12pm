@@ -19,6 +19,7 @@ const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
 const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
+const BuilderPage = lazy(() => import("./pages/BuilderPage"));
 const MaintenancePage = lazy(() => import("./pages/MaintenancePage"));
 const UnderConstructionPage = lazy(() => import("./pages/UnderConstructionPage"));
 
@@ -79,10 +80,15 @@ export const router = createBrowserRouter([
           { path: "orders/:orderId", Component: CustomerOrderDetail },
         ],
       },
-      { path: "about", Component: CmsPage },
-      { path: "contact", Component: CmsPage },
+      { path: "about", Component: BuilderPage },
+      { path: "contact", Component: BuilderPage },
+      { path: "returns", Component: BuilderPage },
+      { path: "sale", Component: BuilderPage },
+      { path: "brand", Component: BuilderPage },
+      { path: "faq", Component: BuilderPage },
+      { path: "delivery", Component: BuilderPage },
+      { path: "campaign", Component: BuilderPage },
       { path: "privacy-policy", Component: CmsPage },
-      { path: "returns", Component: CmsPage },
       { path: "shipping", Component: CmsPage },
       { path: "terms", Component: CmsPage },
       { path: "pages/:slug", Component: CmsPage },

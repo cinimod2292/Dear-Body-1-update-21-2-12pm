@@ -21,7 +21,7 @@ export function HeroBannerSection(props: HeroBannerProps) {
   const titleAlign = props.layout === "centered"
     ? "text-center mx-auto"
     : props.layout === "image_left"
-      ? "text-right ml-auto"
+      ? "ml-auto"
       : "";
   const imageUrl = sanitizeBuilderImageUrl(props.imageUrl, { isHero: true }) ?? "";
   const mobileImageUrl = sanitizeBuilderImageUrl(props.imageMobileUrl, { isHero: true }) ?? "";

@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { type ComponentType, createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Copy, Eye, Heart, Leaf, Link2, Loader2, Monitor, Plus, Redo2, Save, Smartphone, Sparkles, Shield, Tablet, Trash2, Truck, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, ShieldCheck, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, fetchBuilderHistory, publishBuilderDraft, restoreBuilderVersion, saveBuilderDraft } from "../../builder/api";
@@ -11,7 +11,21 @@ import { FeaturedProductsSection } from "../../builder/sections/FeaturedProducts
 import { HeroBannerSection } from "../../builder/sections/HeroBannerSection";
 import { ImageTextSection } from "../../builder/sections/ImageTextSection";
 import { PromoBannerSection } from "../../builder/sections/PromoBannerSection";
-import { BenefitIconName, BenefitItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
+import { RichTextSection } from "../../builder/sections/RichTextSection";
+import { FaqAccordionSection } from "../../builder/sections/FaqAccordionSection";
+import { NewsletterSignupSection } from "../../builder/sections/NewsletterSignupSection";
+import { TestimonialsSection } from "../../builder/sections/TestimonialsSection";
+import { TrustBadgesSection } from "../../builder/sections/TrustBadgesSection";
+import { CountdownBannerSection } from "../../builder/sections/CountdownBannerSection";
+import { ImageGallerySection } from "../../builder/sections/ImageGallerySection";
+import { VideoBannerSection } from "../../builder/sections/VideoBannerSection";
+import { IconFeaturesSection } from "../../builder/sections/IconFeaturesSection";
+import { ContactCtaSection } from "../../builder/sections/ContactCtaSection";
+import { SpacerSection } from "../../builder/sections/SpacerSection";
+import { AnnouncementBarSection } from "../../builder/sections/AnnouncementBarSection";
+import { StatsBarSection } from "../../builder/sections/StatsBarSection";
+import { IngredientHighlightsSection } from "../../builder/sections/IngredientHighlightsSection";
+import { BenefitIconName, BenefitItem, FaqItem, TestimonialItem, GalleryImage, TrustBadgeIconName, TrustBadgeItem, FeatureIconName, FeatureItem, StatItem, IngredientIconName, IngredientItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -41,7 +55,7 @@ const BENEFIT_ICON_LABELS: Record<BenefitIconName, string> = {
   truck: "Truck",
 };
 
-const BENEFIT_ICON_COMPONENTS: Record<BenefitIconName, React.ElementType> = {
+const BENEFIT_ICON_COMPONENTS: Record<BenefitIconName, ComponentType<any>> = {
   sparkles: Sparkles,
   shield: Shield,
   heart: Heart,
@@ -57,11 +71,35 @@ const OPTION_LABEL_MAP: Record<string, string> = {
   clean: "Clean",
   warm: "Warm",
   bold: "Bold",
+  dark: "Dark",
+  muted: "Muted",
+  white: "White",
   manual: "Manual",
   latest: "Latest",
   featured: "Featured",
+  "2": "2 Columns",
   "3": "3 Columns",
   "4": "4 Columns",
+  narrow: "Narrow",
+  standard: "Standard",
+  wide: "Wide",
+  left: "Left",
+  center: "Center",
+  row: "Row",
+  grid: "Grid",
+  sm: "Small",
+  md: "Medium",
+  lg: "Large",
+  xl: "Extra Large",
+  light: "Light",
+  medium: "Medium",
+  pink: "Pink",
+  leaf: "Leaf",
+  droplets: "Droplets",
+  sun: "Sun",
+  sparkles: "Sparkles",
+  flask: "Flask",
+  wind: "Wind",
 };
 
 function formatOptionLabel(option: string): string {
@@ -151,12 +189,96 @@ function PromoBannerCraftSection(props: Record<string, unknown>) {
 }
 PromoBannerCraftSection.craft = { displayName: "Promo Banner" };
 
+function RichTextCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Rich Text" enabled={Boolean(props.enabled ?? true)}><RichTextSection {...props as any} /></SectionFrame>;
+}
+RichTextCraftSection.craft = { displayName: "Rich Text" };
+
+function FaqAccordionCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="FAQ Accordion" enabled={Boolean(props.enabled ?? true)}><FaqAccordionSection {...props as any} /></SectionFrame>;
+}
+FaqAccordionCraftSection.craft = { displayName: "FAQ Accordion" };
+
+function NewsletterSignupCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Newsletter Signup" enabled={Boolean(props.enabled ?? true)}><NewsletterSignupSection {...props as any} /></SectionFrame>;
+}
+NewsletterSignupCraftSection.craft = { displayName: "Newsletter Signup" };
+
+function TestimonialsCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Testimonials" enabled={Boolean(props.enabled ?? true)}><TestimonialsSection {...props as any} /></SectionFrame>;
+}
+TestimonialsCraftSection.craft = { displayName: "Testimonials" };
+
+function TrustBadgesCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Trust Badges" enabled={Boolean(props.enabled ?? true)}><TrustBadgesSection {...props as any} /></SectionFrame>;
+}
+TrustBadgesCraftSection.craft = { displayName: "Trust Badges" };
+
+function CountdownBannerCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Countdown Timer" enabled={Boolean(props.enabled ?? true)}><CountdownBannerSection {...props as any} /></SectionFrame>;
+}
+CountdownBannerCraftSection.craft = { displayName: "Countdown Timer" };
+
+function ImageGalleryCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Image Gallery" enabled={Boolean(props.enabled ?? true)}><ImageGallerySection {...props as any} /></SectionFrame>;
+}
+ImageGalleryCraftSection.craft = { displayName: "Image Gallery" };
+
+function VideoBannerCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Video Banner" enabled={Boolean(props.enabled ?? true)}><VideoBannerSection {...props as any} /></SectionFrame>;
+}
+VideoBannerCraftSection.craft = { displayName: "Video Banner" };
+
+function IconFeaturesCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Icon Features" enabled={Boolean(props.enabled ?? true)}><IconFeaturesSection {...props as any} /></SectionFrame>;
+}
+IconFeaturesCraftSection.craft = { displayName: "Icon Features" };
+
+function ContactCtaCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Contact CTA" enabled={Boolean(props.enabled ?? true)}><ContactCtaSection {...props as any} /></SectionFrame>;
+}
+ContactCtaCraftSection.craft = { displayName: "Contact CTA" };
+
+function SpacerCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Spacer" enabled={Boolean(props.enabled ?? true)}><SpacerSection {...props as any} /></SectionFrame>;
+}
+SpacerCraftSection.craft = { displayName: "Spacer" };
+
+function AnnouncementBarCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Announcement Bar" enabled={Boolean(props.enabled ?? true)}><AnnouncementBarSection {...props as any} /></SectionFrame>;
+}
+AnnouncementBarCraftSection.craft = { displayName: "Announcement Bar" };
+
+function StatsBarCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Stats Bar" enabled={Boolean(props.enabled ?? true)}><StatsBarSection {...props as any} /></SectionFrame>;
+}
+StatsBarCraftSection.craft = { displayName: "Stats Bar" };
+
+function IngredientHighlightsCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Ingredient Highlights" enabled={Boolean(props.enabled ?? true)}><IngredientHighlightsSection {...props as any} /></SectionFrame>;
+}
+IngredientHighlightsCraftSection.craft = { displayName: "Ingredient Highlights" };
+
 function resolvedComponent(type: BuilderSectionType) {
   if (type === "hero_banner") return HeroCraftSection;
   if (type === "featured_products") return FeaturedProductsCraftSection;
   if (type === "image_text") return ImageTextCraftSection;
   if (type === "benefit_icons") return BenefitIconsCraftSection;
   if (type === "promo_banner") return PromoBannerCraftSection;
+  if (type === "rich_text") return RichTextCraftSection;
+  if (type === "faq_accordion") return FaqAccordionCraftSection;
+  if (type === "newsletter_signup") return NewsletterSignupCraftSection;
+  if (type === "testimonials") return TestimonialsCraftSection;
+  if (type === "trust_badges") return TrustBadgesCraftSection;
+  if (type === "countdown_banner") return CountdownBannerCraftSection;
+  if (type === "image_gallery") return ImageGalleryCraftSection;
+  if (type === "video_banner") return VideoBannerCraftSection;
+  if (type === "icon_features") return IconFeaturesCraftSection;
+  if (type === "contact_cta") return ContactCtaCraftSection;
+  if (type === "spacer") return SpacerCraftSection;
+  if (type === "announcement_bar") return AnnouncementBarCraftSection;
+  if (type === "stats_bar") return StatsBarCraftSection;
+  if (type === "ingredient_highlights") return IngredientHighlightsCraftSection;
   throw new Error(`Unknown section type: ${type}`);
 }
 
@@ -768,6 +890,347 @@ function BenefitItemsEditor({
   );
 }
 
+function FaqItemsEditor({
+  value,
+  selectedNodeId,
+  actions,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+}) {
+  const items: FaqItem[] = Array.isArray(value) ? (value as FaqItem[]) : [];
+
+  const updateItems = (next: FaqItem[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<FaqItem>) => {
+    updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">FAQ {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Question</label>
+            <input type="text" value={item.question} onChange={(e) => updateItem(index, { question: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="FAQ question" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Answer</label>
+            <textarea value={item.answer} onChange={(e) => updateItem(index, { answer: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs min-h-[60px] resize-y" placeholder="FAQ answer" />
+          </div>
+        </div>
+      ))}
+      {items.length < 20 ? (
+        <button type="button" onClick={() => updateItems([...items, { question: "New question", answer: "Answer here." }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add FAQ item</button>
+      ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No FAQ items yet.</p> : null}
+    </div>
+  );
+}
+
+function TestimonialItemsEditor({
+  value,
+  selectedNodeId,
+  actions,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+}) {
+  const items: TestimonialItem[] = Array.isArray(value) ? (value as TestimonialItem[]) : [];
+
+  const updateItems = (next: TestimonialItem[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<TestimonialItem>) => {
+    updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Review {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Quote</label>
+            <textarea value={item.quote} onChange={(e) => updateItem(index, { quote: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs min-h-[60px] resize-y" placeholder="Customer review..." />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Author</label>
+            <input type="text" value={item.author} onChange={(e) => updateItem(index, { author: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Customer name" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Role / Label</label>
+            <input type="text" value={item.role ?? ""} onChange={(e) => updateItem(index, { role: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="e.g. Verified Buyer" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Rating</label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button key={star} type="button" onClick={() => updateItem(index, { rating: star })} className="p-0.5">
+                  <Star size={16} className={star <= (item.rating ?? 5) ? "text-amber-400 fill-amber-400" : "text-gray-300 fill-gray-300"} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+      {items.length < 12 ? (
+        <button type="button" onClick={() => updateItems([...items, { quote: "Great product!", author: "Customer Name", role: "Verified Buyer", rating: 5 }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add testimonial</button>
+      ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No testimonials yet.</p> : null}
+    </div>
+  );
+}
+
+const TRUST_BADGE_OPTIONS: TrustBadgeIconName[] = ["lock", "credit_card", "money_back", "fast_shipping", "package", "award", "star", "shield"];
+const TRUST_BADGE_LABELS: Record<TrustBadgeIconName, string> = { lock: "Lock", credit_card: "Card", money_back: "Return", fast_shipping: "Fast", package: "Package", award: "Award", star: "Star", shield: "Shield" };
+const TRUST_BADGE_COMPONENTS: Record<TrustBadgeIconName, ComponentType<any>> = { lock: Lock, credit_card: CreditCard, money_back: RefreshCcw, fast_shipping: Zap, package: Package, award: Award, star: Star, shield: ShieldCheck };
+
+function TrustBadgeItemsEditor({
+  value,
+  selectedNodeId,
+  actions,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+}) {
+  const items: TrustBadgeItem[] = Array.isArray(value) ? (value as TrustBadgeItem[]) : [];
+
+  const updateItems = (next: TrustBadgeItem[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<TrustBadgeItem>) => {
+    updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Badge {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Icon</label>
+            <div className="grid grid-cols-4 gap-1">
+              {TRUST_BADGE_OPTIONS.map((icon) => (
+                <button key={icon} type="button" title={TRUST_BADGE_LABELS[icon]} className={`py-1 rounded border flex items-center justify-center ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-600"}`} onClick={() => updateItem(index, { icon })}>
+                  {(() => { const Icon = TRUST_BADGE_COMPONENTS[icon]; return <Icon size={14} />; })()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Label</label>
+            <input type="text" value={item.label} onChange={(e) => updateItem(index, { label: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Badge label" />
+          </div>
+        </div>
+      ))}
+      {items.length < 8 ? (
+        <button type="button" onClick={() => updateItems([...items, { icon: "shield" as TrustBadgeIconName, label: "New badge" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add badge</button>
+      ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No badges yet.</p> : null}
+    </div>
+  );
+}
+
+const FEATURE_ICON_OPTIONS: FeatureIconName[] = ["check", "star", "zap", "gift", "globe", "award", "clock", "sparkles", "shield", "heart", "leaf", "truck"];
+const FEATURE_ICON_LABELS: Record<FeatureIconName, string> = { check: "Check", star: "Star", zap: "Zap", gift: "Gift", globe: "Globe", award: "Award", clock: "Clock", sparkles: "Sparkles", shield: "Shield", heart: "Heart", leaf: "Leaf", truck: "Truck" };
+const FEATURE_ICON_COMPONENTS: Record<FeatureIconName, ComponentType<any>> = { check: CheckCircle2, star: Star, zap: Zap, gift: Gift, globe: Globe, award: Award, clock: Clock, sparkles: Sparkles, shield: ShieldCheck, heart: Heart, leaf: Leaf, truck: Truck };
+
+function FeatureItemsEditor({
+  value,
+  selectedNodeId,
+  actions,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+}) {
+  const items: FeatureItem[] = Array.isArray(value) ? (value as FeatureItem[]) : [];
+
+  const updateItems = (next: FeatureItem[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<FeatureItem>) => {
+    updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Feature {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Icon</label>
+            <div className="grid grid-cols-6 gap-1">
+              {FEATURE_ICON_OPTIONS.map((icon) => (
+                <button key={icon} type="button" title={FEATURE_ICON_LABELS[icon]} className={`py-1 rounded border flex items-center justify-center ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-600"}`} onClick={() => updateItem(index, { icon })}>
+                  {(() => { const Icon = FEATURE_ICON_COMPONENTS[icon]; return <Icon size={12} />; })()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Title</label>
+            <input type="text" value={item.title} onChange={(e) => updateItem(index, { title: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Feature title" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Description</label>
+            <textarea value={item.description ?? ""} onChange={(e) => updateItem(index, { description: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs min-h-[48px] resize-y" placeholder="Short description" />
+          </div>
+        </div>
+      ))}
+      {items.length < 12 ? (
+        <button type="button" onClick={() => updateItems([...items, { icon: "sparkles" as FeatureIconName, title: "New feature", description: "" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add feature</button>
+      ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No features yet.</p> : null}
+    </div>
+  );
+}
+
+function GalleryImagesEditor({
+  value,
+  selectedNodeId,
+  actions,
+  accessToken,
+}: {
+  value: unknown;
+  selectedNodeId: string;
+  actions: ReturnType<typeof useEditor>["actions"];
+  accessToken?: string;
+}) {
+  const items: GalleryImage[] = Array.isArray(value) ? (value as GalleryImage[]) : [];
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [addingIndex, setAddingIndex] = useState<number | null>(null);
+
+  const updateItems = (next: GalleryImage[]) => {
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.images = next; });
+  };
+
+  const updateItem = (index: number, patch: Partial<GalleryImage>) => {
+    updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  const handleLibrarySelect = (asset: import("../../types/admin").MediaAsset) => {
+    const url = asset.publicUrl ?? "";
+    if (addingIndex !== null) {
+      updateItem(addingIndex, { url });
+    } else {
+      updateItems([...items, { url, alt: asset.altText ?? asset.filename }]);
+    }
+    setAddingIndex(null);
+    setShowLibrary(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-1 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Image {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          {item.url ? (
+            <img src={item.url} alt={item.alt} className="w-full h-20 object-cover rounded border border-gray-200" />
+          ) : (
+            <div className="w-full h-12 bg-gray-100 rounded border border-dashed border-gray-300 flex items-center justify-center text-[11px] text-gray-400">No image</div>
+          )}
+          <div className="flex gap-1">
+            <button type="button" className="text-xs px-2 py-1 rounded border border-gray-200 hover:border-gray-400 transition flex-1" onClick={() => { setAddingIndex(index); setShowLibrary(true); }}>Change</button>
+            <button type="button" className="text-xs px-2 py-1 rounded border border-gray-200 hover:border-red-300 hover:text-red-600 transition" onClick={() => updateItem(index, { url: "" })}>Clear</button>
+          </div>
+          <input type="text" value={item.alt ?? ""} onChange={(e) => updateItem(index, { alt: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Alt text" />
+        </div>
+      ))}
+      {items.length < 24 ? (
+        <button type="button" onClick={() => { setAddingIndex(null); setShowLibrary(true); }} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add image</button>
+      ) : null}
+      {items.length === 0 ? <p className="text-[11px] text-gray-400 text-center py-1">No images yet.</p> : null}
+      <MediaLibraryModal open={showLibrary} accessToken={accessToken} onClose={() => { setShowLibrary(false); setAddingIndex(null); }} onSelect={handleLibrarySelect} />
+    </div>
+  );
+}
+
+function StatItemsEditor({ value, selectedNodeId, actions }: { value: unknown; selectedNodeId: string; actions: ReturnType<typeof useEditor>["actions"] }) {
+  const items: StatItem[] = Array.isArray(value) ? (value as StatItem[]) : [];
+  const updateItems = (next: StatItem[]) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  const updateItem = (index: number, patch: Partial<StatItem>) => updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Stat {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <input type="text" value={item.value ?? ""} onChange={(e) => updateItem(index, { value: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-bold" placeholder="e.g. 10,000+" />
+          <input type="text" value={item.label ?? ""} onChange={(e) => updateItem(index, { label: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Label" />
+        </div>
+      ))}
+      {items.length < 8 ? (
+        <button type="button" onClick={() => updateItems([...items, { value: "0+", label: "New stat" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add stat</button>
+      ) : null}
+    </div>
+  );
+}
+
+const INGREDIENT_ICON_OPTIONS: IngredientIconName[] = ["leaf", "droplets", "sun", "sparkles", "flask", "wind"];
+const INGREDIENT_ICON_LABELS: Record<IngredientIconName, string> = { leaf: "Leaf", droplets: "Droplets", sun: "Sun", sparkles: "Sparkles", flask: "Flask", wind: "Wind" };
+const INGREDIENT_ICON_COMPONENTS: Record<IngredientIconName, ComponentType<any>> = { leaf: Leaf, droplets: Droplets, sun: Sun, sparkles: Sparkles, flask: FlaskConical, wind: Wind };
+
+function IngredientItemsEditor({ value, selectedNodeId, actions }: { value: unknown; selectedNodeId: string; actions: ReturnType<typeof useEditor>["actions"] }) {
+  const items: IngredientItem[] = Array.isArray(value) ? (value as IngredientItem[]) : [];
+  const updateItems = (next: IngredientItem[]) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  const updateItem = (index: number, patch: Partial<IngredientItem>) => updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Ingredient {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Icon</label>
+            <div className="grid grid-cols-6 gap-1">
+              {INGREDIENT_ICON_OPTIONS.map((icon) => (
+                <button key={icon} type="button" title={INGREDIENT_ICON_LABELS[icon]} className={`py-1 rounded border flex items-center justify-center ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-600"}`} onClick={() => updateItem(index, { icon })}>
+                  {(() => { const Icon = INGREDIENT_ICON_COMPONENTS[icon]; return <Icon size={12} />; })()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <input type="text" value={item.name ?? ""} onChange={(e) => updateItem(index, { name: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold" placeholder="Ingredient name" />
+          <textarea value={item.benefit ?? ""} onChange={(e) => updateItem(index, { benefit: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs min-h-[40px] resize-y" placeholder="Short benefit" />
+        </div>
+      ))}
+      {items.length < 12 ? (
+        <button type="button" onClick={() => updateItems([...items, { icon: "leaf" as IngredientIconName, name: "New ingredient", benefit: "" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add ingredient</button>
+      ) : null}
+    </div>
+  );
+}
+
 function renderFieldControl(args: {
   keyName: string;
   field: EditableField;
@@ -784,6 +1247,34 @@ function renderFieldControl(args: {
 
   if (field.type === "benefit_items") {
     return <BenefitItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "faq_items") {
+    return <FaqItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "testimonial_items") {
+    return <TestimonialItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "trust_badge_items") {
+    return <TrustBadgeItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "feature_items") {
+    return <FeatureItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "gallery_images") {
+    return <GalleryImagesEditor value={value} selectedNodeId={selectedNodeId} actions={actions} accessToken={accessToken} />;
+  }
+
+  if (field.type === "stat_items") {
+    return <StatItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "ingredient_items") {
+    return <IngredientItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
   }
 
   if (sectionType === "featured_products" && keyName === "mode") {
@@ -1118,8 +1609,9 @@ function BuilderTopActions({ status, onSave, onPublish, onDiscard, updatedAt, pu
   );
 }
 
-function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void }) {
+function SeoPanel({ seoData, onSeoChange, accessToken }: { seoData: import("../../builder/types").BuilderSeo; onSeoChange: (next: import("../../builder/types").BuilderSeo) => void; accessToken?: string }) {
   const [open, setOpen] = useState(false);
+  const [showOgLibrary, setShowOgLibrary] = useState(false);
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
       <button
@@ -1156,18 +1648,63 @@ function SeoPanel({ seoData, onSeoChange }: { seoData: import("../../builder/typ
             <p className="text-[10px] text-gray-400 mt-0.5">{(seoData.description ?? "").length}/320 chars · Ideal: 120–160</p>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image URL</label>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">OG Image</label>
+            {seoData.ogImage ? (
+              <div className="mb-1.5 relative rounded border border-gray-200 overflow-hidden bg-gray-50">
+                <img src={seoData.ogImage} alt="OG preview" className="w-full h-24 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => onSeoChange({ ...seoData, ogImage: undefined })}
+                  className="absolute top-1 right-1 bg-white/90 rounded p-0.5 text-gray-500 hover:text-red-500 transition"
+                  title="Remove image"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="mb-1.5 w-full h-16 rounded border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-[11px] text-gray-400">
+                No OG image set
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                disabled={!accessToken}
+                onClick={() => setShowOgLibrary(true)}
+                className="flex-1 text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-gray-400 transition disabled:opacity-40"
+              >
+                Choose from library
+              </button>
+              {seoData.ogImage ? (
+                <button
+                  type="button"
+                  onClick={() => onSeoChange({ ...seoData, ogImage: undefined })}
+                  className="text-xs px-2 py-1.5 rounded border border-gray-300 hover:border-red-300 hover:text-red-600 transition"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
             <input
               type="text"
               value={seoData.ogImage ?? ""}
-              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value })}
-              className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
-              placeholder="https://... or /images/og.jpg"
+              onChange={(e) => onSeoChange({ ...seoData, ogImage: e.target.value || undefined })}
+              className="mt-1.5 w-full rounded border border-gray-200 px-2 py-1.5 text-xs"
+              placeholder="Or paste a URL directly…"
             />
             <p className="text-[10px] text-gray-400 mt-0.5">Shown when shared on social media (1200×630 recommended)</p>
           </div>
         </div>
       ) : null}
+      <MediaLibraryModal
+        open={showOgLibrary}
+        accessToken={accessToken}
+        onClose={() => setShowOgLibrary(false)}
+        onSelect={(asset) => {
+          onSeoChange({ ...seoData, ogImage: asset.publicUrl ?? "" });
+          setShowOgLibrary(false);
+        }}
+      />
     </div>
   );
 }
@@ -1282,7 +1819,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   return (
     <CraftProductsContext.Provider value={products}>
       <Editor
-        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection }}
+        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection }}
         enabled
         onNodesChange={(query) => {
           const nextNodes = query.getSerializedNodes() as SerializedNodes;
@@ -1301,7 +1838,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
               <p className="text-sm font-semibold text-gray-900 mb-3">Page Sections</p>
               <SectionList />
             </div>
-            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} />
+            <SeoPanel seoData={seoData} onSeoChange={onSeoChange} accessToken={accessToken} />
             <HistoryPanel pageKey={pageKey} accessToken={accessToken} onRestore={onRestore} />
           </aside>
           <main className="bg-gray-100 border border-gray-200 rounded-xl p-4 overflow-auto">

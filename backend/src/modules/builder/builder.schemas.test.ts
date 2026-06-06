@@ -73,7 +73,7 @@ test("builder schema rejects unknown section types", () => {
       sections: [
         {
           id: "weird-1",
-          type: "newsletter_signup",
+          type: "unknown_section_xyz",
           enabled: true,
           props: {},
         },

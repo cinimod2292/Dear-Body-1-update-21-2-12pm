@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 
 const Root = lazy(() => import("./components/Root").then((mod) => ({ default: mod.Root })));
 const Home = lazy(() => import("./pages/Home"));
@@ -91,6 +91,15 @@ export const router = createBrowserRouter([
       { path: "privacy-policy", Component: CmsPage },
       { path: "shipping", Component: CmsPage },
       { path: "terms", Component: CmsPage },
+      // Redirect old /pages/<builder-slug> URLs to the canonical builder paths.
+      { path: "pages/about", loader: () => redirect("/about") },
+      { path: "pages/contact", loader: () => redirect("/contact") },
+      { path: "pages/returns", loader: () => redirect("/returns") },
+      { path: "pages/faq", loader: () => redirect("/faq") },
+      { path: "pages/delivery", loader: () => redirect("/delivery") },
+      { path: "pages/brand", loader: () => redirect("/brand") },
+      { path: "pages/sale", loader: () => redirect("/sale") },
+      { path: "pages/campaign", loader: () => redirect("/campaign") },
       { path: "pages/:slug", Component: CmsPage },
     ],
   },

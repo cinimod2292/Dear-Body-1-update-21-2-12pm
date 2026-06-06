@@ -11,11 +11,18 @@ const iconMap: Record<string, any> = {
   youtube: Youtube,
 };
 
+// Builder pages live at /:slug (not /pages/:slug). CMS-only pages keep /pages/:slug.
+const BUILDER_PAGE_SLUGS = new Set(["about", "contact", "returns", "faq", "delivery", "brand", "sale", "campaign"]);
+
+function pageHref(slug: string) {
+  return BUILDER_PAGE_SLUGS.has(slug) ? `/${slug}` : `/pages/${slug}`;
+}
+
 const DEFAULT_INFO_LINKS = [
-  { label: "About", href: "/pages/about" },
-  { label: "Contact", href: "/pages/contact" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
   { label: "Privacy Policy", href: "/pages/privacy-policy" },
-  { label: "Returns", href: "/pages/returns" },
+  { label: "Returns", href: "/returns" },
   { label: "Shipping", href: "/pages/shipping" },
   { label: "Terms", href: "/pages/terms" },
 ];
@@ -47,7 +54,7 @@ export function Footer() {
         }
         const publishedPages = bootstrap.staticPages.filter((p) => p.status === "published");
         if (publishedPages.length > 0) {
-          setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: `/pages/${p.slug}` })));
+          setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: pageHref(p.slug) })));
         }
       })
       .catch(() => undefined);

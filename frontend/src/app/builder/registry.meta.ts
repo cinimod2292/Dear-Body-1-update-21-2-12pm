@@ -4,7 +4,7 @@ export type BuilderRegistryMetaEntry = {
   type: BuilderSectionType;
   displayName: string;
   description: string;
-  group: "Hero" | "Products" | "Content" | "Trust/Benefits" | "Promotions" | "Forms";
+  group: "Hero" | "Products" | "Content" | "Trust/Benefits" | "Promotions" | "Forms" | "Social";
   icon: string;
   defaultProps: Record<string, unknown>;
   editableSchema: Record<string, EditableField>;
@@ -378,7 +378,7 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
     type: "contact_cta",
     displayName: "Contact CTA",
     description: "Call-to-action section with contact information",
-    group: "Forms",
+    group: "Content",
     icon: "📞",
     removable: true,
     movable: true,
@@ -496,6 +496,70 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       subtitle: { type: "textarea", label: "Subtitle" },
       items: { type: "ingredient_items", label: "Ingredients" },
       tone: { type: "select", label: "Background", options: ["white", "soft", "dark"] },
+    },
+  },
+  contact_form: {
+    type: "contact_form",
+    displayName: "Contact Form",
+    description: "Full contact form with name, email, subject and message fields",
+    group: "Forms",
+    icon: "📋",
+    removable: true,
+    movable: true,
+    duplicatable: true,
+    defaultProps: {
+      title: "Get in touch",
+      subtitle: "We'd love to hear from you.",
+      showName: true,
+      showSubject: true,
+      submitText: "Send Message",
+      successTitle: "Message sent!",
+      successMessage: "Thanks for reaching out. We'll get back to you soon.",
+      tone: "white",
+    },
+    editableSchema: {
+      title: { type: "text", label: "Title" },
+      subtitle: { type: "textarea", label: "Subtitle" },
+      showName: { type: "boolean", label: "Show name field" },
+      showSubject: { type: "boolean", label: "Show subject field" },
+      submitText: { type: "text", label: "Submit button text" },
+      successTitle: { type: "text", label: "Success heading" },
+      successMessage: { type: "textarea", label: "Success message" },
+      tone: { type: "select", label: "Background", options: ["white", "soft", "muted"] },
+    },
+  },
+  social_links: {
+    type: "social_links",
+    displayName: "Social Links",
+    description: "Social media profile links with platform icons",
+    group: "Social",
+    icon: "🔗",
+    removable: true,
+    movable: true,
+    duplicatable: true,
+    defaultProps: {
+      title: "Follow us",
+      instagram: "",
+      tiktok: "",
+      facebook: "",
+      pinterest: "",
+      twitter: "",
+      youtube: "",
+      whatsapp: "",
+      style: "pills",
+      tone: "white",
+    },
+    editableSchema: {
+      title: { type: "text", label: "Section title" },
+      instagram: { type: "url", label: "Instagram URL" },
+      tiktok: { type: "url", label: "TikTok URL" },
+      facebook: { type: "url", label: "Facebook URL" },
+      pinterest: { type: "url", label: "Pinterest URL" },
+      twitter: { type: "url", label: "Twitter / X URL" },
+      youtube: { type: "url", label: "YouTube URL" },
+      whatsapp: { type: "url", label: "WhatsApp URL" },
+      style: { type: "select", label: "Style", options: ["pills", "icons"] },
+      tone: { type: "select", label: "Background", options: ["white", "dark", "soft"] },
     },
   },
 };

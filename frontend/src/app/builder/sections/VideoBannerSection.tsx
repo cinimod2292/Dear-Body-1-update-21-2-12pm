@@ -13,7 +13,7 @@ type VideoBannerProps = {
 };
 
 export function VideoBannerSection(props: VideoBannerProps) {
-  const poster = sanitizeBuilderImageUrl(props.posterUrl) ?? "";
+  const poster = sanitizeBuilderImageUrl(props.posterUrl, { isHero: false }) ?? "";
   const overlayClass =
     props.overlayOpacity === "light"
       ? "bg-black/20"

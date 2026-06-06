@@ -342,6 +342,34 @@ export const SECTION_PRESETS: SectionPreset[] = [
     defaultProps: { title: "Clean beauty, powerful results", items: [{ icon: "leaf", name: "Aloe Vera", benefit: "Soothes and deeply hydrates skin." }, { icon: "droplets", name: "Hyaluronic Acid", benefit: "Locks in moisture for 24 hours." }, { icon: "sparkles", name: "Shea Butter", benefit: "Nourishes and softens all skin types." }], tone: "soft" },
   },
 
+  // ─── Contact Form ─────────────────────────────────────────────────────────
+  {
+    id: "contact_form_full",
+    name: "Contact Form · Full",
+    description: "Name, email, subject and message",
+    sectionType: "contact_form",
+    icon: "📋",
+    defaultProps: { title: "Get in touch", subtitle: "We'd love to hear from you.", showName: true, showSubject: true, submitText: "Send Message", successTitle: "Message sent!", successMessage: "Thanks for reaching out. We'll get back to you soon.", tone: "white" },
+  },
+  {
+    id: "contact_form_simple",
+    name: "Contact Form · Simple",
+    description: "Email and message only",
+    sectionType: "contact_form",
+    icon: "📋",
+    defaultProps: { title: "Send us a message", subtitle: "Questions? We're here to help.", showName: false, showSubject: false, submitText: "Send", successTitle: "Thanks!", successMessage: "We'll be in touch shortly.", tone: "soft" },
+  },
+
+  // ─── Social Links ─────────────────────────────────────────────────────────
+  {
+    id: "social_links_standard",
+    name: "Social Links",
+    description: "Follow us on social media",
+    sectionType: "social_links",
+    icon: "🔗",
+    defaultProps: { title: "Follow us", instagram: "", tiktok: "", facebook: "", style: "pills", tone: "white" },
+  },
+
   // ─── Spacer ───────────────────────────────────────────────────────────────
   {
     id: "spacer_medium",

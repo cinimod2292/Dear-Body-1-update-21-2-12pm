@@ -22,6 +22,8 @@ const TYPE_TO_RESOLVED_NAME: Record<BuilderSectionType, string> = {
   announcement_bar: "AnnouncementBarCraftSection",
   stats_bar: "StatsBarCraftSection",
   ingredient_highlights: "IngredientHighlightsCraftSection",
+  contact_form: "ContactFormCraftSection",
+  social_links: "SocialLinksCraftSection",
 };
 
 const RESOLVED_NAME_TO_TYPE = Object.fromEntries(

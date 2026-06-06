@@ -3,6 +3,7 @@ import { Instagram, Facebook, Twitter, Youtube, Mail, Phone, MapPin } from "luci
 import { useEffect, useState } from "react";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { fetchCmsBootstrap } from "../lib/cms";
+import { API_BASE } from "../lib/api";
 
 const iconMap: Record<string, any> = {
   instagram: Instagram,
@@ -36,6 +37,7 @@ export function Footer() {
   const [copyright, setCopyright] = useState(`© ${new Date().getFullYear()} My Dear Body. All rights reserved.`);
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
   const [infoLinks, setInfoLinks] = useState(DEFAULT_INFO_LINKS);
+  const [shopCategories, setShopCategories] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     fetchCmsBootstrap()
@@ -55,6 +57,11 @@ export function Footer() {
           setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: pageHref(p.slug) })));
         }
       })
+      .catch(() => undefined);
+
+    fetch(`${API_BASE}/store/categories`)
+      .then((r) => r.json())
+      .then((payload) => { if (Array.isArray(payload?.data)) setShopCategories(payload.data); })
       .catch(() => undefined);
   }, []);
 
@@ -93,6 +100,13 @@ export function Footer() {
             <h4 className="font-bold mb-5 text-white uppercase tracking-wider text-sm">Shop</h4>
             <ul className="space-y-3 text-gray-400 text-sm">
               <li><Link to="/shop" className="hover:text-pink-400 transition-colors">All Products</Link></li>
+              {shopCategories.map((cat) => (
+                <li key={cat.id}>
+                  <Link to={`/shop?category=${encodeURIComponent(cat.name)}`} className="hover:text-pink-400 transition-colors">
+                    {cat.name}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 

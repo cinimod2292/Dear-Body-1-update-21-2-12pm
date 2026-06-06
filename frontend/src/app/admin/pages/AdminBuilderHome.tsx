@@ -1193,7 +1193,7 @@ function GalleryImagesEditor({
     updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   };
 
-  const handleLibrarySelect = (asset: import("../../types/admin").MediaAsset) => {
+  const handleLibrarySelect = (asset: MediaAsset) => {
     const url = asset.publicUrl ?? "";
     if (addingIndex !== null) {
       updateItem(addingIndex, { url });

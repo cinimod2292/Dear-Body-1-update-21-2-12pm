@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import {
   Award,
   CheckCircle2,
@@ -50,7 +51,7 @@ const FEATURE_ICON_MAP = {
   heart: Heart,
   leaf: Leaf,
   truck: Truck,
-} satisfies Record<FeatureIconName, (props: { size?: number; className?: string }) => JSX.Element>;
+} satisfies Record<FeatureIconName, ComponentType<{ size?: number; className?: string }>>;
 
 export function IconFeaturesSection(props: IconFeaturesProps) {
   const items = Array.isArray(props.items) ? props.items : [];

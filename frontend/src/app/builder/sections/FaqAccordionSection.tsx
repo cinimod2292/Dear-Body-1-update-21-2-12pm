@@ -30,26 +30,39 @@ export function FaqAccordionSection(props: FaqAccordionProps) {
           <p className="text-gray-500 mb-8 text-center">{props.subtitle}</p>
         ) : null}
         <div className="space-y-2">
-          {items.map((item, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
-                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
-              >
-                <span className="font-semibold text-gray-900 text-sm pr-4">{item.question}</span>
-                <ChevronDown
-                  size={16}
-                  className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${openIndex === idx ? "rotate-180" : ""}`}
-                />
-              </button>
-              {openIndex === idx ? (
-                <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100">
-                  <div className="pt-4 whitespace-pre-wrap">{item.answer}</div>
-                </div>
-              ) : null}
-            </div>
-          ))}
+          {items.map((item, idx) => {
+            const panelId = `faq-panel-${idx}`;
+            const triggerId = `faq-trigger-${idx}`;
+            const isOpen = openIndex === idx;
+            return (
+              <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  id={triggerId}
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  onClick={() => setOpenIndex(isOpen ? null : idx)}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
+                >
+                  <span className="font-semibold text-gray-900 text-sm pr-4">{item.question}</span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {isOpen ? (
+                  <div
+                    id={panelId}
+                    role="region"
+                    aria-labelledby={triggerId}
+                    className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100"
+                  >
+                    <div className="pt-4 whitespace-pre-wrap">{item.answer}</div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

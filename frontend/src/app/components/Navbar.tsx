@@ -17,7 +17,7 @@ export function Navbar() {
   const [navItems, setNavItems] = useState<Array<{ label: string; href: string }>>([
     { label: "Home", href: "/" },
     { label: "Shop", href: "/shop" },
-    { label: "About", href: "/pages/about" },
+    { label: "About", href: "/about" },
   ]);
   const { cartCount } = useCart();
   const { customer, logout } = useCustomerAuth();

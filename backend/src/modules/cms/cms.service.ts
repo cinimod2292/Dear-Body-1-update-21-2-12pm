@@ -55,13 +55,25 @@ const defaultHomeSections = [
   },
 ];
 
+// Builder pages live at /:slug — these paths are the canonical URLs.
+const BUILDER_PAGE_SLUG_PATHS: Record<string, string> = {
+  about: "/about",
+  contact: "/contact",
+  returns: "/returns",
+  faq: "/faq",
+  delivery: "/delivery",
+  brand: "/brand",
+  sale: "/sale",
+  campaign: "/campaign",
+};
+
 const defaultSiteConfig = {
   navigation: {
     items: [
       { label: "Home", href: "/", enabled: true },
       { label: "Shop", href: "/shop", enabled: true },
-      { label: "About", href: "/pages/about", enabled: true },
-      { label: "Contact", href: "/pages/contact", enabled: true },
+      { label: "About", href: "/about", enabled: true },
+      { label: "Contact", href: "/contact", enabled: true },
     ],
   },
   header: {
@@ -149,6 +161,16 @@ export async function getCmsBootstrap() {
   ]);
 
   const parsedSiteConfig = siteConfigSchema.parse(siteConfig);
+
+  // Migrate any stored nav items that still reference the old /pages/<slug> paths
+  // for pages that now live as builder pages at /<slug>.
+  parsedSiteConfig.navigation.items = parsedSiteConfig.navigation.items.map((item) => {
+    const match = item.href.match(/^\/pages\/([^/?#]+)$/);
+    if (match && BUILDER_PAGE_SLUG_PATHS[match[1]]) {
+      return { ...item, href: BUILDER_PAGE_SLUG_PATHS[match[1]] };
+    }
+    return item;
+  });
   const parsedHomeSections = upsertHomeSectionsSchema.parse({ sections: homeSections }).sections;
   const mediaAssetIds = new Set<string>();
   const logoAssetId = parsedSiteConfig.branding.logoMediaAssetId || parsedSiteConfig.header.logoMediaAssetId;

@@ -1,7 +1,7 @@
 import { type ComponentType, createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, ShieldCheck, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, fetchBuilderHistory, publishBuilderDraft, restoreBuilderVersion, saveBuilderDraft } from "../../builder/api";
@@ -217,7 +217,7 @@ TrustBadgesCraftSection.craft = { displayName: "Trust Badges" };
 function CountdownBannerCraftSection(props: Record<string, unknown>) {
   return <SectionFrame label="Countdown Timer" enabled={Boolean(props.enabled ?? true)}><CountdownBannerSection {...props as any} /></SectionFrame>;
 }
-CountdownBannerCraftSection.craft = { displayName: "Countdown Banner" };
+CountdownBannerCraftSection.craft = { displayName: "Countdown Timer" };
 
 function ImageGalleryCraftSection(props: Record<string, unknown>) {
   return <SectionFrame label="Image Gallery" enabled={Boolean(props.enabled ?? true)}><ImageGallerySection {...props as any} /></SectionFrame>;
@@ -996,7 +996,7 @@ function TestimonialItemsEditor({
 
 const TRUST_BADGE_OPTIONS: TrustBadgeIconName[] = ["lock", "credit_card", "money_back", "fast_shipping", "package", "award", "star", "shield"];
 const TRUST_BADGE_LABELS: Record<TrustBadgeIconName, string> = { lock: "Lock", credit_card: "Card", money_back: "Return", fast_shipping: "Fast", package: "Package", award: "Award", star: "Star", shield: "Shield" };
-const TRUST_BADGE_COMPONENTS: Record<TrustBadgeIconName, ComponentType<any>> = { lock: Lock, credit_card: CreditCard, money_back: RefreshCcw, fast_shipping: Zap, package: Package, award: Award, star: Star, shield: Shield };
+const TRUST_BADGE_COMPONENTS: Record<TrustBadgeIconName, ComponentType<any>> = { lock: Lock, credit_card: CreditCard, money_back: RefreshCcw, fast_shipping: Zap, package: Package, award: Award, star: Star, shield: ShieldCheck };
 
 function TrustBadgeItemsEditor({
   value,
@@ -1051,7 +1051,7 @@ function TrustBadgeItemsEditor({
 
 const FEATURE_ICON_OPTIONS: FeatureIconName[] = ["check", "star", "zap", "gift", "globe", "award", "clock", "sparkles", "shield", "heart", "leaf", "truck"];
 const FEATURE_ICON_LABELS: Record<FeatureIconName, string> = { check: "Check", star: "Star", zap: "Zap", gift: "Gift", globe: "Globe", award: "Award", clock: "Clock", sparkles: "Sparkles", shield: "Shield", heart: "Heart", leaf: "Leaf", truck: "Truck" };
-const FEATURE_ICON_COMPONENTS: Record<FeatureIconName, ComponentType<any>> = { check: CheckCircle2, star: Star, zap: Zap, gift: Gift, globe: Globe, award: Award, clock: Clock, sparkles: Sparkles, shield: Shield, heart: Heart, leaf: Leaf, truck: Truck };
+const FEATURE_ICON_COMPONENTS: Record<FeatureIconName, ComponentType<any>> = { check: CheckCircle2, star: Star, zap: Zap, gift: Gift, globe: Globe, award: Award, clock: Clock, sparkles: Sparkles, shield: ShieldCheck, heart: Heart, leaf: Leaf, truck: Truck };
 
 function FeatureItemsEditor({
   value,

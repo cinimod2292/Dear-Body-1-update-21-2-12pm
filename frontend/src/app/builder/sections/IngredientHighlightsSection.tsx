@@ -31,15 +31,23 @@ const ICON_MAP = {
   wind: Wind,
 } satisfies Record<IngredientIconName, (props: { size?: number; className?: string }) => JSX.Element>;
 
-const ICON_COLORS: IngredientIconName[] = ["leaf", "droplets", "sun", "sparkles", "flask", "wind"];
-const CARD_COLORS = [
-  "bg-emerald-50 text-emerald-600",
-  "bg-blue-50 text-blue-500",
-  "bg-yellow-50 text-yellow-500",
-  "bg-pink-50 text-pink-500",
-  "bg-violet-50 text-violet-500",
-  "bg-cyan-50 text-cyan-500",
-];
+const CARD_BG: Record<IngredientIconName, string> = {
+  leaf: "bg-emerald-50",
+  droplets: "bg-blue-50",
+  sun: "bg-yellow-50",
+  sparkles: "bg-pink-50",
+  flask: "bg-violet-50",
+  wind: "bg-cyan-50",
+};
+
+const CARD_TEXT: Record<IngredientIconName, string> = {
+  leaf: "text-emerald-600",
+  droplets: "text-blue-500",
+  sun: "text-yellow-500",
+  sparkles: "text-pink-500",
+  flask: "text-violet-500",
+  wind: "text-cyan-500",
+};
 
 export function IngredientHighlightsSection(props: IngredientHighlightsProps) {
   const items = Array.isArray(props.items) ? props.items : [];
@@ -51,6 +59,8 @@ export function IngredientHighlightsSection(props: IngredientHighlightsProps) {
         : "bg-white";
   const headingColor = props.tone === "dark" ? "text-white" : "text-gray-900";
   const subtitleColor = props.tone === "dark" ? "text-gray-400" : "text-gray-500";
+  const nameColor = props.tone === "dark" ? "text-white" : "text-gray-900";
+  const benefitColor = props.tone === "dark" ? "text-gray-400" : "text-gray-500";
 
   return (
     <section className={`py-16 ${bg}`}>
@@ -61,17 +71,15 @@ export function IngredientHighlightsSection(props: IngredientHighlightsProps) {
         {props.subtitle ? (
           <p className={`text-center mb-10 ${subtitleColor}`}>{props.subtitle}</p>
         ) : null}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
           {items.map((item, idx) => {
             const Icon = ICON_MAP[item.icon] ?? Leaf;
-            const colorIdx = ICON_COLORS.indexOf(item.icon);
-            const cardColor = CARD_COLORS[colorIdx >= 0 ? colorIdx : idx % CARD_COLORS.length];
-            const nameColor = props.tone === "dark" ? "text-white" : "text-gray-900";
-            const benefitColor = props.tone === "dark" ? "text-gray-400" : "text-gray-500";
+            const cardBg = CARD_BG[item.icon] ?? "bg-pink-50";
+            const cardText = CARD_TEXT[item.icon] ?? "text-pink-500";
             return (
               <div key={idx} className="flex flex-col items-center text-center p-6">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${cardColor.split(" ")[0]}`}>
-                  <Icon size={28} className={cardColor.split(" ")[1]} />
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${cardBg}`}>
+                  <Icon size={28} className={cardText} />
                 </div>
                 <h3 className={`font-bold text-sm mb-1 ${nameColor}`}>{item.name}</h3>
                 <p className={`text-xs leading-relaxed ${benefitColor}`}>{item.benefit}</p>

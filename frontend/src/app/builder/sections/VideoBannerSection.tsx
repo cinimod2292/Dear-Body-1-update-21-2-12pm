@@ -10,7 +10,6 @@ type VideoBannerProps = {
   overlayOpacity?: "light" | "medium" | "dark";
   buttonText?: string;
   buttonHref?: string;
-  tone?: "soft" | "bold" | "clean";
 };
 
 export function VideoBannerSection(props: VideoBannerProps) {

@@ -335,7 +335,6 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       overlayOpacity: "medium",
       buttonText: "Shop Now",
       buttonHref: "/shop",
-      tone: "bold",
     },
     editableSchema: {
       title: { type: "text", label: "Title" },

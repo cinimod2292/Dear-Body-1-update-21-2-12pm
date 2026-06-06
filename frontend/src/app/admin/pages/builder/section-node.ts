@@ -49,6 +49,7 @@ const NAME_TO_SECTION_TYPE: Record<string, BuilderSectionType> = {
   Testimonials: "testimonials",
   "Trust Badges": "trust_badges",
   "Countdown Banner": "countdown_banner",
+  "Countdown Timer": "countdown_banner",
   "Image Gallery": "image_gallery",
   "Video Banner": "video_banner",
   "Icon Features": "icon_features",

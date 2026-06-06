@@ -11,7 +11,7 @@ type FaqAccordionProps = {
 };
 
 export function FaqAccordionSection(props: FaqAccordionProps) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [openQuestion, setOpenQuestion] = useState<string | null>(null);
   const items = Array.isArray(props.items) ? props.items : [];
   const bg =
     props.tone === "soft"
@@ -33,15 +33,15 @@ export function FaqAccordionSection(props: FaqAccordionProps) {
           {items.map((item, idx) => {
             const panelId = `faq-panel-${idx}`;
             const triggerId = `faq-trigger-${idx}`;
-            const isOpen = openIndex === idx;
+            const isOpen = openQuestion === item.question;
             return (
-              <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+              <div key={item.question || idx} className="border border-gray-200 rounded-xl overflow-hidden">
                 <button
                   id={triggerId}
                   type="button"
                   aria-expanded={isOpen}
                   aria-controls={panelId}
-                  onClick={() => setOpenIndex(isOpen ? null : idx)}
+                  onClick={() => setOpenQuestion(isOpen ? null : item.question)}
                   className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
                 >
                   <span className="font-semibold text-gray-900 text-sm pr-4">{item.question}</span>

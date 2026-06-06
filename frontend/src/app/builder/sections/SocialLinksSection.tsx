@@ -48,7 +48,15 @@ export function SocialLinksSection(props: SocialLinksProps) {
     (p) => typeof (props as Record<string, unknown>)[p] === "string" && (props as Record<string, unknown>)[p],
   );
 
-  if (activeLinks.length === 0) return null;
+  if (activeLinks.length === 0) {
+    return (
+      <section className={`py-14 ${bg}`}>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <p className="text-sm text-gray-400 italic">Add social media URLs in the inspector to display links here.</p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className={`py-14 ${bg}`}>

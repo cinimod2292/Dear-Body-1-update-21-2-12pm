@@ -1,7 +1,7 @@
 import { type ComponentType, createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, ShieldCheck, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, ChevronDown, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, ShieldCheck, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, fetchBuilderHistory, publishBuilderDraft, restoreBuilderVersion, saveBuilderDraft } from "../../builder/api";
@@ -319,8 +319,34 @@ function applySectionMutation(
   }
 }
 
+const LIBRARY_GROUP_ORDER = ["Hero", "Products", "Content", "Promotions", "Trust/Benefits", "Forms", "Social"] as const;
+
 function SectionLibrary() {
   const { connectors, actions, query } = useEditor();
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    () => new Set(LIBRARY_GROUP_ORDER),
+  );
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof SECTION_PRESETS>(
+      LIBRARY_GROUP_ORDER.map((g) => [g, []]),
+    );
+    for (const preset of SECTION_PRESETS) {
+      const group = dearBodySectionRegistry[preset.sectionType]?.group ?? "Content";
+      if (!map.has(group)) map.set(group, []);
+      map.get(group)!.push(preset);
+    }
+    return map;
+  }, []);
 
   const addPreset = (preset: typeof SECTION_PRESETS[number]) => {
     const content = craftNodesToPageContent(query.getSerializedNodes() as SerializedNodes);
@@ -332,40 +358,60 @@ function SectionLibrary() {
   };
 
   return (
-    <div className="space-y-1.5">
-      {SECTION_PRESETS.map((preset) => (
-        <div
-          key={preset.id}
-          className="group flex items-center gap-1 border border-gray-200 rounded-lg bg-white hover:border-pink-300 hover:bg-pink-50/30 transition"
-        >
-          <div
-            ref={(ref) => {
-              if (!ref) return;
-              connectors.create(
-                ref,
-                <Element
-                  is={resolvedComponent(preset.sectionType)}
-                  canvas={false}
-                  custom={{ sectionType: preset.sectionType }}
-                  {...preset.defaultProps}
-                  sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
-                  enabled
-                />,
-              );
-            }}
-            className="flex-1 cursor-grab active:cursor-grabbing p-2 select-none min-w-0"
-          >
-            <p className="text-xs font-semibold truncate">{preset.icon} {preset.name}</p>
-            <p className="text-[11px] text-gray-400 truncate">{preset.description}</p>
+    <div className="space-y-1">
+      {LIBRARY_GROUP_ORDER.filter((g) => (grouped.get(g)?.length ?? 0) > 0).map((group) => {
+        const presets = grouped.get(group)!;
+        const isOpen = openGroups.has(group);
+        return (
+          <div key={group}>
+            <button
+              type="button"
+              onClick={() => toggleGroup(group)}
+              className="w-full flex items-center justify-between py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide hover:text-gray-600 transition"
+            >
+              <span>{group}</span>
+              <ChevronDown size={12} className={`transition-transform duration-150 ${isOpen ? "" : "-rotate-90"}`} />
+            </button>
+            {isOpen && (
+              <div className="space-y-1 mb-1">
+                {presets.map((preset) => (
+                  <div
+                    key={preset.id}
+                    className="group flex items-center gap-1 border border-gray-200 rounded-lg bg-white hover:border-pink-300 hover:bg-pink-50/30 transition"
+                  >
+                    <div
+                      ref={(ref) => {
+                        if (!ref) return;
+                        connectors.create(
+                          ref,
+                          <Element
+                            is={resolvedComponent(preset.sectionType)}
+                            canvas={false}
+                            custom={{ sectionType: preset.sectionType }}
+                            {...preset.defaultProps}
+                            sectionId={`${preset.sectionType}_${Math.random().toString(36).slice(2, 8)}`}
+                            enabled
+                          />,
+                        );
+                      }}
+                      className="flex-1 cursor-grab active:cursor-grabbing p-2 select-none min-w-0"
+                    >
+                      <p className="text-xs font-semibold truncate">{preset.icon} {preset.name}</p>
+                      <p className="text-[11px] text-gray-400 truncate">{preset.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      title="Add to page"
+                      onClick={() => addPreset(preset)}
+                      className="flex-shrink-0 p-2 text-gray-400 hover:text-pink-600 transition opacity-0 group-hover:opacity-100"
+                    ><Plus size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            title="Add to page"
-            onClick={() => addPreset(preset)}
-            className="flex-shrink-0 p-2 text-gray-400 hover:text-pink-600 transition opacity-0 group-hover:opacity-100"
-          ><Plus size={14} /></button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

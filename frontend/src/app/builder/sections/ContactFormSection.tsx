@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { API_BASE } from "../../lib/api";
 
 type ContactFormProps = {
   title?: string;
@@ -18,6 +19,8 @@ export function ContactFormSection(props: ContactFormProps) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const showName = props.showName !== false;
   const showSubject = props.showSubject !== false;
@@ -29,9 +32,32 @@ export function ContactFormSection(props: ContactFormProps) {
         ? "bg-gray-50"
         : "bg-white";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/store/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: showName ? name : undefined,
+          email,
+          subject: showSubject ? subject : "Contact form inquiry",
+          message,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -104,11 +130,17 @@ export function ContactFormSection(props: ContactFormProps) {
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:outline-none focus:border-pink-400 focus:ring-1 focus:ring-pink-400 resize-y"
               />
             </div>
+            {error ? (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>
+            ) : null}
             <button
               type="submit"
-              className="w-full py-3 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white font-bold text-sm inline-flex items-center justify-center gap-2 hover:opacity-90 transition"
+              disabled={submitting}
+              className="w-full py-3 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white font-bold text-sm inline-flex items-center justify-center gap-2 hover:opacity-90 transition disabled:opacity-60"
             >
-              {props.submitText || "Send Message"} <ArrowRight size={16} />
+              {submitting
+                ? <><Loader2 size={16} className="animate-spin" /> Sending...</>
+                : <>{props.submitText || "Send Message"} <ArrowRight size={16} /></>}
             </button>
           </form>
         )}

@@ -15,8 +15,45 @@ import {
   updateAddress,
   updateCustomer,
 } from "./crm.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
+import { env } from "../../config/env.js";
+import { z } from "zod";
+
+const contactFormSchema = z.object({
+  name: z.string().max(100).optional(),
+  email: z.string().email().max(254),
+  subject: z.string().min(2).max(200),
+  message: z.string().min(5).max(5000),
+});
 
 export async function crmRoutes(app: FastifyInstance) {
+  // ─── Public contact form submission ──────────────────────────────────────
+  app.post("/store/contact", async (request, reply) => {
+    const body = contactFormSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Invalid form data", issues: body.error.issues });
+    }
+
+    const { name, email, subject, message } = body.data;
+    const subjectLine = subject || "Contact form inquiry";
+    const fullSubject = name ? `[Contact Form] ${subjectLine} — from ${name}` : `[Contact Form] ${subjectLine}`;
+
+    await createSupportInquiry({ email, subject: fullSubject, message });
+
+    await sendEmail({
+      to: env.EMAIL_FROM,
+      subject: fullSubject,
+      html: `<p><strong>From:</strong> ${name ? `${name} &lt;${email}&gt;` : email}</p>
+<p><strong>Subject:</strong> ${subject}</p>
+<hr />
+<p>${message.replace(/\n/g, "<br>")}</p>`,
+      meta: { source: "contact_form" },
+    }).catch(() => {
+      // Non-fatal: inquiry is saved even if email fails
+    });
+
+    return reply.status(201).send({ ok: true });
+  });
   app.get("/admin/customers", { preHandler: [app.verifyAdmin, app.requirePermission("crm:read")] }, async (request, reply) => {
     const data = await listCustomers(request.query);
     return reply.send({ data });

@@ -35,6 +35,8 @@ export const BUILDER_SECTION_TYPES = [
   "announcement_bar",
   "stats_bar",
   "ingredient_highlights",
+  "contact_form",
+  "social_links",
 ] as const;
 
 const MAX_SECTIONS = 40;
@@ -284,6 +286,30 @@ const ingredientHighlightsPropsSchema = z.object({
   tone: z.enum(["white", "soft", "dark"]).default("white"),
 });
 
+const contactFormPropsSchema = z.object({
+  title: safeText.optional(),
+  subtitle: safeText.optional(),
+  showName: z.boolean().default(true),
+  showSubject: z.boolean().default(true),
+  submitText: safeText.optional(),
+  successTitle: safeText.optional(),
+  successMessage: safeText.optional(),
+  tone: z.enum(["white", "soft", "muted"]).default("white"),
+});
+
+const socialLinksPropsSchema = z.object({
+  title: safeText.optional(),
+  instagram: safeUrl.optional(),
+  tiktok: safeUrl.optional(),
+  facebook: safeUrl.optional(),
+  pinterest: safeUrl.optional(),
+  twitter: safeUrl.optional(),
+  youtube: safeUrl.optional(),
+  whatsapp: safeUrl.optional(),
+  style: z.enum(["pills", "icons"]).default("pills"),
+  tone: z.enum(["white", "dark", "soft"]).default("white"),
+});
+
 // ─── Discriminated union ─────────────────────────────────────────────────────
 
 const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
@@ -306,6 +332,8 @@ const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("announcement_bar"), props: announcementBarPropsSchema }),
   z.object({ type: z.literal("stats_bar"), props: statsBarPropsSchema }),
   z.object({ type: z.literal("ingredient_highlights"), props: ingredientHighlightsPropsSchema }),
+  z.object({ type: z.literal("contact_form"), props: contactFormPropsSchema }),
+  z.object({ type: z.literal("social_links"), props: socialLinksPropsSchema }),
 ]);
 
 export const builderSectionSchema = z

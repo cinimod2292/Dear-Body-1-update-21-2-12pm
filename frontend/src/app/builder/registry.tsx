@@ -19,6 +19,8 @@ import { SpacerSection } from "./sections/SpacerSection";
 import { AnnouncementBarSection } from "./sections/AnnouncementBarSection";
 import { StatsBarSection } from "./sections/StatsBarSection";
 import { IngredientHighlightsSection } from "./sections/IngredientHighlightsSection";
+import { ContactFormSection } from "./sections/ContactFormSection";
+import { SocialLinksSection } from "./sections/SocialLinksSection";
 import { DEAR_BODY_SECTION_META, DEAR_BODY_SECTION_META_LIST } from "./registry.meta";
 
 const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
@@ -41,6 +43,8 @@ const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
   announcement_bar: AnnouncementBarSection,
   stats_bar: StatsBarSection,
   ingredient_highlights: IngredientHighlightsSection,
+  contact_form: ContactFormSection,
+  social_links: SocialLinksSection,
 };
 
 export const dearBodySectionRegistry = Object.fromEntries(

@@ -25,6 +25,8 @@ import { SpacerSection } from "../../builder/sections/SpacerSection";
 import { AnnouncementBarSection } from "../../builder/sections/AnnouncementBarSection";
 import { StatsBarSection } from "../../builder/sections/StatsBarSection";
 import { IngredientHighlightsSection } from "../../builder/sections/IngredientHighlightsSection";
+import { ContactFormSection } from "../../builder/sections/ContactFormSection";
+import { SocialLinksSection } from "../../builder/sections/SocialLinksSection";
 import { BenefitIconName, BenefitItem, FaqItem, TestimonialItem, GalleryImage, TrustBadgeIconName, TrustBadgeItem, FeatureIconName, FeatureItem, StatItem, IngredientIconName, IngredientItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -100,6 +102,8 @@ const OPTION_LABEL_MAP: Record<string, string> = {
   sparkles: "Sparkles",
   flask: "Flask",
   wind: "Wind",
+  pills: "Pills",
+  icons: "Icons",
 };
 
 function formatOptionLabel(option: string): string {
@@ -259,6 +263,16 @@ function IngredientHighlightsCraftSection(props: Record<string, unknown>) {
 }
 IngredientHighlightsCraftSection.craft = { displayName: "Ingredient Highlights" };
 
+function ContactFormCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Contact Form" enabled={Boolean(props.enabled ?? true)}><ContactFormSection {...props as any} /></SectionFrame>;
+}
+ContactFormCraftSection.craft = { displayName: "Contact Form" };
+
+function SocialLinksCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Social Links" enabled={Boolean(props.enabled ?? true)}><SocialLinksSection {...props as any} /></SectionFrame>;
+}
+SocialLinksCraftSection.craft = { displayName: "Social Links" };
+
 function resolvedComponent(type: BuilderSectionType) {
   if (type === "hero_banner") return HeroCraftSection;
   if (type === "featured_products") return FeaturedProductsCraftSection;
@@ -279,6 +293,8 @@ function resolvedComponent(type: BuilderSectionType) {
   if (type === "announcement_bar") return AnnouncementBarCraftSection;
   if (type === "stats_bar") return StatsBarCraftSection;
   if (type === "ingredient_highlights") return IngredientHighlightsCraftSection;
+  if (type === "contact_form") return ContactFormCraftSection;
+  if (type === "social_links") return SocialLinksCraftSection;
   throw new Error(`Unknown section type: ${type}`);
 }
 
@@ -1819,7 +1835,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   return (
     <CraftProductsContext.Provider value={products}>
       <Editor
-        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection }}
+        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection, ContactFormCraftSection, SocialLinksCraftSection }}
         enabled
         onNodesChange={(query) => {
           const nextNodes = query.getSerializedNodes() as SerializedNodes;

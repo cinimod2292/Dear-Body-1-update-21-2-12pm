@@ -30,7 +30,9 @@ export type BuilderSectionType =
   | "spacer"
   | "announcement_bar"
   | "stats_bar"
-  | "ingredient_highlights";
+  | "ingredient_highlights"
+  | "contact_form"
+  | "social_links";
 
 export type BuilderSection = {
   id: string;

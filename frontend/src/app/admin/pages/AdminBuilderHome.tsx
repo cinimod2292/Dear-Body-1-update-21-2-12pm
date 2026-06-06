@@ -1889,6 +1889,12 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
         }}
       >
         <BuilderTopActions status={status} onSave={onSave} onPublish={onPublish} onDiscard={onDiscard} updatedAt={updatedAt} publishedAt={publishedAt} version={version} unsaved={unsaved} />
+        {!publishedAt && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs font-medium">
+            <AlertTriangle size={14} className="flex-shrink-0 text-amber-500" />
+            This page is not yet live on your storefront. Save your changes or click Publish to make it visible.
+          </div>
+        )}
         <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr_360px] gap-3">
           <aside className="bg-white border border-gray-200 rounded-xl p-3 overflow-auto space-y-4">
             <div>
@@ -1998,6 +2004,7 @@ export default function AdminBuilderHome() {
     autoSaveTimerRef.current = setTimeout(async () => {
       if (!session?.accessToken) return;
       try {
+        const wasNeverPublished = !meta.publishedAt;
         const content = { ...craftNodesToPageContent(serialized), seo: seoData };
         const saved = await saveBuilderDraft(pageKey, content, session.accessToken);
         setSavedSnapshot({ ...saved.draftContent, sections: normalizeList<BuilderSection>((saved.draftContent as any)?.sections) });
@@ -2005,7 +2012,11 @@ export default function AdminBuilderHome() {
         setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
         setStatus("saved");
         setEditorVersion((v) => v + 1);
-        toast.info("Draft auto-saved", { duration: 2000 });
+        if (wasNeverPublished && saved.publishedAt) {
+          toast.success("Page published to storefront", { duration: 3000 });
+        } else {
+          toast.info("Draft auto-saved", { duration: 2000 });
+        }
       } catch {
         // auto-save silently fails; manual save still available
       }
@@ -2054,6 +2065,7 @@ export default function AdminBuilderHome() {
     if (!session?.accessToken) return;
     try {
       setStatus("saving");
+      const wasNeverPublished = !meta.publishedAt;
       const content = { ...craftNodesToPageContent(nodes), seo: seoData };
       const saved = await saveBuilderDraft(pageKey, content, session.accessToken);
       const mappedNodes = pageContentToCraftNodes(saved.draftContent);
@@ -2063,7 +2075,11 @@ export default function AdminBuilderHome() {
       setMeta({ updatedAt: saved.updatedAt ?? null, publishedAt: saved.publishedAt ?? null, version: saved.version ?? null });
       setStatus("saved");
       setEditorVersion((v) => v + 1);
-      toast.success("Draft saved");
+      if (wasNeverPublished && saved.publishedAt) {
+        toast.success("Page saved & published to storefront");
+      } else {
+        toast.success("Draft saved");
+      }
     } catch (err) {
       setStatus("error");
       toast.error(err instanceof Error ? err.message : "Save failed");

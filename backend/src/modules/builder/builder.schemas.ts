@@ -32,6 +32,9 @@ export const BUILDER_SECTION_TYPES = [
   "icon_features",
   "contact_cta",
   "spacer",
+  "announcement_bar",
+  "stats_bar",
+  "ingredient_highlights",
 ] as const;
 
 const MAX_SECTIONS = 40;
@@ -250,6 +253,37 @@ const spacerPropsSchema = z.object({
   tone: z.enum(["white", "muted"]).default("white"),
 });
 
+const announcementBarPropsSchema = z.object({
+  text: safeText.min(1),
+  linkText: safeText.optional(),
+  linkHref: safeUrl.optional(),
+  tone: z.enum(["pink", "dark", "warm", "light"]).default("pink"),
+});
+
+const statItemSchema = z.object({
+  value: safeText.min(1),
+  label: safeText.min(1),
+});
+
+const statsBarPropsSchema = z.object({
+  title: safeText.optional(),
+  items: z.array(statItemSchema).min(1).max(8),
+  tone: z.enum(["white", "dark", "soft", "pink"]).default("white"),
+});
+
+const ingredientItemSchema = z.object({
+  icon: z.enum(["leaf", "droplets", "sun", "sparkles", "flask", "wind"]),
+  name: safeText.min(1),
+  benefit: safeText.min(1),
+});
+
+const ingredientHighlightsPropsSchema = z.object({
+  title: safeText.optional(),
+  subtitle: safeText.optional(),
+  items: z.array(ingredientItemSchema).min(1).max(12),
+  tone: z.enum(["white", "soft", "dark"]).default("white"),
+});
+
 // ─── Discriminated union ─────────────────────────────────────────────────────
 
 const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
@@ -269,6 +303,9 @@ const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("icon_features"), props: iconFeaturesPropsSchema }),
   z.object({ type: z.literal("contact_cta"), props: contactCtaPropsSchema }),
   z.object({ type: z.literal("spacer"), props: spacerPropsSchema }),
+  z.object({ type: z.literal("announcement_bar"), props: announcementBarPropsSchema }),
+  z.object({ type: z.literal("stats_bar"), props: statsBarPropsSchema }),
+  z.object({ type: z.literal("ingredient_highlights"), props: ingredientHighlightsPropsSchema }),
 ]);
 
 export const builderSectionSchema = z

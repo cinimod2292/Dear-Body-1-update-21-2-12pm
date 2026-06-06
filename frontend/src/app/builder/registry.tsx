@@ -16,6 +16,9 @@ import { VideoBannerSection } from "./sections/VideoBannerSection";
 import { IconFeaturesSection } from "./sections/IconFeaturesSection";
 import { ContactCtaSection } from "./sections/ContactCtaSection";
 import { SpacerSection } from "./sections/SpacerSection";
+import { AnnouncementBarSection } from "./sections/AnnouncementBarSection";
+import { StatsBarSection } from "./sections/StatsBarSection";
+import { IngredientHighlightsSection } from "./sections/IngredientHighlightsSection";
 import { DEAR_BODY_SECTION_META, DEAR_BODY_SECTION_META_LIST } from "./registry.meta";
 
 const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
@@ -35,6 +38,9 @@ const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
   icon_features: IconFeaturesSection,
   contact_cta: ContactCtaSection,
   spacer: SpacerSection,
+  announcement_bar: AnnouncementBarSection,
+  stats_bar: StatsBarSection,
+  ingredient_highlights: IngredientHighlightsSection,
 };
 
 export const dearBodySectionRegistry = Object.fromEntries(

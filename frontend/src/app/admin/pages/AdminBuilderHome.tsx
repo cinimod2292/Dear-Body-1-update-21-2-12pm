@@ -1,7 +1,7 @@
 import { type ComponentType, createContext, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Editor, Element, Frame, useEditor, useNode, type SerializedNode, type SerializedNodes } from "@craftjs/core";
 import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Eye, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, Star, Tablet, Trash2, Truck, Undo2, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Award, Check, CheckCircle2, Clock, Copy, CreditCard, Droplets, Eye, FlaskConical, Gift, Globe, Heart, Leaf, Link2, Loader2, Lock, Monitor, Package, Plus, Redo2, RefreshCcw, Save, Smartphone, Sparkles, Shield, Star, Sun, Tablet, Trash2, Truck, Undo2, Wind, X, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "../api/client";
 import { discardBuilderDraft, fetchAdminBuilderPage, fetchBuilderHistory, publishBuilderDraft, restoreBuilderVersion, saveBuilderDraft } from "../../builder/api";
@@ -22,7 +22,10 @@ import { VideoBannerSection } from "../../builder/sections/VideoBannerSection";
 import { IconFeaturesSection } from "../../builder/sections/IconFeaturesSection";
 import { ContactCtaSection } from "../../builder/sections/ContactCtaSection";
 import { SpacerSection } from "../../builder/sections/SpacerSection";
-import { BenefitIconName, BenefitItem, FaqItem, TestimonialItem, GalleryImage, TrustBadgeIconName, TrustBadgeItem, FeatureIconName, FeatureItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
+import { AnnouncementBarSection } from "../../builder/sections/AnnouncementBarSection";
+import { StatsBarSection } from "../../builder/sections/StatsBarSection";
+import { IngredientHighlightsSection } from "../../builder/sections/IngredientHighlightsSection";
+import { BenefitIconName, BenefitItem, FaqItem, TestimonialItem, GalleryImage, TrustBadgeIconName, TrustBadgeItem, FeatureIconName, FeatureItem, StatItem, IngredientIconName, IngredientItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
@@ -90,6 +93,13 @@ const OPTION_LABEL_MAP: Record<string, string> = {
   xl: "Extra Large",
   light: "Light",
   medium: "Medium",
+  pink: "Pink",
+  leaf: "Leaf",
+  droplets: "Droplets",
+  sun: "Sun",
+  sparkles: "Sparkles",
+  flask: "Flask",
+  wind: "Wind",
 };
 
 function formatOptionLabel(option: string): string {
@@ -234,6 +244,21 @@ function SpacerCraftSection(props: Record<string, unknown>) {
 }
 SpacerCraftSection.craft = { displayName: "Spacer" };
 
+function AnnouncementBarCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Announcement Bar" enabled={Boolean(props.enabled ?? true)}><AnnouncementBarSection {...props as any} /></SectionFrame>;
+}
+AnnouncementBarCraftSection.craft = { displayName: "Announcement Bar" };
+
+function StatsBarCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Stats Bar" enabled={Boolean(props.enabled ?? true)}><StatsBarSection {...props as any} /></SectionFrame>;
+}
+StatsBarCraftSection.craft = { displayName: "Stats Bar" };
+
+function IngredientHighlightsCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="Ingredient Highlights" enabled={Boolean(props.enabled ?? true)}><IngredientHighlightsSection {...props as any} /></SectionFrame>;
+}
+IngredientHighlightsCraftSection.craft = { displayName: "Ingredient Highlights" };
+
 function resolvedComponent(type: BuilderSectionType) {
   if (type === "hero_banner") return HeroCraftSection;
   if (type === "featured_products") return FeaturedProductsCraftSection;
@@ -251,6 +276,9 @@ function resolvedComponent(type: BuilderSectionType) {
   if (type === "icon_features") return IconFeaturesCraftSection;
   if (type === "contact_cta") return ContactCtaCraftSection;
   if (type === "spacer") return SpacerCraftSection;
+  if (type === "announcement_bar") return AnnouncementBarCraftSection;
+  if (type === "stats_bar") return StatsBarCraftSection;
+  if (type === "ingredient_highlights") return IngredientHighlightsCraftSection;
   throw new Error(`Unknown section type: ${type}`);
 }
 
@@ -1143,6 +1171,66 @@ function GalleryImagesEditor({
   );
 }
 
+function StatItemsEditor({ value, selectedNodeId, actions }: { value: unknown; selectedNodeId: string; actions: ReturnType<typeof useEditor>["actions"] }) {
+  const items: StatItem[] = Array.isArray(value) ? (value as StatItem[]) : [];
+  const updateItems = (next: StatItem[]) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  const updateItem = (index: number, patch: Partial<StatItem>) => updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Stat {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <input type="text" value={item.value ?? ""} onChange={(e) => updateItem(index, { value: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-bold" placeholder="e.g. 10,000+" />
+          <input type="text" value={item.label ?? ""} onChange={(e) => updateItem(index, { label: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs" placeholder="Label" />
+        </div>
+      ))}
+      {items.length < 8 ? (
+        <button type="button" onClick={() => updateItems([...items, { value: "0+", label: "New stat" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add stat</button>
+      ) : null}
+    </div>
+  );
+}
+
+const INGREDIENT_ICON_OPTIONS: IngredientIconName[] = ["leaf", "droplets", "sun", "sparkles", "flask", "wind"];
+const INGREDIENT_ICON_LABELS: Record<IngredientIconName, string> = { leaf: "Leaf", droplets: "Droplets", sun: "Sun", sparkles: "Sparkles", flask: "Flask", wind: "Wind" };
+const INGREDIENT_ICON_COMPONENTS: Record<IngredientIconName, ComponentType<any>> = { leaf: Leaf, droplets: Droplets, sun: Sun, sparkles: Sparkles, flask: FlaskConical, wind: Wind };
+
+function IngredientItemsEditor({ value, selectedNodeId, actions }: { value: unknown; selectedNodeId: string; actions: ReturnType<typeof useEditor>["actions"] }) {
+  const items: IngredientItem[] = Array.isArray(value) ? (value as IngredientItem[]) : [];
+  const updateItems = (next: IngredientItem[]) => actions.setProp(selectedNodeId, (props: Record<string, unknown>) => { props.items = next; });
+  const updateItem = (index: number, patch: Partial<IngredientItem>) => updateItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">Ingredient {index + 1}</span>
+            <button type="button" onClick={() => updateItems(items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Icon</label>
+            <div className="grid grid-cols-6 gap-1">
+              {INGREDIENT_ICON_OPTIONS.map((icon) => (
+                <button key={icon} type="button" title={INGREDIENT_ICON_LABELS[icon]} className={`py-1 rounded border flex items-center justify-center ${item.icon === icon ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-600"}`} onClick={() => updateItem(index, { icon })}>
+                  {(() => { const Icon = INGREDIENT_ICON_COMPONENTS[icon]; return <Icon size={12} />; })()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <input type="text" value={item.name ?? ""} onChange={(e) => updateItem(index, { name: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold" placeholder="Ingredient name" />
+          <textarea value={item.benefit ?? ""} onChange={(e) => updateItem(index, { benefit: e.target.value })} className="w-full rounded border border-gray-200 px-2 py-1 text-xs min-h-[40px] resize-y" placeholder="Short benefit" />
+        </div>
+      ))}
+      {items.length < 12 ? (
+        <button type="button" onClick={() => updateItems([...items, { icon: "leaf" as IngredientIconName, name: "New ingredient", benefit: "" }])} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 flex items-center justify-center gap-1 hover:border-pink-400 hover:text-pink-600 transition"><Plus size={12} /> Add ingredient</button>
+      ) : null}
+    </div>
+  );
+}
+
 function renderFieldControl(args: {
   keyName: string;
   field: EditableField;
@@ -1179,6 +1267,14 @@ function renderFieldControl(args: {
 
   if (field.type === "gallery_images") {
     return <GalleryImagesEditor value={value} selectedNodeId={selectedNodeId} actions={actions} accessToken={accessToken} />;
+  }
+
+  if (field.type === "stat_items") {
+    return <StatItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
+  }
+
+  if (field.type === "ingredient_items") {
+    return <IngredientItemsEditor value={value} selectedNodeId={selectedNodeId} actions={actions} />;
   }
 
   if (sectionType === "featured_products" && keyName === "mode") {
@@ -1677,7 +1773,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   return (
     <CraftProductsContext.Provider value={products}>
       <Editor
-        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection }}
+        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection }}
         enabled
         onNodesChange={(query) => {
           const nextNodes = query.getSerializedNodes() as SerializedNodes;

@@ -280,6 +280,68 @@ export const SECTION_PRESETS: SectionPreset[] = [
     defaultProps: { title: "We'd love to hear from you", subtitle: "Questions about an order? We're just a message away.", email: "hello@dearbody.co.za", buttonText: "Contact Us", buttonHref: "/contact", tone: "soft" },
   },
 
+  // ─── Announcement Bar ─────────────────────────────────────────────────────
+  {
+    id: "announcement_pink",
+    name: "Announcement · Pink",
+    description: "Gradient pink promotional bar",
+    sectionType: "announcement_bar",
+    icon: "📣",
+    defaultProps: { text: "Free delivery on orders over R500 🎉", linkText: "Shop Now", linkHref: "/shop", tone: "pink" },
+  },
+  {
+    id: "announcement_dark",
+    name: "Announcement · Dark",
+    description: "Dark promotional bar",
+    sectionType: "announcement_bar",
+    icon: "📣",
+    defaultProps: { text: "New collection just dropped — shop now.", linkText: "View Collection", linkHref: "/shop", tone: "dark" },
+  },
+
+  // ─── Stats Bar ────────────────────────────────────────────────────────────
+  {
+    id: "stats_light",
+    name: "Stats · Light",
+    description: "Achievement numbers on white",
+    sectionType: "stats_bar",
+    icon: "📊",
+    defaultProps: { title: "Trusted by thousands", items: [{ value: "10,000+", label: "Happy customers" }, { value: "4.9 ★", label: "Average rating" }, { value: "48h", label: "Average dispatch" }, { value: "30 days", label: "Free returns" }], tone: "white" },
+  },
+  {
+    id: "stats_dark",
+    name: "Stats · Dark",
+    description: "Achievement numbers on dark background",
+    sectionType: "stats_bar",
+    icon: "📊",
+    defaultProps: { title: "The numbers speak for themselves", items: [{ value: "10,000+", label: "Happy customers" }, { value: "4.9 ★", label: "Average rating" }, { value: "48h", label: "Average dispatch" }, { value: "30 days", label: "Free returns" }], tone: "dark" },
+  },
+  {
+    id: "stats_pink",
+    name: "Stats · Pink",
+    description: "Achievement numbers on brand gradient",
+    sectionType: "stats_bar",
+    icon: "📊",
+    defaultProps: { items: [{ value: "10,000+", label: "Happy customers" }, { value: "4.9 ★", label: "Average rating" }, { value: "48h", label: "Average dispatch" }], tone: "pink" },
+  },
+
+  // ─── Ingredient Highlights ────────────────────────────────────────────────
+  {
+    id: "ingredients_standard",
+    name: "Ingredients · 6 Key",
+    description: "Six key ingredients grid",
+    sectionType: "ingredient_highlights",
+    icon: "🌿",
+    defaultProps: { title: "The ingredients that matter", subtitle: "Every formulation is built on clean, effective actives.", items: [{ icon: "leaf", name: "Aloe Vera", benefit: "Soothes and deeply hydrates skin." }, { icon: "droplets", name: "Hyaluronic Acid", benefit: "Locks in moisture for 24 hours." }, { icon: "sun", name: "Vitamin E", benefit: "Protects against free radical damage." }, { icon: "sparkles", name: "Shea Butter", benefit: "Nourishes and softens all skin types." }, { icon: "flask", name: "Niacinamide", benefit: "Evens tone and minimises pores." }, { icon: "wind", name: "Centella Asiatica", benefit: "Repairs and calms sensitive skin." }], tone: "white" },
+  },
+  {
+    id: "ingredients_soft",
+    name: "Ingredients · Soft",
+    description: "Soft pink background ingredient showcase",
+    sectionType: "ingredient_highlights",
+    icon: "🌿",
+    defaultProps: { title: "Clean beauty, powerful results", items: [{ icon: "leaf", name: "Aloe Vera", benefit: "Soothes and deeply hydrates skin." }, { icon: "droplets", name: "Hyaluronic Acid", benefit: "Locks in moisture for 24 hours." }, { icon: "sparkles", name: "Shea Butter", benefit: "Nourishes and softens all skin types." }], tone: "soft" },
+  },
+
   // ─── Spacer ───────────────────────────────────────────────────────────────
   {
     id: "spacer_medium",

@@ -19,6 +19,9 @@ const TYPE_TO_RESOLVED_NAME: Record<BuilderSectionType, string> = {
   icon_features: "IconFeaturesCraftSection",
   contact_cta: "ContactCtaCraftSection",
   spacer: "SpacerCraftSection",
+  announcement_bar: "AnnouncementBarCraftSection",
+  stats_bar: "StatsBarCraftSection",
+  ingredient_highlights: "IngredientHighlightsCraftSection",
 };
 
 const RESOLVED_NAME_TO_TYPE = Object.fromEntries(

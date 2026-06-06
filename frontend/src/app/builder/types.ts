@@ -27,7 +27,10 @@ export type BuilderSectionType =
   | "video_banner"
   | "icon_features"
   | "contact_cta"
-  | "spacer";
+  | "spacer"
+  | "announcement_bar"
+  | "stats_bar"
+  | "ingredient_highlights";
 
 export type BuilderSection = {
   id: string;
@@ -125,6 +128,19 @@ export type FeatureItem = {
   description?: string;
 };
 
+export type StatItem = {
+  value: string;
+  label: string;
+};
+
+export type IngredientIconName = "leaf" | "droplets" | "sun" | "sparkles" | "flask" | "wind";
+
+export type IngredientItem = {
+  icon: IngredientIconName;
+  name: string;
+  benefit: string;
+};
+
 export type EditableField = {
   type:
     | "text"
@@ -139,7 +155,9 @@ export type EditableField = {
     | "testimonial_items"
     | "gallery_images"
     | "trust_badge_items"
-    | "feature_items";
+    | "feature_items"
+    | "stat_items"
+    | "ingredient_items";
   label: string;
   required?: boolean;
   options?: string[];

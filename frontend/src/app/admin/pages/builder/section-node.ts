@@ -35,6 +35,9 @@ const NAME_TO_SECTION_TYPE: Record<string, BuilderSectionType> = {
   IconFeaturesCraftSection: "icon_features",
   ContactCtaCraftSection: "contact_cta",
   SpacerCraftSection: "spacer",
+  AnnouncementBarCraftSection: "announcement_bar",
+  StatsBarCraftSection: "stats_bar",
+  IngredientHighlightsCraftSection: "ingredient_highlights",
   "Hero Banner": "hero_banner",
   "Featured Products": "featured_products",
   "Image + Text": "image_text",
@@ -51,6 +54,9 @@ const NAME_TO_SECTION_TYPE: Record<string, BuilderSectionType> = {
   "Icon Features": "icon_features",
   "Contact CTA": "contact_cta",
   Spacer: "spacer",
+  "Announcement Bar": "announcement_bar",
+  "Stats Bar": "stats_bar",
+  "Ingredient Highlights": "ingredient_highlights",
 };
 
 const VALID_SECTION_TYPES = new Set<string>([
@@ -70,6 +76,9 @@ const VALID_SECTION_TYPES = new Set<string>([
   "icon_features",
   "contact_cta",
   "spacer",
+  "announcement_bar",
+  "stats_bar",
+  "ingredient_highlights",
 ]);
 
 function normalizeSectionType(value: unknown): BuilderSectionType | null {

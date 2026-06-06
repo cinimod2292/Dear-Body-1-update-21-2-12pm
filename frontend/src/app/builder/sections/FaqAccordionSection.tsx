@@ -1,0 +1,57 @@
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
+
+type FaqItem = { question: string; answer: string };
+
+type FaqAccordionProps = {
+  title?: string;
+  subtitle?: string;
+  items: FaqItem[];
+  tone?: "white" | "soft" | "muted";
+};
+
+export function FaqAccordionSection(props: FaqAccordionProps) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const items = Array.isArray(props.items) ? props.items : [];
+  const bg =
+    props.tone === "soft"
+      ? "bg-pink-50/30"
+      : props.tone === "muted"
+        ? "bg-gray-50"
+        : "bg-white";
+
+  return (
+    <section className={`py-16 ${bg}`}>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        {props.title ? (
+          <h2 className="text-3xl font-black text-gray-900 mb-2 text-center">{props.title}</h2>
+        ) : null}
+        {props.subtitle ? (
+          <p className="text-gray-500 mb-8 text-center">{props.subtitle}</p>
+        ) : null}
+        <div className="space-y-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
+              >
+                <span className="font-semibold text-gray-900 text-sm pr-4">{item.question}</span>
+                <ChevronDown
+                  size={16}
+                  className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${openIndex === idx ? "rotate-180" : ""}`}
+                />
+              </button>
+              {openIndex === idx ? (
+                <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100">
+                  <div className="pt-4 whitespace-pre-wrap">{item.answer}</div>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}

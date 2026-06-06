@@ -34,10 +34,7 @@ export function Footer() {
   const [contactPhone, setContactPhone] = useState("");
   const [address, setAddress] = useState("");
   const [copyright, setCopyright] = useState(`© ${new Date().getFullYear()} My Dear Body. All rights reserved.`);
-  const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([
-    { platform: "instagram", url: "#" },
-    { platform: "facebook", url: "#" },
-  ]);
+  const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
   const [infoLinks, setInfoLinks] = useState(DEFAULT_INFO_LINKS);
 
   useEffect(() => {
@@ -49,9 +46,10 @@ export function Footer() {
         setContactPhone(bootstrap.siteConfig.footer.contactPhone || contactPhone);
         setAddress(bootstrap.siteConfig.footer.address || address);
         setCopyright(bootstrap.siteConfig.footer.copyrightText || copyright);
-        if (bootstrap.siteConfig.footer.socialLinks.length > 0) {
-          setSocialLinks(bootstrap.siteConfig.footer.socialLinks);
-        }
+        const realSocialLinks = bootstrap.siteConfig.footer.socialLinks.filter(
+          (s) => s.url && s.url !== "#"
+        );
+        setSocialLinks(realSocialLinks);
         const publishedPages = bootstrap.staticPages.filter((p) => p.status === "published");
         if (publishedPages.length > 0) {
           setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: pageHref(p.slug) })));
@@ -77,28 +75,24 @@ export function Footer() {
               />
             </div>
             <p className="text-gray-400 text-sm leading-relaxed mb-6">Vibrant fragrances and body care crafted for those who dare to be bold.</p>
-            <div className="flex gap-3">
-              {socialLinks.map(({ platform, url }) => {
-                const Icon = iconMap[platform.toLowerCase()] ?? Instagram;
-                return (
-                  <a key={platform + url} href={url} aria-label={platform} className="w-9 h-9 rounded-full bg-gray-800 hover:bg-gradient-to-br hover:from-pink-500 hover:to-orange-400 flex items-center justify-center transition-all duration-200">
-                    <Icon size={16} />
-                  </a>
-                );
-              })}
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex gap-3">
+                {socialLinks.map(({ platform, url }) => {
+                  const Icon = iconMap[platform.toLowerCase()] ?? Instagram;
+                  return (
+                    <a key={platform + url} href={url} aria-label={platform} className="w-9 h-9 rounded-full bg-gray-800 hover:bg-gradient-to-br hover:from-pink-500 hover:to-orange-400 flex items-center justify-center transition-all duration-200">
+                      <Icon size={16} />
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>
             <h4 className="font-bold mb-5 text-white uppercase tracking-wider text-sm">Shop</h4>
             <ul className="space-y-3 text-gray-400 text-sm">
-              {[
-                { label: "All Products", to: "/shop" },
-                { label: "Body Sprays", to: "/shop?category=Body+Spray" },
-                { label: "Body Lotions", to: "/shop?category=Body+Lotion" },
-              ].map(({ label, to }) => (
-                <li key={label}><Link to={to} className="hover:text-pink-400 transition-colors">{label}</Link></li>
-              ))}
+              <li><Link to="/shop" className="hover:text-pink-400 transition-colors">All Products</Link></li>
             </ul>
           </div>
 

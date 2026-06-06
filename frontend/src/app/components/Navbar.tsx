@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ShoppingBag, Search, Menu, X, Heart, User } from "lucide-react";
+import { ChevronDown, ShoppingBag, Search, Menu, X, Heart, User } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { API_BASE } from "../lib/api";
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -19,6 +20,7 @@ export function Navbar() {
     { label: "Shop", href: "/shop" },
     { label: "About", href: "/about" },
   ]);
+  const [shopCategories, setShopCategories] = useState<Array<{ id: string; name: string }>>([]);
   const { cartCount } = useCart();
   const { customer, logout } = useCustomerAuth();
   const navigate = useNavigate();
@@ -34,9 +36,12 @@ export function Navbar() {
         if (items.length > 0) setNavItems(items);
       })
       .catch(() => undefined);
+
+    fetch(`${API_BASE}/store/categories`)
+      .then((r) => r.json())
+      .then((payload) => { if (Array.isArray(payload?.data)) setShopCategories(payload.data); })
+      .catch(() => undefined);
   }, []);
-
-
 
   const handleLogout = () => {
     logout();
@@ -68,11 +73,36 @@ export function Navbar() {
           </Link>
 
           <div className="hidden md:flex items-center gap-8">
-            {navItems.map((item) => (
-              <Link key={item.href + item.label} to={item.href} className="text-gray-700 hover:text-pink-500 font-medium transition-colors duration-200">
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              if (item.href === "/shop") {
+                return (
+                  <DropdownMenu key="shop-dropdown">
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex items-center gap-1 text-gray-700 hover:text-pink-500 font-medium transition-colors duration-200 outline-none">
+                        {item.label}
+                        <ChevronDown size={14} className="mt-0.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      <DropdownMenuItem asChild>
+                        <Link to="/shop">All Products</Link>
+                      </DropdownMenuItem>
+                      {shopCategories.length > 0 && <DropdownMenuSeparator />}
+                      {shopCategories.map((cat) => (
+                        <DropdownMenuItem key={cat.id} asChild>
+                          <Link to={`/shop?category=${encodeURIComponent(cat.name)}`}>{cat.name}</Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+              return (
+                <Link key={item.href + item.label} to={item.href} className="text-gray-700 hover:text-pink-500 font-medium transition-colors duration-200">
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-3">
@@ -134,9 +164,26 @@ export function Navbar() {
 
       {menuOpen && (
         <div className="md:hidden bg-white border-t border-gray-100 px-4 py-4 flex flex-col gap-4">
-          {navItems.map((item) => (
-            <Link key={item.href + item.label} to={item.href} onClick={() => setMenuOpen(false)} className="text-gray-700 font-medium py-2 border-b border-gray-100">{item.label}</Link>
-          ))}
+          {navItems.map((item) => {
+            if (item.href === "/shop") {
+              return (
+                <div key="shop-mobile">
+                  <Link to="/shop" onClick={() => setMenuOpen(false)} className="text-gray-700 font-medium py-2 border-b border-gray-100 block">{item.label}</Link>
+                  <div className="pl-4 flex flex-col gap-1 mt-1">
+                    <Link to="/shop" onClick={() => setMenuOpen(false)} className="text-gray-500 text-sm py-1.5 hover:text-pink-500 transition-colors">All Products</Link>
+                    {shopCategories.map((cat) => (
+                      <Link key={cat.id} to={`/shop?category=${encodeURIComponent(cat.name)}`} onClick={() => setMenuOpen(false)} className="text-gray-500 text-sm py-1.5 hover:text-pink-500 transition-colors">
+                        {cat.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <Link key={item.href + item.label} to={item.href} onClick={() => setMenuOpen(false)} className="text-gray-700 font-medium py-2 border-b border-gray-100">{item.label}</Link>
+            );
+          })}
         </div>
       )}
     </nav>

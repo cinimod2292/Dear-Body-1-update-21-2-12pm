@@ -2,7 +2,9 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 
 const PUDO_API_PROD = "https://api.thecourierguy.co.za/api";
-const PUDO_API_SANDBOX = "https://api-sandbox.thecourierguy.co.za/api";
+// TCG PUDO does not have a separate sandbox domain; sandbox mode uses the same
+// production endpoint with sandbox API credentials.
+const PUDO_API_SANDBOX = PUDO_API_PROD;
 
 export interface PudoSettings {
   enabled: boolean;

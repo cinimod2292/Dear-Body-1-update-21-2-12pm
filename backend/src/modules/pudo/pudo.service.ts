@@ -33,6 +33,7 @@ export interface PudoSettings {
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string;
+  senderUnitAddress?: string;
   senderStreetAddress?: string;
   senderLocalArea?: string;
   senderCity?: string;
@@ -107,6 +108,7 @@ export async function getPudoSettings(): Promise<PudoSettings> {
     senderName: v.senderName ? String(v.senderName) : undefined,
     senderPhone: v.senderPhone ? String(v.senderPhone) : undefined,
     senderEmail: v.senderEmail ? String(v.senderEmail) : undefined,
+    senderUnitAddress: v.senderUnitAddress ? String(v.senderUnitAddress) : undefined,
     senderStreetAddress: v.senderStreetAddress ? String(v.senderStreetAddress) : undefined,
     senderLocalArea: v.senderLocalArea ? String(v.senderLocalArea) : undefined,
     senderCity: v.senderCity ? String(v.senderCity) : undefined,
@@ -130,6 +132,7 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
     senderName: b.senderName ? String(b.senderName) : undefined,
     senderPhone: b.senderPhone ? String(b.senderPhone) : undefined,
     senderEmail: b.senderEmail ? String(b.senderEmail) : undefined,
+    senderUnitAddress: b.senderUnitAddress ? String(b.senderUnitAddress) : undefined,
     senderStreetAddress: b.senderStreetAddress ? String(b.senderStreetAddress) : undefined,
     senderLocalArea: b.senderLocalArea ? String(b.senderLocalArea) : undefined,
     senderCity: b.senderCity ? String(b.senderCity) : undefined,
@@ -281,7 +284,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
 
   const payload = {
     collection_address: {
-      street_address: settings.senderStreetAddress ?? "",
+      street_address: [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", "),
       local_area: settings.senderLocalArea ?? "",
       city: settings.senderCity ?? "",
       code: settings.senderPostalCode ?? "",
@@ -364,7 +367,7 @@ export async function getPudoRates(lockerCode: string) {
   }
   const payload = {
     collection_address: {
-      street_address: settings.senderStreetAddress ?? "",
+      street_address: [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", "),
       local_area: settings.senderLocalArea ?? "",
       city: settings.senderCity ?? "",
       code: settings.senderPostalCode ?? "",

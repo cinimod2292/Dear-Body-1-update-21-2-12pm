@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   createPudoShipment,
   diagnosePudoApi,
+  downloadPudoWaybill,
   getPudoLockers,
   getPudoRates,
   getPudoSettings,
@@ -86,5 +87,19 @@ export async function pudoRoutes(app: FastifyInstance) {
     "/admin/pudo/diagnose",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
     async (_request, reply) => reply.send({ data: await diagnosePudoApi() }),
+  );
+
+  // Proxies the PUDO waybill PDF through our backend (PUDO requires Bearer auth, browsers can't send that directly)
+  app.get(
+    "/admin/pudo/waybill/:shipmentId",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const { shipmentId } = request.params as { shipmentId: string };
+      const { body, contentType } = await downloadPudoWaybill(Number(shipmentId));
+      return reply
+        .header("Content-Type", contentType)
+        .header("Content-Disposition", `attachment; filename="waybill-${shipmentId}.pdf"`)
+        .send(body);
+    },
   );
 }

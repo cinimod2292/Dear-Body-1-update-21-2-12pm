@@ -555,6 +555,7 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
     }
     input.doorAddress = {
       streetAddress: [addr.line2, addr.line1].filter(Boolean).join(", "),
+      localArea: addr.suburb ?? undefined,
       city: addr.city,
       postalCode: addr.postalCode ?? undefined,
       province: addr.state ?? undefined,

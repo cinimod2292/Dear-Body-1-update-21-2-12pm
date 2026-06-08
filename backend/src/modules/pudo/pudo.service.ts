@@ -1,8 +1,14 @@
+import { Agent } from "undici";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
-const PUDO_API_SANDBOX = "https://sandbox-api.pudo.co.za";
+const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
+
+// PUDO's sandbox custom domain is a CNAME to AWS API Gateway but the TLS cert
+// only covers *.execute-api.af-south-1.amazonaws.com, not the custom domain.
+// Use a dedicated agent that skips cert validation for sandbox requests only.
+const pudoSandboxAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
 export interface PudoSettings {
   enabled: boolean;
@@ -90,6 +96,8 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
       Accept: "application/json",
     },
     body: body ? JSON.stringify(body) : undefined,
+    // @ts-ignore — undici dispatcher not in standard RequestInit types
+    dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
   });
   if (!res.ok) {
     let message = `PUDO API error ${res.status}`;

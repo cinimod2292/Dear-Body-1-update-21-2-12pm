@@ -96,11 +96,11 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
 
 async function pudoFetch<T>(method: string, path: string, settings: PudoSettings, body?: object): Promise<T> {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
-  const url = `${base}${path}`;
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${base}${path}${sep}api_key=${encodeURIComponent(settings.apiKey)}`;
   const res = await fetch(url, {
     method,
     headers: {
-      Authorization: `Bearer ${settings.apiKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },

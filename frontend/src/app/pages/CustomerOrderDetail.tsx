@@ -49,7 +49,7 @@ export default function CustomerOrderDetail() {
 
   useEffect(() => {
     if (!token || !orderId) return;
-    fetch(`${API_BASE}/store/account?tab=orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_BASE}/store/account/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((payload) => setOrder(payload.data))
       .finally(() => setLoading(false));

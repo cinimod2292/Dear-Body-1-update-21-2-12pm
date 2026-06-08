@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
-const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
+const PUDO_API_SANDBOX = "https://sandbox-api.pudo.co.za";
 
 export interface PudoSettings {
   enabled: boolean;

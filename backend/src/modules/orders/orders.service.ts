@@ -182,15 +182,13 @@ export async function createCart(rawBody: unknown) {
 }
 
 export async function listStoreShippingMethods() {
+  const rules = await prisma.setting.findUnique({ where: { scope_key: { scope: "shipping", key: "rules" } } });
+  const manualEnabled = (rules?.value as Record<string, unknown> | null)?.manualShippingEnabled !== false;
+  if (!manualEnabled) return [];
   return prisma.shippingMethod.findMany({
     where: { isActive: true },
     orderBy: { price: "asc" },
-    select: {
-      id: true,
-      name: true,
-      price: true,
-      description: true,
-    },
+    select: { id: true, name: true, price: true, description: true },
   });
 }
 
@@ -371,7 +369,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       : null,
     destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
   });
-  if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId) {
+  const isPudoShipping = typeof body.pudoShippingAmount === "number";
+  if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId && !isPudoShipping) {
     throw new AppError(400, "Please select a shipping method to continue.", "SHIPPING_METHOD_REQUIRED");
   }
   console.info("[checkout-timing] shipping/totals calculation complete", {
@@ -426,9 +425,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         pudoLockerName: body.pudoLockerName ?? null,
         subtotalAmount: cart.subtotalAmount,
         discountAmount: cart.discountAmount,
-        shippingAmount: cart.shippingAmount,
+        shippingAmount: isPudoShipping ? body.pudoShippingAmount! : cart.shippingAmount,
         taxAmount: cart.taxAmount,
-        totalAmount: cart.totalAmount,
+        totalAmount: isPudoShipping
+          ? Number(cart.subtotalAmount) - Number(cart.discountAmount) + body.pudoShippingAmount! + Number(cart.taxAmount)
+          : cart.totalAmount,
         items: {
           create: cart.items.map((item) => ({
             variantId: item.variantId,
@@ -447,12 +448,15 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       include: { items: true },
     });
 
+    const finalTotal = isPudoShipping
+      ? Number(cart.subtotalAmount) - Number(cart.discountAmount) + body.pudoShippingAmount! + Number(cart.taxAmount)
+      : Number(cart.totalAmount);
     await tx.paymentTransaction.create({
       data: {
         orderId: created.id,
         provider: "stitch",
         referenceId: body.paymentReference,
-        amount: cart.totalAmount,
+        amount: finalTotal,
         status: "AWAITING_PAYMENT",
       },
     });
@@ -461,7 +465,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       where: { id: customerId! },
       data: {
         lastOrderAt: new Date(),
-        lifetimeValue: { increment: Number(cart.totalAmount) },
+        lifetimeValue: { increment: finalTotal },
       },
     });
 

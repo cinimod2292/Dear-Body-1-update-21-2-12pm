@@ -49,6 +49,7 @@ export const adminShippingMethodUpdateSchema = z.object({
 export const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),
   freeShippingThreshold: z.coerce.number().nonnegative().default(0),
+  manualShippingEnabled: z.boolean().default(true),
 });
 
 export const taxRateSchema = z.object({

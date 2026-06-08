@@ -279,6 +279,46 @@ export async function getPudoRates(lockerCode: string) {
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
 }
 
+export async function diagnosePudoApi() {
+  const settings = await getPudoSettings();
+  const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
+  const dispatcher = settings.sandbox ? pudoSandboxAgent : undefined;
+
+  const pathsToTry = ["/lockers-data", "/lockers", "/terminals", "/locker"];
+  const authMethods = [
+    { name: "query_api_key", headers: {}, qs: `?api_key=${encodeURIComponent(settings.apiKey)}` },
+    { name: "bearer_header", headers: { Authorization: `Bearer ${settings.apiKey}` }, qs: "" },
+  ];
+
+  const results: Record<string, unknown> = {
+    settings: { sandbox: settings.sandbox, enabled: settings.enabled, base, apiKeyLen: settings.apiKey.length, apiKeyPreview: settings.apiKey.slice(0, 8) + "…" },
+    probes: [] as unknown[],
+  };
+
+  for (const auth of authMethods) {
+    for (const path of pathsToTry) {
+      const url = `${base}${path}${auth.qs}`;
+      let status: number | null = null;
+      let body = "";
+      let error = "";
+      try {
+        const res = await fetch(url, {
+          headers: { Accept: "application/json", ...auth.headers },
+          // @ts-ignore
+          dispatcher,
+        });
+        status = res.status;
+        body = (await res.text()).slice(0, 200);
+      } catch (e: unknown) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+      (results.probes as unknown[]).push({ auth: auth.name, path, status, body, error });
+    }
+  }
+
+  return results;
+}
+
 export async function listPudoShipments() {
   const settings = await getPudoSettings();
   if (!settings.enabled || !settings.apiKey) {

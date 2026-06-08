@@ -586,6 +586,7 @@ model Address {
   phone             String?
   line1             String
   line2             String?
+  suburb            String?
   city              String
   state             String?
   postalCode        String

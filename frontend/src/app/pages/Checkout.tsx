@@ -16,6 +16,7 @@ type SavedAddress = {
   phone?: string | null;
   line1: string;
   line2?: string | null;
+  suburb?: string | null;
   city: string;
   state?: string | null;
   postalCode: string;
@@ -139,7 +140,7 @@ export default function Checkout() {
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
-    unit: "", address: "", city: "", state: "", zip: "", country: "South Africa",
+    unit: "", address: "", suburb: "", city: "", state: "", zip: "", country: "South Africa",
     sameAsShipping: true,
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -345,6 +346,7 @@ export default function Checkout() {
           ...prev,
           unit: prev.unit || preferred.line2 || "",
           address: prev.address || preferred.line1,
+          suburb: prev.suburb || preferred.suburb || "",
           city: prev.city || preferred.city,
           state: prev.state || preferred.state || "",
           zip: prev.zip || preferred.postalCode,
@@ -395,6 +397,7 @@ export default function Checkout() {
       ...prev,
       unit: selected.line2 || "",
       address: selected.line1,
+      suburb: selected.suburb || "",
       city: selected.city,
       state: selected.state || "",
       zip: selected.postalCode,
@@ -471,6 +474,7 @@ export default function Checkout() {
             phone: form.phone,
             line1: form.address,
             line2: form.unit || undefined,
+            suburb: form.suburb || undefined,
             city: form.city,
             state: form.state,
             postalCode: form.zip,
@@ -814,6 +818,7 @@ export default function Checkout() {
                     {[
                       { key: "unit", label: "Unit / Complex / Building", placeholder: "Unit 4, The Palms (optional)", full: true, required: false },
                       { key: "address", label: "Street Address", placeholder: "123 Main St", full: true, required: true },
+                      { key: "suburb", label: "Suburb / Local Area", placeholder: "Claremont", full: true, required: true },
                       { key: "city", label: "City", placeholder: "Cape Town", required: true },
                       { key: "state", label: "Province", placeholder: "Western Cape", required: false },
                       { key: "zip", label: "Postal Code", placeholder: "8001", required: true },
@@ -885,6 +890,10 @@ export default function Checkout() {
                       }
                       if (!form.address.trim()) {
                         setShippingStepError("Street address is required.");
+                        return;
+                      }
+                      if (!form.suburb.trim()) {
+                        setShippingStepError("Suburb / local area is required.");
                         return;
                       }
                       if (!form.city.trim()) {

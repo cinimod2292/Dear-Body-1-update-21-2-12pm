@@ -1,6 +1,9 @@
 import { Dispatch, FormEvent, SetStateAction, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
+import { Package, ChevronRight } from "lucide-react";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { formatRand } from "../lib/currency";
 
 type Address = {
   id: string;
@@ -31,6 +34,17 @@ type AddressFormState = {
   isDefaultBilling: boolean;
 };
 
+type Order = {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  status: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  totalAmount?: number | string | null;
+  trackingNumber?: string | null;
+};
+
 const emptyAddress: AddressFormState = {
   recipientName: "",
   phone: "",
@@ -45,6 +59,36 @@ const emptyAddress: AddressFormState = {
   isDefaultBilling: false,
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: "bg-gray-100 text-gray-700",
+  PROCESSING: "bg-blue-100 text-blue-700",
+  FULFILLED: "bg-green-100 text-green-700",
+  CANCELLED: "bg-red-100 text-red-700",
+  AWAITING_PAYMENT: "bg-amber-100 text-amber-700",
+  PAYMENT_FAILED: "bg-red-100 text-red-700",
+  PAID: "bg-green-100 text-green-700",
+  REFUNDED: "bg-purple-100 text-purple-700",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  PROCESSING: "Processing",
+  FULFILLED: "Fulfilled",
+  CANCELLED: "Cancelled",
+  AWAITING_PAYMENT: "Awaiting Payment",
+  PAYMENT_FAILED: "Payment Failed",
+  PAID: "Paid",
+  REFUNDED: "Refunded",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[status] ?? "bg-gray-100 text-gray-700"}`}>
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
+
 const parseApiError = async (response: Response, fallback: string) => {
   try {
     const payload = await response.json();
@@ -55,11 +99,7 @@ const parseApiError = async (response: Response, fallback: string) => {
 };
 
 function ProfileSection({
-  profileForm,
-  setProfileForm,
-  profileError,
-  profileSaving,
-  onSave,
+  profileForm, setProfileForm, profileError, profileSaving, onSave,
 }: {
   profileForm: { firstName: string; lastName: string; phone: string };
   setProfileForm: Dispatch<SetStateAction<{ firstName: string; lastName: string; phone: string }>>;
@@ -69,14 +109,16 @@ function ProfileSection({
 }) {
   return (
     <section className="bg-white rounded-2xl border p-5" data-testid="account-profile-section">
-      <h2 className="font-bold mb-4">Profile / Personal Details</h2>
+      <h2 className="font-bold mb-4">Personal Details</h2>
       <form onSubmit={(e) => void onSave(e)} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <input className="border rounded-lg px-3 py-2" placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
         <input className="border rounded-lg px-3 py-2" placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
         <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
         {profileError ? <p className="sm:col-span-3 text-sm text-red-600">{profileError}</p> : null}
         <div className="sm:col-span-3">
-          <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{profileSaving ? "Saving..." : "Save profile"}</button>
+          <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">
+            {profileSaving ? "Saving..." : "Save profile"}
+          </button>
         </div>
       </form>
     </section>
@@ -84,16 +126,8 @@ function ProfileSection({
 }
 
 function AddressSection({
-  addressForm,
-  setAddressForm,
-  addressError,
-  editingAddressId,
-  addresses,
-  onSave,
-  onEdit,
-  onDelete,
-  onSetDefault,
-  onCancelEdit,
+  addressForm, setAddressForm, addressError, editingAddressId, addresses,
+  onSave, onEdit, onDelete, onSetDefault, onCancelEdit,
 }: {
   addressForm: AddressFormState;
   setAddressForm: Dispatch<SetStateAction<AddressFormState>>;
@@ -108,23 +142,33 @@ function AddressSection({
 }) {
   return (
     <section className="bg-white rounded-2xl border p-5" data-testid="account-address-section">
-      <h2 className="font-bold mb-4">Addresses</h2>
+      <h2 className="font-bold mb-4">Shipping Address</h2>
       <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" onSubmit={(e) => void onSave(e)}>
         {addressError ? <p className="sm:col-span-2 text-sm text-red-600">{addressError}</p> : null}
         <input className="border rounded-lg px-3 py-2" placeholder="Recipient name" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
         <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 1" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
-        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Address line 2" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Unit / Complex / Building (optional)" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
+        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Street Address" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
         <input className="border rounded-lg px-3 py-2" placeholder="City / Suburb" value={addressForm.city} onChange={(e) => setAddressForm((p) => ({ ...p, city: e.target.value }))} required />
         <input className="border rounded-lg px-3 py-2" placeholder="Province / State" value={addressForm.state} onChange={(e) => setAddressForm((p) => ({ ...p, state: e.target.value }))} />
         <input className="border rounded-lg px-3 py-2" placeholder="Postal code" value={addressForm.postalCode} onChange={(e) => setAddressForm((p) => ({ ...p, postalCode: e.target.value }))} required />
         <input className="border rounded-lg px-3 py-2" placeholder="Country" value={addressForm.country} onChange={(e) => setAddressForm((p) => ({ ...p, country: e.target.value }))} required />
         <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Delivery notes (optional)" value={addressForm.deliveryNotes} onChange={(e) => setAddressForm((p) => ({ ...p, deliveryNotes: e.target.value }))} />
-        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultShipping} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultShipping: e.target.checked }))} />Default shipping</label>
-        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={addressForm.isDefaultBilling} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultBilling: e.target.checked }))} />Default billing</label>
+        <label className="text-sm flex items-center gap-2">
+          <input type="checkbox" checked={addressForm.isDefaultShipping} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultShipping: e.target.checked }))} />
+          Default shipping
+        </label>
+        <label className="text-sm flex items-center gap-2">
+          <input type="checkbox" checked={addressForm.isDefaultBilling} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultBilling: e.target.checked }))} />
+          Default billing
+        </label>
         <div className="sm:col-span-2 flex gap-2">
-          <button className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">{editingAddressId ? "Update address" : "Add address"}</button>
-          {editingAddressId ? <button type="button" onClick={onCancelEdit} className="px-4 py-2 rounded-lg border text-sm">Cancel</button> : null}
+          <button className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">
+            {editingAddressId ? "Update address" : "Add address"}
+          </button>
+          {editingAddressId ? (
+            <button type="button" onClick={onCancelEdit} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>
+          ) : null}
         </div>
       </form>
 
@@ -132,11 +176,19 @@ function AddressSection({
         {addresses.map((address) => (
           <div key={address.id} className="border rounded-xl p-3 text-sm">
             <p className="font-semibold">{address.recipientName || "Recipient"}</p>
-            <p>{address.line1}{address.line2 ? `, ${address.line2}` : ""}, {address.city}{address.state ? `, ${address.state}` : ""}, {address.postalCode}, {address.country}</p>
+            <p>
+              {address.line2 ? `${address.line2}, ` : ""}
+              {address.line1}, {address.city}
+              {address.state ? `, ${address.state}` : ""}, {address.postalCode}, {address.country}
+            </p>
             {address.phone ? <p>Phone: {address.phone}</p> : null}
             <div className="flex flex-wrap gap-2 mt-2">
-              {address.isDefaultShipping ? <span className="text-xs px-2 py-1 rounded-full bg-blue-100">Default shipping</span> : <button onClick={() => void onSetDefault(address.id, "shipping")} className="text-xs px-2 py-1 rounded-full border">Set shipping default</button>}
-              {address.isDefaultBilling ? <span className="text-xs px-2 py-1 rounded-full bg-purple-100">Default billing</span> : <button onClick={() => void onSetDefault(address.id, "billing")} className="text-xs px-2 py-1 rounded-full border">Set billing default</button>}
+              {address.isDefaultShipping
+                ? <span className="text-xs px-2 py-1 rounded-full bg-blue-100">Default shipping</span>
+                : <button onClick={() => void onSetDefault(address.id, "shipping")} className="text-xs px-2 py-1 rounded-full border">Set shipping default</button>}
+              {address.isDefaultBilling
+                ? <span className="text-xs px-2 py-1 rounded-full bg-purple-100">Default billing</span>
+                : <button onClick={() => void onSetDefault(address.id, "billing")} className="text-xs px-2 py-1 rounded-full border">Set billing default</button>}
               <button onClick={() => onEdit(address)} className="text-xs px-2 py-1 rounded-full border">Edit</button>
               <button onClick={() => void onDelete(address.id)} className="text-xs px-2 py-1 rounded-full border text-red-600">Delete</button>
             </div>
@@ -148,7 +200,73 @@ function AddressSection({
   );
 }
 
+function OrdersSection({
+  orders, retryingId, onRetryPayment,
+}: {
+  orders: Order[];
+  retryingId: string | null;
+  onRetryPayment: (orderId: string) => void;
+}) {
+  if (orders.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border p-10 text-center">
+        <div className="w-14 h-14 rounded-full bg-pink-50 flex items-center justify-center mx-auto mb-4">
+          <Package size={24} className="text-pink-400" />
+        </div>
+        <h3 className="font-bold text-gray-900 mb-1">No orders yet</h3>
+        <p className="text-sm text-gray-500 mb-5">When you place your first order it will appear here.</p>
+        <Link
+          to="/shop"
+          className="inline-block px-5 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white text-sm font-bold hover:opacity-90 transition-opacity"
+        >
+          Start shopping
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-testid="account-orders-section">
+      {orders.map((o) => (
+        <div key={o.id} className="bg-white rounded-2xl border hover:border-pink-200 transition-colors">
+          <Link to={`/account/orders/${o.id}`} className="flex items-center justify-between p-5 group">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                <span className="font-black text-gray-900">#{o.orderNumber}</span>
+                <StatusBadge status={o.paymentStatus} />
+                <StatusBadge status={o.status} />
+              </div>
+              <p className="text-sm text-gray-500">
+                {new Date(o.createdAt).toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" })}
+                {o.totalAmount != null ? ` · ${formatRand(Number(o.totalAmount))}` : ""}
+              </p>
+              {o.trackingNumber ? (
+                <p className="text-xs text-gray-400 mt-0.5">Tracking: {o.trackingNumber}</p>
+              ) : null}
+            </div>
+            <ChevronRight size={18} className="text-gray-300 group-hover:text-pink-400 flex-shrink-0 ml-3 transition-colors" />
+          </Link>
+          {["AWAITING_PAYMENT", "PAYMENT_FAILED"].includes(o.paymentStatus) ? (
+            <div className="px-5 pb-5 pt-0">
+              <div className="h-px bg-gray-100 mb-4" />
+              <button
+                disabled={retryingId === o.id}
+                onClick={() => onRetryPayment(o.id)}
+                className="px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {retryingId === o.id ? "Redirecting…" : "Complete payment"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CustomerDashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get("tab") || "personal") as "personal" | "addresses" | "orders";
   const { customer, token, logout } = useCustomerAuth();
 
   useEffect(() => {
@@ -157,11 +275,14 @@ export default function CustomerDashboard() {
 
   const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", phone: "" });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressForm, setAddressForm] = useState<AddressFormState>(emptyAddress);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [preferredGateway, setPreferredGateway] = useState<"stitch" | "payfast">("payfast");
 
   const authHeaders = token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined;
 
@@ -184,9 +305,24 @@ export default function CustomerDashboard() {
   };
 
   useEffect(() => {
+    if (!token) return;
     loadProfile();
     loadAddresses();
+    fetch(`${API_BASE}/store/account/orders`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((payload) => setOrders(payload.data || []));
   }, [token]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/payments/gateways`)
+      .then((r) => r.json())
+      .then((payload) => {
+        const preferred = payload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
+        const first = payload?.data?.enabledGateways?.[0]?.id as "stitch" | "payfast" | undefined;
+        if (preferred || first) setPreferredGateway(preferred ?? first!);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const saveProfile = async (e: FormEvent) => {
     e.preventDefault();
@@ -195,10 +331,7 @@ export default function CustomerDashboard() {
     setProfileSaving(true);
     try {
       const res = await fetch(`${API_BASE}/store/account/profile`, { method: "PATCH", headers: authHeaders, body: JSON.stringify(profileForm) });
-      if (!res.ok) {
-        setProfileError(await parseApiError(res, "Failed to update profile"));
-        return;
-      }
+      if (!res.ok) { setProfileError(await parseApiError(res, "Failed to update profile")); return; }
       loadProfile();
     } finally {
       setProfileSaving(false);
@@ -212,10 +345,7 @@ export default function CustomerDashboard() {
     const url = editingAddressId ? `${API_BASE}/store/account/addresses/${editingAddressId}` : `${API_BASE}/store/account/addresses`;
     const method = editingAddressId ? "PATCH" : "POST";
     const res = await fetch(url, { method, headers: authHeaders, body: JSON.stringify(addressForm) });
-    if (!res.ok) {
-      setAddressError(await parseApiError(res, editingAddressId ? "Failed to update address" : "Failed to add address"));
-      return;
-    }
+    if (!res.ok) { setAddressError(await parseApiError(res, editingAddressId ? "Failed to update address" : "Failed to add address")); return; }
     setAddressForm(emptyAddress);
     setEditingAddressId(null);
     loadAddresses();
@@ -242,10 +372,7 @@ export default function CustomerDashboard() {
     if (!token) return;
     setAddressError(null);
     const res = await fetch(`${API_BASE}/store/account/addresses/${addressId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      setAddressError(await parseApiError(res, "Failed to delete address"));
-      return;
-    }
+    if (!res.ok) { setAddressError(await parseApiError(res, "Failed to delete address")); return; }
     loadAddresses();
   };
 
@@ -257,16 +384,40 @@ export default function CustomerDashboard() {
       headers: authHeaders,
       body: JSON.stringify({ type }),
     });
-    if (!res.ok) {
-      setAddressError(await parseApiError(res, `Failed to set default ${type} address`));
-      return;
-    }
+    if (!res.ok) { setAddressError(await parseApiError(res, `Failed to set default ${type} address`)); return; }
     loadAddresses();
   };
 
+  const retryPayment = async (orderId: string) => {
+    if (!token) return;
+    setRetryingId(orderId);
+    try {
+      const res = await fetch(`${API_BASE}/store/orders/${orderId}/payments/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          gateway: preferredGateway,
+          force: true,
+          returnUrl: `${window.location.origin}/checkout?orderId=${orderId}`,
+          cancelUrl: `${window.location.origin}/checkout?orderId=${orderId}&cancelled=1`,
+        }),
+      });
+      const payload = await res.json();
+      if (res.ok && payload?.data?.checkoutUrl) window.location.href = payload.data.checkoutUrl;
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  const tabs = [
+    { id: "personal", label: "Personal Details" },
+    { id: "addresses", label: "Shipping Address" },
+    { id: "orders", label: "Orders" },
+  ] as const;
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-5xl mx-auto px-4 py-10">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-black">My Account</h1>
           <p className="text-sm text-gray-500">{customer?.email}</p>
@@ -274,29 +425,57 @@ export default function CustomerDashboard() {
         <button onClick={logout} className="px-3 py-2 border rounded-lg text-sm">Logout</button>
       </div>
 
-      <ProfileSection
-        profileForm={profileForm}
-        setProfileForm={setProfileForm}
-        profileError={profileError}
-        profileSaving={profileSaving}
-        onSave={saveProfile}
-      />
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSearchParams({ tab: tab.id })}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+                activeTab === tab.id
+                  ? "border-pink-500 text-pink-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
-      <AddressSection
-        addressForm={addressForm}
-        setAddressForm={setAddressForm}
-        addressError={addressError}
-        editingAddressId={editingAddressId}
-        addresses={addresses}
-        onSave={saveAddress}
-        onEdit={editAddress}
-        onDelete={deleteAddress}
-        onSetDefault={setDefault}
-        onCancelEdit={() => {
-          setEditingAddressId(null);
-          setAddressForm(emptyAddress);
-        }}
-      />
+      {activeTab === "personal" && (
+        <ProfileSection
+          profileForm={profileForm}
+          setProfileForm={setProfileForm}
+          profileError={profileError}
+          profileSaving={profileSaving}
+          onSave={saveProfile}
+        />
+      )}
+
+      {activeTab === "addresses" && (
+        <AddressSection
+          addressForm={addressForm}
+          setAddressForm={setAddressForm}
+          addressError={addressError}
+          editingAddressId={editingAddressId}
+          addresses={addresses}
+          onSave={saveAddress}
+          onEdit={editAddress}
+          onDelete={deleteAddress}
+          onSetDefault={setDefault}
+          onCancelEdit={() => { setEditingAddressId(null); setAddressForm(emptyAddress); }}
+        />
+      )}
+
+      {activeTab === "orders" && (
+        <OrdersSection
+          orders={orders}
+          retryingId={retryingId}
+          onRetryPayment={(id) => void retryPayment(id)}
+        />
+      )}
     </div>
   );
 }

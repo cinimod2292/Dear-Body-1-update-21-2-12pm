@@ -28,6 +28,7 @@ export interface ItemRule {
 export interface PudoSettings {
   enabled: boolean;
   apiKey: string;
+  sandboxApiKey?: string;
   sandbox: boolean;
   accountNumber?: string;
   senderName?: string;
@@ -103,6 +104,7 @@ export async function getPudoSettings(): Promise<PudoSettings> {
   return {
     enabled: Boolean(v.enabled),
     apiKey: String(v.apiKey ?? ""),
+    sandboxApiKey: v.sandboxApiKey ? String(v.sandboxApiKey) : undefined,
     sandbox: v.sandbox !== false,
     accountNumber: v.accountNumber ? String(v.accountNumber) : undefined,
     senderName: v.senderName ? String(v.senderName) : undefined,
@@ -127,6 +129,7 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
   const value: PudoSettings = {
     enabled: Boolean(b.enabled),
     apiKey: String(b.apiKey ?? ""),
+    sandboxApiKey: b.sandboxApiKey ? String(b.sandboxApiKey) : undefined,
     sandbox: b.sandbox !== false,
     accountNumber: b.accountNumber ? String(b.accountNumber) : undefined,
     senderName: b.senderName ? String(b.senderName) : undefined,
@@ -184,10 +187,15 @@ export async function getPudoShippingOption(itemCount: number) {
   };
 }
 
+function getEffectiveApiKey(settings: PudoSettings): string {
+  return settings.sandbox && settings.sandboxApiKey ? settings.sandboxApiKey : settings.apiKey;
+}
+
 // All PUDO API routes live under /api/v1/ and require Bearer token auth.
 async function pudoFetch<T>(method: string, path: string, settings: PudoSettings, body?: object): Promise<T> {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
   const url = `${base}/api/v1${path}`;
+  const apiKey = getEffectiveApiKey(settings);
 
   console.log(`[PUDO] → ${method} ${url} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
   if (body) console.log(`[PUDO] request body:`, JSON.stringify(body));
@@ -199,7 +207,7 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: `Bearer ${settings.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: body ? JSON.stringify(body) : undefined,
       // @ts-ignore — undici dispatcher option not in standard RequestInit types
@@ -240,8 +248,9 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
 
 export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
   const settings = await getPudoSettings();
-  console.log(`[PUDO] getPudoLockers | enabled=${settings.enabled} sandbox=${settings.sandbox} apiKeyLen=${settings.apiKey.length}`);
-  if (!settings.enabled || !settings.apiKey) {
+  const effectiveKey = getEffectiveApiKey(settings);
+  console.log(`[PUDO] getPudoLockers | enabled=${settings.enabled} sandbox=${settings.sandbox} apiKeyLen=${effectiveKey.length}`);
+  if (!settings.enabled || !effectiveKey) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const data = await pudoFetch<unknown[]>("GET", "/lockers-data", settings);
@@ -276,7 +285,7 @@ export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
 
 export async function createPudoShipment(input: PudoShipmentInput) {
   const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const order = await prisma.order.findUnique({ where: { id: input.orderId } });
@@ -327,7 +336,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
 
 export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: Buffer; contentType: string }> {
   const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
@@ -336,7 +345,7 @@ export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: B
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { Authorization: `Bearer ${settings.apiKey}` },
+      headers: { Authorization: `Bearer ${getEffectiveApiKey(settings)}` },
       // @ts-ignore
       dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
     });
@@ -354,7 +363,7 @@ export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: B
 
 export async function trackPudoShipment(waybillNumber: string) {
   const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   return pudoFetch<unknown>("GET", `/tracking/shipments/public?waybill=${encodeURIComponent(waybillNumber)}`, settings);
@@ -362,7 +371,7 @@ export async function trackPudoShipment(waybillNumber: string) {
 
 export async function getPudoRates(lockerCode: string) {
   const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const payload = {
@@ -382,7 +391,7 @@ export async function getPudoRates(lockerCode: string) {
 
 export async function listPudoShipments() {
   const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   return pudoFetch<unknown>("GET", "/shipments", settings);
@@ -399,15 +408,16 @@ export async function diagnosePudoApi() {
     "/v1/lockers-data", "/v1/lockers",
     "/api/v1/lockers-data", "/api/v1/lockers",
   ];
+  const effectiveKey = getEffectiveApiKey(settings);
   const authMethods = [
-    { name: "query_api_key",    headers: {},                                              qs: `?api_key=${encodeURIComponent(settings.apiKey)}` },
-    { name: "bearer_header",    headers: { Authorization: `Bearer ${settings.apiKey}` }, qs: "" },
-    { name: "query_token",      headers: {},                                              qs: `?token=${encodeURIComponent(settings.apiKey)}` },
-    { name: "no_auth_baseline", headers: {},                                              qs: "" },
+    { name: "query_api_key",    headers: {},                                             qs: `?api_key=${encodeURIComponent(effectiveKey)}` },
+    { name: "bearer_header",    headers: { Authorization: `Bearer ${effectiveKey}` },   qs: "" },
+    { name: "query_token",      headers: {},                                             qs: `?token=${encodeURIComponent(effectiveKey)}` },
+    { name: "no_auth_baseline", headers: {},                                             qs: "" },
   ];
 
   const results: Record<string, unknown> = {
-    settings: { sandbox: settings.sandbox, enabled: settings.enabled, base, apiKeyLen: settings.apiKey.length, apiKeyPreview: settings.apiKey.slice(0, 8) + "…" },
+    settings: { sandbox: settings.sandbox, enabled: settings.enabled, base, apiKeyLen: effectiveKey.length, apiKeyPreview: effectiveKey.slice(0, 8) + "…" },
     probes: [] as unknown[],
   };
 

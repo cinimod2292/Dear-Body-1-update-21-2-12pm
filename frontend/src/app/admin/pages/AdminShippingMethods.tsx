@@ -35,6 +35,7 @@ type ItemRule = {
 type PudoSettings = {
   enabled: boolean;
   apiKey: string;
+  sandboxApiKey?: string;
   sandbox: boolean;
   accountNumber?: string;
   senderName?: string;
@@ -93,6 +94,7 @@ export default function AdminShippingMethods() {
   const [pudoSettings, setPudoSettings] = useState<PudoSettings>({
     enabled: false,
     apiKey: "",
+    sandboxApiKey: "",
     sandbox: true,
     allowCustomerLockerSelection: false,
     doorDeliveryEnabled: false,
@@ -165,7 +167,8 @@ export default function AdminShippingMethods() {
 
   const testPudoConnection = async () => {
     if (!session?.accessToken) return;
-    if (!pudoSettings.apiKey) { toast.error("Enter an API key first"); return; }
+    const effectiveKey = pudoSettings.sandbox ? (pudoSettings.sandboxApiKey || pudoSettings.apiKey) : pudoSettings.apiKey;
+    if (!effectiveKey) { toast.error("Enter an API key first"); return; }
     try {
       setPudoTesting(true);
       await apiRequest("/admin/integrations/pudo/settings", { method: "PUT", body: JSON.stringify(pudoSettings) }, session.accessToken);
@@ -306,8 +309,12 @@ export default function AdminShippingMethods() {
               <h4 className="text-sm font-semibold text-gray-700 mb-2">API Credentials</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">API Key <span className="text-red-500">*</span></label>
-                  <input type="password" required className={inputCls} placeholder="Your PUDO Bearer token" value={pudoSettings.apiKey} onChange={(e) => setPudoSettings((s) => ({ ...s, apiKey: e.target.value }))} />
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Production API Key <span className="text-red-500">*</span></label>
+                  <input type="password" className={inputCls} placeholder="Live PUDO Bearer token" value={pudoSettings.apiKey} onChange={(e) => setPudoSettings((s) => ({ ...s, apiKey: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Sandbox API Key</label>
+                  <input type="password" className={inputCls} placeholder="Sandbox PUDO Bearer token" value={pudoSettings.sandboxApiKey ?? ""} onChange={(e) => setPudoSettings((s) => ({ ...s, sandboxApiKey: e.target.value || undefined }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Account Number (optional)</label>

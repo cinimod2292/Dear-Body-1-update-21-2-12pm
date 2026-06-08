@@ -1,10 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 
-const PUDO_API_PROD = "https://api.thecourierguy.co.za/api";
-// TCG PUDO does not have a separate sandbox domain; sandbox mode uses the same
-// production endpoint with sandbox API credentials.
-const PUDO_API_SANDBOX = PUDO_API_PROD;
+const PUDO_API_PROD = "https://api-pudo.co.za";
+const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
 
 export interface PudoSettings {
   enabled: boolean;
@@ -82,11 +80,12 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
 
 async function pudoFetch<T>(method: string, path: string, settings: PudoSettings, body?: object): Promise<T> {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
-  const url = `${base}${path}`;
+  // PUDO API authenticates via api_key query parameter
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${base}${path}${sep}api_key=${encodeURIComponent(settings.apiKey)}`;
   const res = await fetch(url, {
     method,
     headers: {
-      "X-API-Key": settings.apiKey,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
@@ -109,7 +108,7 @@ export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const q = search ? `?search=${encodeURIComponent(search)}` : "";
-  const data = await pudoFetch<unknown>("GET", `/v2/pudo/locker${q}`, settings);
+  const data = await pudoFetch<unknown>("GET", `/lockers${q}`, settings);
   if (Array.isArray(data)) return data as PudoLocker[];
   const d = data as Record<string, unknown>;
   return (Array.isArray(d.lockers) ? d.lockers : Array.isArray(d.data) ? d.data : []) as PudoLocker[];
@@ -144,7 +143,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     ...(settings.accountNumber ? { account_number: settings.accountNumber } : {}),
   };
 
-  const result = await pudoFetch<Record<string, unknown>>("POST", "/v2/pudo/shipment", settings, payload);
+  const result = await pudoFetch<Record<string, unknown>>("POST", "/shipments", settings, payload);
 
   const waybill = String(result.waybillNumber ?? result.waybill_number ?? "");
   const labelUrl = result.labelUrl ?? result.label_url;
@@ -164,5 +163,5 @@ export async function trackPudoShipment(waybillNumber: string) {
   if (!settings.enabled || !settings.apiKey) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
-  return pudoFetch<unknown>("GET", `/v2/pudo/track/${encodeURIComponent(waybillNumber)}`, settings);
+  return pudoFetch<unknown>("GET", `/tracking/shipments?parcel_id=${encodeURIComponent(waybillNumber)}`, settings);
 }

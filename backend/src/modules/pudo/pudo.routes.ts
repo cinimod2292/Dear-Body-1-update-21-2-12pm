@@ -6,6 +6,7 @@ import {
   getPudoLockers,
   getPudoRates,
   getPudoSettings,
+  getPudoShippingOption,
   listPudoShipments,
   trackPudoShipment,
   upsertPudoSettings,
@@ -19,8 +20,15 @@ export async function pudoRoutes(app: FastifyInstance) {
       data: {
         enabled: settings.enabled,
         allowCustomerLockerSelection: settings.allowCustomerLockerSelection,
+        doorDeliveryEnabled: settings.doorDeliveryEnabled,
       },
     });
+  });
+
+  app.get("/store/pudo/shipping-options", async (request, reply) => {
+    const { itemCount } = request.query as { itemCount?: string };
+    const count = Math.max(1, parseInt(itemCount ?? "1", 10) || 1);
+    return reply.send({ data: await getPudoShippingOption(count) });
   });
 
   app.get("/store/pudo/lockers", async (request, reply) => {

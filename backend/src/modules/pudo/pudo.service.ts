@@ -8,6 +8,23 @@ const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
 // Sandbox custom domain doesn't have a TLS cert covering the custom domain name.
 const pudoSandboxAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
+export interface PackageSizeConfig {
+  code: string;
+  label: string;
+  dimensions: string;
+  maxWeight: number;
+  lockerPrice: number;
+  doorPrice: number;
+  lockerServiceCode: string;
+  doorServiceCode: string;
+}
+
+export interface ItemRule {
+  minItems: number;
+  maxItems: number | null;
+  packageCode: string;
+}
+
 export interface PudoSettings {
   enabled: boolean;
   apiKey: string;
@@ -22,6 +39,33 @@ export interface PudoSettings {
   senderPostalCode?: string;
   senderProvince?: string;
   allowCustomerLockerSelection: boolean;
+  doorDeliveryEnabled: boolean;
+  roundPricing: boolean;
+  packageSizes: PackageSizeConfig[];
+  itemRules: ItemRule[];
+}
+
+const DEFAULT_PACKAGE_SIZES: PackageSizeConfig[] = [
+  { code: "XS", label: "XS", dimensions: "60×17×8cm", maxWeight: 2, lockerPrice: 49, doorPrice: 79, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
+  { code: "S",  label: "S",  dimensions: "60×41×8cm", maxWeight: 5, lockerPrice: 59, doorPrice: 89, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
+  { code: "M",  label: "M",  dimensions: "60×41×19cm", maxWeight: 10, lockerPrice: 69, doorPrice: 119, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
+  { code: "L",  label: "L",  dimensions: "60×41×41cm", maxWeight: 15, lockerPrice: 89, doorPrice: 169, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
+  { code: "XL", label: "XL", dimensions: "60×41×69cm", maxWeight: 20, lockerPrice: 119, doorPrice: 229, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
+];
+
+const DEFAULT_ITEM_RULES: ItemRule[] = [
+  { minItems: 1, maxItems: 3, packageCode: "XS" },
+  { minItems: 4, maxItems: 6, packageCode: "S" },
+  { minItems: 7, maxItems: 10, packageCode: "M" },
+  { minItems: 11, maxItems: 13, packageCode: "L" },
+  { minItems: 14, maxItems: null, packageCode: "XL" },
+];
+
+function roundToX9(price: number): number {
+  const intPrice = Math.ceil(price);
+  const mod = intPrice % 10;
+  if (mod === 9) return intPrice;
+  return intPrice + ((9 - mod + 10) % 10);
 }
 
 export interface PudoLocker {
@@ -49,7 +93,11 @@ export async function getPudoSettings(): Promise<PudoSettings> {
   const setting = await prisma.setting.findUnique({
     where: { scope_key: { scope: "integrations", key: "pudo" } },
   });
-  if (!setting) return { enabled: false, apiKey: "", sandbox: true, allowCustomerLockerSelection: false };
+  if (!setting) return {
+    enabled: false, apiKey: "", sandbox: true, allowCustomerLockerSelection: false,
+    doorDeliveryEnabled: false, roundPricing: true,
+    packageSizes: DEFAULT_PACKAGE_SIZES, itemRules: DEFAULT_ITEM_RULES,
+  };
   const v = setting.value as Record<string, unknown>;
   return {
     enabled: Boolean(v.enabled),
@@ -65,6 +113,10 @@ export async function getPudoSettings(): Promise<PudoSettings> {
     senderPostalCode: v.senderPostalCode ? String(v.senderPostalCode) : undefined,
     senderProvince: v.senderProvince ? String(v.senderProvince) : undefined,
     allowCustomerLockerSelection: Boolean(v.allowCustomerLockerSelection),
+    doorDeliveryEnabled: Boolean(v.doorDeliveryEnabled),
+    roundPricing: v.roundPricing !== false,
+    packageSizes: Array.isArray(v.packageSizes) && v.packageSizes.length ? v.packageSizes as PackageSizeConfig[] : DEFAULT_PACKAGE_SIZES,
+    itemRules: Array.isArray(v.itemRules) && v.itemRules.length ? v.itemRules as ItemRule[] : DEFAULT_ITEM_RULES,
   };
 }
 
@@ -84,6 +136,10 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
     senderPostalCode: b.senderPostalCode ? String(b.senderPostalCode) : undefined,
     senderProvince: b.senderProvince ? String(b.senderProvince) : undefined,
     allowCustomerLockerSelection: Boolean(b.allowCustomerLockerSelection),
+    doorDeliveryEnabled: Boolean(b.doorDeliveryEnabled),
+    roundPricing: b.roundPricing !== false,
+    packageSizes: Array.isArray(b.packageSizes) && b.packageSizes.length ? b.packageSizes : DEFAULT_PACKAGE_SIZES,
+    itemRules: Array.isArray(b.itemRules) && b.itemRules.length ? b.itemRules : DEFAULT_ITEM_RULES,
   };
   await prisma.setting.upsert({
     where: { scope_key: { scope: "integrations", key: "pudo" } },
@@ -91,6 +147,38 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
     create: { scope: "integrations", key: "pudo", value: value as any },
   });
   return value;
+}
+
+export async function getPudoShippingOption(itemCount: number) {
+  const settings = await getPudoSettings();
+  if (!settings.enabled) return { locker: null, door: null };
+
+  const rule = settings.itemRules.find(
+    (r) => itemCount >= r.minItems && (r.maxItems === null || itemCount <= r.maxItems),
+  );
+  if (!rule) return { locker: null, door: null };
+
+  const pkg = settings.packageSizes.find((p) => p.code === rule.packageCode);
+  if (!pkg) return { locker: null, door: null };
+
+  const round = (price: number) => settings.roundPricing ? roundToX9(price) : price;
+
+  return {
+    locker: settings.allowCustomerLockerSelection ? {
+      price: round(pkg.lockerPrice),
+      packageCode: pkg.code,
+      packageLabel: pkg.label,
+      dimensions: pkg.dimensions,
+      serviceCode: pkg.lockerServiceCode,
+    } : null,
+    door: settings.doorDeliveryEnabled ? {
+      price: round(pkg.doorPrice),
+      packageCode: pkg.code,
+      packageLabel: pkg.label,
+      dimensions: pkg.dimensions,
+      serviceCode: pkg.doorServiceCode,
+    } : null,
+  };
 }
 
 // All PUDO API routes live under /api/v1/ and require Bearer token auth.

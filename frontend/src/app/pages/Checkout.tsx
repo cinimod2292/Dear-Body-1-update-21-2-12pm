@@ -39,6 +39,14 @@ type PudoLocker = {
   postalCode?: string;
 };
 
+type PudoShippingOption = {
+  price: number;
+  packageCode: string;
+  packageLabel: string;
+  dimensions: string;
+  serviceCode: string;
+} | null;
+
 type QuoteTotals = {
   subtotalAmount: number;
   discountAmount: number;
@@ -81,13 +89,25 @@ export default function Checkout() {
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<string>("");
   const [pudoEnabled, setPudoEnabled] = useState(false);
   const [pudoAllowCustomerSelection, setPudoAllowCustomerSelection] = useState(false);
-  const [deliveryType, setDeliveryType] = useState<"home" | "pudo">("home");
+  const [pudoDoorDeliveryEnabled, setPudoDoorDeliveryEnabled] = useState(false);
+  const [pudoShippingOptions, setPudoShippingOptions] = useState<{ locker: PudoShippingOption; door: PudoShippingOption } | null>(null);
+  const [deliveryType, setDeliveryType] = useState<"home" | "pudo-locker" | "pudo-door">("home");
   const [pudoLockerSearch, setPudoLockerSearch] = useState("");
   const [pudoLockers, setPudoLockers] = useState<PudoLocker[]>([]);
   const [pudoLockersLoading, setPudoLockersLoading] = useState(false);
   const [selectedPudoLocker, setSelectedPudoLocker] = useState<PudoLocker | null>(null);
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
   const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
+  const showLockerOption = pudoEnabled && !!pudoShippingOptions?.locker && pudoAllowCustomerSelection;
+  const showDoorOption = pudoEnabled && !!pudoShippingOptions?.door && pudoDoorDeliveryEnabled;
+  const showPudoSelector = showLockerOption || showDoorOption;
+  const isPudoDelivery = deliveryType === "pudo-locker" || deliveryType === "pudo-door";
+  const pudoPrice = deliveryType === "pudo-locker"
+    ? (pudoShippingOptions?.locker?.price ?? null)
+    : deliveryType === "pudo-door"
+      ? (pudoShippingOptions?.door?.price ?? null)
+      : null;
+  const pudoColCount = 1 + (showLockerOption ? 1 : 0) + (showDoorOption ? 1 : 0);
   const shipping = useMemo(() => {
     if (quote?.freeShippingApplied) return 0;
     if (selectedShippingMethodId && selectedShippingMethod) return Number(selectedShippingMethod.price ?? 0);
@@ -97,8 +117,11 @@ export default function Checkout() {
   const subtotalForDisplay = Number(quote?.subtotalAmount ?? cartTotal);
   const discountForDisplay = Number(quote?.discountAmount ?? 0);
   const taxForDisplay = Number(quote?.taxAmount ?? 0);
-  const total = Number(quote?.totalAmount ?? (subtotalForDisplay - discountForDisplay + shipping + taxForDisplay));
+  const total = isPudoDelivery && pudoPrice !== null
+    ? subtotalForDisplay - discountForDisplay + pudoPrice + taxForDisplay
+    : Number(quote?.totalAmount ?? (subtotalForDisplay - discountForDisplay + shipping + taxForDisplay));
   const summaryShippingDisplay = (() => {
+    if (isPudoDelivery) return pudoPrice !== null ? formatRand(pudoPrice) : "TBC";
     if (!selectedShippingMethodId) return "TBC";
     if (quote?.freeShippingApplied) return "FREE";
     if (quote && !quote.shippingMethodInvalid && quote.shippingMethodId === selectedShippingMethodId) {
@@ -108,9 +131,9 @@ export default function Checkout() {
     return "TBC";
   })();
   const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
-  const canProceedToPayment =
-    (!shippingSelectionRequired || !!selectedShippingMethodId) &&
-    (deliveryType === "home" || !!selectedPudoLocker);
+  const canProceedToPayment = isPudoDelivery
+    ? (pudoPrice !== null && (deliveryType !== "pudo-locker" || !!selectedPudoLocker))
+    : (!shippingSelectionRequired || !!selectedShippingMethodId);
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -210,9 +233,18 @@ export default function Checkout() {
       .then((payload) => {
         setPudoEnabled(Boolean(payload?.data?.enabled));
         setPudoAllowCustomerSelection(Boolean(payload?.data?.allowCustomerLockerSelection));
+        setPudoDoorDeliveryEnabled(Boolean(payload?.data?.doorDeliveryEnabled));
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!pudoEnabled || cartCount === 0) { setPudoShippingOptions(null); return; }
+    fetch(`${API_BASE}/store/pudo/shipping-options?itemCount=${cartCount}`)
+      .then((r) => r.json())
+      .then((payload) => setPudoShippingOptions(payload?.data ?? null))
+      .catch(() => setPudoShippingOptions(null));
+  }, [pudoEnabled, cartCount]);
 
   const searchPudoLockers = async () => {
     setPudoLockersLoading(true);
@@ -414,14 +446,16 @@ export default function Checkout() {
         })
       );
 
-      const isPudo = deliveryType === "pudo" && !!selectedPudoLocker;
+      const isPudoLocker = deliveryType === "pudo-locker" && !!selectedPudoLocker;
+      const isPudoDoor = deliveryType === "pudo-door";
+      const isPudo = isPudoLocker || isPudoDoor;
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           email: customer.email,
-          shippingMethodId: selectedShippingMethodId || undefined,
-          shippingAddress: isPudo
+          shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
+          shippingAddress: isPudoLocker
             ? {
                 firstName: form.firstName,
                 lastName: form.lastName,
@@ -441,8 +475,10 @@ export default function Checkout() {
                 postalCode: form.zip,
                 country: form.country,
               },
-          pudoLockerCode: isPudo ? selectedPudoLocker!.lockerCode : undefined,
-          pudoLockerName: isPudo ? selectedPudoLocker!.name : undefined,
+          pudoLockerCode: isPudoLocker ? selectedPudoLocker!.lockerCode : undefined,
+          pudoLockerName: isPudoLocker ? selectedPudoLocker!.name : undefined,
+          pudoDeliveryType: isPudo ? (isPudoLocker ? "locker" : "door") : undefined,
+          pudoShippingAmount: isPudo && pudoPrice !== null ? pudoPrice : undefined,
           payment: {
             gateway: selectedGateway || undefined,
             returnUrl,
@@ -548,11 +584,16 @@ export default function Checkout() {
                 <p className="text-gray-500 text-sm">3–5 business days</p>
               </div>
             </div>
-            {selectedPudoLocker ? (
+            {deliveryType === "pudo-locker" && selectedPudoLocker ? (
               <div>
                 <p className="text-gray-700 text-sm font-semibold">PUDO Locker collection:</p>
                 <p className="text-gray-500 text-sm">{selectedPudoLocker.name}</p>
                 <p className="text-gray-500 text-sm">{selectedPudoLocker.address}, {selectedPudoLocker.city}</p>
+              </div>
+            ) : deliveryType === "pudo-door" ? (
+              <div>
+                <p className="text-gray-700 text-sm font-semibold">PUDO Door delivery:</p>
+                <p className="text-gray-500 text-sm">{form.address}, {form.city}</p>
               </div>
             ) : (
               <p className="text-gray-500 text-sm">
@@ -660,33 +701,45 @@ export default function Checkout() {
               <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h2 className="font-black text-gray-900 text-xl mb-6">Shipping</h2>
 
-                {/* Delivery method toggle — only shown when admin enabled customer locker selection */}
-                {pudoEnabled && pudoAllowCustomerSelection && (
+                {/* Delivery method selector */}
+                {showPudoSelector && (
                   <div className="mb-6">
                     <p className="font-bold text-gray-800 text-sm mb-3">Delivery Method</p>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${pudoColCount === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
                       <button
                         type="button"
                         onClick={() => { setDeliveryType("home"); setSelectedPudoLocker(null); }}
                         className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors text-left ${deliveryType === "home" ? "border-pink-400 bg-pink-50 text-pink-900" : "border-gray-200 text-gray-600 hover:border-pink-200"}`}
                       >
                         <span className="block font-semibold">Home Delivery</span>
-                        <span className="block text-xs mt-0.5 opacity-70">Delivered to your address</span>
+                        <span className="block text-xs mt-0.5 opacity-70">Standard courier</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeliveryType("pudo")}
-                        className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors text-left ${deliveryType === "pudo" ? "border-pink-400 bg-pink-50 text-pink-900" : "border-gray-200 text-gray-600 hover:border-pink-200"}`}
-                      >
-                        <span className="block font-semibold">PUDO Locker</span>
-                        <span className="block text-xs mt-0.5 opacity-70">Collect from a nearby locker</span>
-                      </button>
+                      {showLockerOption && (
+                        <button
+                          type="button"
+                          onClick={() => setDeliveryType("pudo-locker")}
+                          className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors text-left ${deliveryType === "pudo-locker" ? "border-pink-400 bg-pink-50 text-pink-900" : "border-gray-200 text-gray-600 hover:border-pink-200"}`}
+                        >
+                          <span className="block font-semibold">PUDO Locker</span>
+                          <span className="block text-xs mt-0.5 opacity-70">{formatRand(pudoShippingOptions!.locker!.price)} · collect nearby</span>
+                        </button>
+                      )}
+                      {showDoorOption && (
+                        <button
+                          type="button"
+                          onClick={() => { setDeliveryType("pudo-door"); setSelectedPudoLocker(null); }}
+                          className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors text-left ${deliveryType === "pudo-door" ? "border-pink-400 bg-pink-50 text-pink-900" : "border-gray-200 text-gray-600 hover:border-pink-200"}`}
+                        >
+                          <span className="block font-semibold">PUDO Door</span>
+                          <span className="block text-xs mt-0.5 opacity-70">{formatRand(pudoShippingOptions!.door!.price)} · door-to-door</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {/* PUDO locker search & selection */}
-                {deliveryType === "pudo" && (
+                {deliveryType === "pudo-locker" && (
                   <div className="mb-6">
                     <p className="font-bold text-gray-800 text-sm mb-3">Select a PUDO Locker</p>
                     <div className="flex gap-2 mb-3">
@@ -737,8 +790,8 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Home delivery address form — hidden when PUDO locker is selected */}
-                {deliveryType === "home" && savedAddresses.length > 0 ? (
+                {/* Address form — shown for home delivery and PUDO door delivery */}
+                {(deliveryType === "home" || deliveryType === "pudo-door") && savedAddresses.length > 0 ? (
                   <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
                     <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
                     <select
@@ -754,7 +807,7 @@ export default function Checkout() {
                     </select>
                   </div>
                 ) : null}
-                {deliveryType === "home" && (
+                {(deliveryType === "home" || deliveryType === "pudo-door") && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { key: "address", label: "Street Address", placeholder: "123 Main St", full: true },
@@ -777,39 +830,60 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Shipping Method */}
-                <div className="mt-6">
-                  <h3 className="font-bold text-gray-900 mb-3">Shipping Method</h3>
-                  <div className="space-y-3">
-                    {(shippingMethods.length ? shippingMethods : []).map((opt) => (
-                      <label key={opt.id} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="shipping"
-                            checked={selectedShippingMethodId === opt.id}
-                            onChange={() => {
-                              setSelectedShippingMethodId(opt.id);
-                              setShippingStepError(null);
-                            }}
-                            className="accent-pink-500"
-                          />
-                          <div>
-                            <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
-                            <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
-                          </div>
-                        </div>
-                        <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>
-                      </label>
-                    ))}
-                    {shippingMethods.length === 0 ? (
-                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
-                        <p className="text-sm font-semibold text-amber-800">No shipping options available</p>
-                        <p className="text-sm text-amber-700 mt-0.5">The store has not yet configured any shipping methods. Please contact us to complete your order.</p>
+                {/* PUDO pricing info — shown for pudo-locker and pudo-door */}
+                {isPudoDelivery && pudoPrice !== null && (
+                  <div className="mt-6 rounded-xl border border-pink-100 bg-pink-50 p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-pink-900 text-sm">
+                          {deliveryType === "pudo-locker" ? "PUDO Locker Delivery" : "PUDO Door-to-Door Delivery"}
+                        </p>
+                        <p className="text-xs text-pink-600 mt-0.5">
+                          {deliveryType === "pudo-locker" ? pudoShippingOptions?.locker?.packageLabel : pudoShippingOptions?.door?.packageLabel} package
+                          {" · "}
+                          {deliveryType === "pudo-locker" ? pudoShippingOptions?.locker?.dimensions : pudoShippingOptions?.door?.dimensions}
+                        </p>
                       </div>
-                    ) : null}
+                      <span className="font-black text-pink-900">{formatRand(pudoPrice)}</span>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Shipping Method — only for home delivery */}
+                {deliveryType === "home" && (
+                  <div className="mt-6">
+                    <h3 className="font-bold text-gray-900 mb-3">Shipping Method</h3>
+                    <div className="space-y-3">
+                      {(shippingMethods.length ? shippingMethods : []).map((opt) => (
+                        <label key={opt.id} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-pink-300 transition-colors has-[:checked]:border-pink-400 has-[:checked]:bg-pink-50">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="shipping"
+                              checked={selectedShippingMethodId === opt.id}
+                              onChange={() => {
+                                setSelectedShippingMethodId(opt.id);
+                                setShippingStepError(null);
+                              }}
+                              className="accent-pink-500"
+                            />
+                            <div>
+                              <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
+                              <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
+                            </div>
+                          </div>
+                          <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>
+                        </label>
+                      ))}
+                      {shippingMethods.length === 0 ? (
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+                          <p className="text-sm font-semibold text-amber-800">No shipping options available</p>
+                          <p className="text-sm text-amber-700 mt-0.5">The store has not yet configured any shipping methods. Please contact us to complete your order.</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3 mt-6">
                   <button
@@ -820,8 +894,12 @@ export default function Checkout() {
                   </button>
                   <button
                     onClick={() => {
-                      if (deliveryType === "pudo" && !selectedPudoLocker) {
+                      if (deliveryType === "pudo-locker" && !selectedPudoLocker) {
                         setShippingStepError("Please select a PUDO locker to continue.");
+                        return;
+                      }
+                      if (deliveryType === "pudo-door" && !form.address.trim()) {
+                        setShippingStepError("Please enter your delivery address to continue.");
                         return;
                       }
                       if (!canProceedToPayment) {
@@ -879,7 +957,7 @@ export default function Checkout() {
                     {submitting ? "Redirecting..." : `Pay with ${(gatewayOptions.find((g) => g.id === selectedGateway)?.label || "Gateway")} · ${formatRand(total)}`}
                   </button>
                 </div>
-                {shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-red-500 text-sm mt-3">Please select a shipping method to continue.</p> : null}
+                {!isPudoDelivery && shippingSelectionRequired && !selectedShippingMethodId ? <p className="text-red-500 text-sm mt-3">Please select a shipping method to continue.</p> : null}
                 {checkoutError ? <p className="text-red-500 text-sm mt-3">{checkoutError}</p> : null}
               </form>
             )}

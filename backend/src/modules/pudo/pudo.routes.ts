@@ -2,7 +2,9 @@ import { FastifyInstance } from "fastify";
 import {
   createPudoShipment,
   getPudoLockers,
+  getPudoRates,
   getPudoSettings,
+  listPudoShipments,
   trackPudoShipment,
   upsertPudoSettings,
 } from "./pudo.service.js";
@@ -62,5 +64,20 @@ export async function pudoRoutes(app: FastifyInstance) {
       const { waybill } = request.params as { waybill: string };
       return reply.send({ data: await trackPudoShipment(waybill) });
     },
+  );
+
+  app.post(
+    "/admin/pudo/rates",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const { lockerCode } = request.body as { lockerCode: string };
+      return reply.send({ data: await getPudoRates(lockerCode) });
+    },
+  );
+
+  app.get(
+    "/admin/pudo/shipments",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (_request, reply) => reply.send({ data: await listPudoShipments() }),
   );
 }

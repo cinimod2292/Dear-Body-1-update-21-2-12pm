@@ -229,3 +229,31 @@ export async function trackPudoShipment(waybillNumber: string) {
   }
   return res.json();
 }
+
+export async function getPudoRates(lockerCode: string) {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !settings.apiKey) {
+    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
+  }
+  const payload = {
+    collection_address: {
+      street_address: settings.senderStreetAddress ?? "",
+      local_area: settings.senderLocalArea ?? "",
+      city: settings.senderCity ?? "",
+      code: settings.senderPostalCode ?? "",
+      zone: settings.senderProvince ?? "",
+      country: "South Africa",
+      type: "business",
+    },
+    delivery_address: { terminal_id: lockerCode },
+  };
+  return pudoFetch<unknown>("POST", "/rates", settings, payload);
+}
+
+export async function listPudoShipments() {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !settings.apiKey) {
+    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
+  }
+  return pudoFetch<unknown>("GET", "/shipments", settings);
+}

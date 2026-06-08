@@ -97,21 +97,37 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
 async function pudoFetch<T>(method: string, path: string, settings: PudoSettings, body?: object): Promise<T> {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
   const sep = path.includes("?") ? "&" : "?";
+  const keyPreview = settings.apiKey ? `${settings.apiKey.slice(0, 6)}…(len=${settings.apiKey.length})` : "(empty)";
   const url = `${base}${path}${sep}api_key=${encodeURIComponent(settings.apiKey)}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    // @ts-ignore — undici dispatcher option not in standard RequestInit types
-    dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
-  });
+  const logUrl = `${base}${path}${sep}api_key=${keyPreview}`;
+
+  console.log(`[PUDO] → ${method} ${logUrl} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
+  if (body) console.log(`[PUDO] request body:`, JSON.stringify(body));
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      // @ts-ignore — undici dispatcher option not in standard RequestInit types
+      dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
+    });
+  } catch (networkErr: unknown) {
+    const msg = networkErr instanceof Error ? networkErr.message : String(networkErr);
+    console.error(`[PUDO] network error on ${method} ${logUrl}:`, msg);
+    throw new AppError(502, `PUDO network error: ${msg}`, "PUDO_NETWORK_ERROR");
+  }
+
+  console.log(`[PUDO] ← ${res.status} ${res.statusText} | content-type=${res.headers.get("content-type")}`);
+
   if (!res.ok) {
     let rawBody = "";
     try { rawBody = await res.text(); } catch {}
-    console.error(`PUDO API ${method} ${url} → ${res.status}`, rawBody);
+    console.error(`[PUDO] error body:`, rawBody);
     let message = `PUDO API error ${res.status}`;
     try {
       const err = JSON.parse(rawBody) as { message?: string };
@@ -119,11 +135,24 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     } catch {}
     throw new AppError(502, message, "PUDO_API_ERROR");
   }
-  return res.json() as Promise<T>;
+
+  let parsed: T;
+  try {
+    parsed = await res.json() as T;
+  } catch (parseErr: unknown) {
+    const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    console.error(`[PUDO] JSON parse error on ${method} ${logUrl}:`, msg);
+    throw new AppError(502, `PUDO response parse error: ${msg}`, "PUDO_PARSE_ERROR");
+  }
+
+  const preview = JSON.stringify(parsed);
+  console.log(`[PUDO] response preview (first 300 chars):`, preview.slice(0, 300));
+  return parsed;
 }
 
 export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
   const settings = await getPudoSettings();
+  console.log(`[PUDO] getPudoLockers | enabled=${settings.enabled} sandbox=${settings.sandbox} apiKeyLen=${settings.apiKey.length}`);
   if (!settings.enabled || !settings.apiKey) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }

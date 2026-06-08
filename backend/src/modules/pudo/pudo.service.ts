@@ -284,10 +284,17 @@ export async function diagnosePudoApi() {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
   const dispatcher = settings.sandbox ? pudoSandboxAgent : undefined;
 
-  const pathsToTry = ["/lockers-data", "/lockers", "/terminals", "/locker"];
+  const pathsToTry = [
+    "/lockers-data", "/lockers", "/terminals", "/locker",
+    "/api/lockers-data", "/api/lockers",
+    "/v1/lockers-data", "/v1/lockers",
+    "/api/v1/lockers-data", "/api/v1/lockers",
+  ];
   const authMethods = [
-    { name: "query_api_key", headers: {}, qs: `?api_key=${encodeURIComponent(settings.apiKey)}` },
-    { name: "bearer_header", headers: { Authorization: `Bearer ${settings.apiKey}` }, qs: "" },
+    { name: "query_api_key",    headers: {},                                              qs: `?api_key=${encodeURIComponent(settings.apiKey)}` },
+    { name: "bearer_header",    headers: { Authorization: `Bearer ${settings.apiKey}` }, qs: "" },
+    { name: "query_token",      headers: {},                                              qs: `?token=${encodeURIComponent(settings.apiKey)}` },
+    { name: "no_auth_baseline", headers: {},                                              qs: "" },
   ];
 
   const results: Record<string, unknown> = {

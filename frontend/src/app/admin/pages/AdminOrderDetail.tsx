@@ -29,6 +29,7 @@ interface OrderAddress {
   company?: string | null;
   line1: string;
   line2?: string | null;
+  suburb?: string | null;
   city: string;
   state?: string | null;
   postalCode: string;
@@ -87,6 +88,7 @@ export default function AdminOrderDetail() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // PUDO state
+  const [pudoSuburbOverride, setPudoSuburbOverride] = useState("");
   const [pudoSettings, setPudoSettings] = useState<PudoSettings | null>(null);
   const [pudoLockerSearch, setPudoLockerSearch] = useState("");
   const [pudoLockers, setPudoLockers] = useState<PudoLocker[]>([]);
@@ -201,11 +203,17 @@ export default function AdminOrderDetail() {
 
   const triggerAutoShipment = async () => {
     if (!session?.accessToken || !orderId) return;
+    if (order?.pudoDeliveryType === "door" && !order.shippingAddress?.suburb && !pudoSuburbOverride.trim()) {
+      toast.error("Suburb / Local Area is required for door delivery geocoding");
+      return;
+    }
     try {
       setPudoShipmentLoading(true);
+      const body: Record<string, unknown> = {};
+      if (pudoSuburbOverride.trim()) body.suburb = pudoSuburbOverride.trim();
       const res = await apiRequest<{ data: { waybillNumber: string; alreadyExists?: boolean } }>(
         `/admin/orders/${orderId}/pudo-shipment`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(body) },
         session.accessToken,
       );
       if (res.data.alreadyExists) {
@@ -340,6 +348,7 @@ export default function AdminOrderDetail() {
                 {order.shippingAddress.company && <p>{order.shippingAddress.company}</p>}
                 <p>{order.shippingAddress.line1}</p>
                 {order.shippingAddress.line2 && <p>{order.shippingAddress.line2}</p>}
+                {order.shippingAddress.suburb && <p>{order.shippingAddress.suburb}</p>}
                 <p>{[order.shippingAddress.city, order.shippingAddress.state, order.shippingAddress.postalCode].filter(Boolean).join(", ")}</p>
                 <p>{order.shippingAddress.country}</p>
                 {order.shippingAddress.phone && <p className="text-gray-500 mt-1">{order.shippingAddress.phone}</p>}
@@ -419,7 +428,21 @@ export default function AdminOrderDetail() {
                 <p className="text-xs text-gray-400 mt-0.5">{order.courier}</p>
               </div>
             ) : (
-              <div className="flex flex-col items-end gap-1">
+              <div className="flex flex-col items-end gap-2 min-w-[220px]">
+                {order.pudoDeliveryType === "door" && !order.shippingAddress?.suburb && (
+                  <div className="w-full">
+                    <label className="text-xs font-semibold text-amber-700 block mb-1">
+                      Suburb / Local Area <span className="text-red-500">*</span>
+                      <span className="font-normal ml-1 text-amber-600">(missing — required for geocoding)</span>
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"
+                      placeholder="e.g. Claremont"
+                      value={pudoSuburbOverride}
+                      onChange={(e) => setPudoSuburbOverride(e.target.value)}
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => void triggerAutoShipment()}

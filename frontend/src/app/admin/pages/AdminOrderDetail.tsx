@@ -47,6 +47,7 @@ interface OrderDetail {
   courier?: string | null;
   pudoLockerCode?: string | null;
   pudoLockerName?: string | null;
+  pudoDeliveryType?: string | null;
   shippedAt?: string | null;
   deliveredAt?: string | null;
   currency: string;
@@ -190,6 +191,28 @@ export default function AdminOrderDetail() {
       );
       setPudoResult(res.data);
       toast.success(`PUDO shipment created — waybill ${res.data.waybillNumber}`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create PUDO shipment");
+    } finally {
+      setPudoShipmentLoading(false);
+    }
+  };
+
+  const triggerAutoShipment = async () => {
+    if (!session?.accessToken || !orderId) return;
+    try {
+      setPudoShipmentLoading(true);
+      const res = await apiRequest<{ data: { waybillNumber: string; alreadyExists?: boolean } }>(
+        `/admin/orders/${orderId}/pudo-shipment`,
+        { method: "POST" },
+        session.accessToken,
+      );
+      if (res.data.alreadyExists) {
+        toast.success(`Shipment already exists — waybill ${res.data.waybillNumber}`);
+      } else {
+        toast.success(`PUDO shipment created — waybill ${res.data.waybillNumber}`);
+      }
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create PUDO shipment");
@@ -370,119 +393,45 @@ export default function AdminOrderDetail() {
         </section>
       </div>
 
-      {/* PUDO Shipment Panel — only shown when PUDO integration is enabled */}
-      {pudoSettings?.enabled && (
-        <section className="bg-white border border-indigo-200 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
+      {/* PUDO Shipment Panel */}
+      {pudoSettings?.enabled && order?.pudoDeliveryType && (
+        <section className="bg-white border border-indigo-200 rounded-xl p-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <h3 className="font-bold text-indigo-900">PUDO — The Courier Guy</h3>
-              <p className="text-xs text-indigo-600">Create a PUDO locker shipment for this order</p>
+              <h3 className="font-bold text-indigo-900">PUDO Shipment</h3>
+              <p className="text-xs text-indigo-600 mt-0.5">
+                {order.pudoDeliveryType === "locker"
+                  ? `Locker: ${order.pudoLockerName ?? order.pudoLockerCode ?? "—"}`
+                  : "Door-to-door delivery"}
+              </p>
             </div>
-            {pudoResult && (
-              <div className="text-right text-sm">
-                <p className="font-semibold text-green-700">Waybill: {pudoResult.waybillNumber}</p>
-                {pudoResult.labelUrl && (
-                  <a href={String(pudoResult.labelUrl)} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 underline">Download Label</a>
-                )}
+            {order.trackingNumber ? (
+              <div className="text-sm text-right">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-0.5">Waybill</p>
+                <a
+                  href={`https://pudo.co.za/track/${order.trackingNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono font-bold text-indigo-700 hover:underline"
+                >
+                  {order.trackingNumber}
+                </a>
+                <p className="text-xs text-gray-400 mt-0.5">{order.courier}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => void triggerAutoShipment()}
+                  disabled={pudoShipmentLoading}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
+                >
+                  {pudoShipmentLoading ? "Creating…" : "Create PUDO Shipment"}
+                </button>
+                <p className="text-xs text-amber-600">No waybill assigned yet</p>
               </div>
             )}
           </div>
-
-          {/* Locker search */}
-          <div>
-            <p className="text-xs font-medium text-gray-600 mb-1">Search PUDO Locker</p>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                placeholder="Search by area, city or locker name…"
-                value={pudoLockerSearch}
-                onChange={(e) => setPudoLockerSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void searchPudoLockers(); } }}
-              />
-              <button
-                type="button"
-                onClick={() => void searchPudoLockers()}
-                disabled={pudoLockersLoading}
-                className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm disabled:opacity-60"
-              >
-                {pudoLockersLoading ? "Searching…" : "Search"}
-              </button>
-            </div>
-            {pudoLockers.length > 0 && (
-              <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
-                {pudoLockers.map((locker) => (
-                  <button
-                    key={locker.lockerCode}
-                    type="button"
-                    onClick={() => { setPudoSelectedLocker(locker); setPudoLockers([]); }}
-                    className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 hover:bg-indigo-50 ${pudoSelectedLocker?.lockerCode === locker.lockerCode ? "bg-indigo-50" : ""}`}
-                  >
-                    <p className="font-medium">{locker.name}</p>
-                    <p className="text-xs text-gray-500">{locker.address}, {locker.city}{locker.postalCode ? ` ${locker.postalCode}` : ""}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-            {pudoSelectedLocker && (
-              <div className="mt-2 flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2 text-sm">
-                <div>
-                  <p className="font-medium text-indigo-900">{pudoSelectedLocker.name}</p>
-                  <p className="text-xs text-indigo-600">{pudoSelectedLocker.address}, {pudoSelectedLocker.city} · Code: {pudoSelectedLocker.lockerCode}</p>
-                </div>
-                <button type="button" onClick={() => setPudoSelectedLocker(null)} className="text-xs text-gray-500 hover:text-gray-800">Clear</button>
-              </div>
-            )}
-          </div>
-
-          {/* Shipment form */}
-          <form onSubmit={createPudoShipment} className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Sender Name</p>
-                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderName} onChange={(e) => setPudoSenderName(e.target.value)} placeholder="Store name" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Sender Phone</p>
-                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderPhone} onChange={(e) => setPudoSenderPhone(e.target.value)} placeholder="0800 000 000" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Sender Email</p>
-                <input type="email" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoSenderEmail} onChange={(e) => setPudoSenderEmail(e.target.value)} placeholder="store@example.com" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Name</p>
-                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientName} onChange={(e) => setPudoRecipientName(e.target.value)} placeholder="Customer name" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Phone</p>
-                <input required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientPhone} onChange={(e) => setPudoRecipientPhone(e.target.value)} placeholder="0800 000 000" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Recipient Email</p>
-                <input type="email" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoRecipientEmail} onChange={(e) => setPudoRecipientEmail(e.target.value)} placeholder="customer@example.com" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Weight (kg)</p>
-                <input type="number" step="0.1" min="0.1" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoWeight} onChange={(e) => setPudoWeight(e.target.value)} />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Pieces</p>
-                <input type="number" step="1" min="1" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={pudoPieces} onChange={(e) => setPudoPieces(e.target.value)} />
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={pudoShipmentLoading || !pudoSelectedLocker}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm disabled:opacity-60"
-            >
-              {pudoShipmentLoading ? "Creating Shipment…" : "Create PUDO Shipment"}
-            </button>
-            {!pudoSelectedLocker && <p className="text-xs text-amber-600">Select a PUDO locker above before creating the shipment.</p>}
-          </form>
         </section>
       )}
 

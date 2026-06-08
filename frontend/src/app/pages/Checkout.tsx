@@ -465,27 +465,17 @@ export default function Checkout() {
         body: JSON.stringify({
           email: customer.email,
           shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
-          shippingAddress: isPudoLocker
-            ? {
-                firstName: form.firstName,
-                lastName: form.lastName,
-                phone: form.phone,
-                line1: selectedPudoLocker!.address,
-                city: selectedPudoLocker!.city,
-                postalCode: selectedPudoLocker!.postalCode || "0000",
-                country: "South Africa",
-              }
-            : {
-                firstName: form.firstName,
-                lastName: form.lastName,
-                phone: form.phone,
-                line1: form.address,
-                line2: form.unit || undefined,
-                city: form.city,
-                state: form.state,
-                postalCode: form.zip,
-                country: form.country,
-              },
+          shippingAddress: {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            phone: form.phone,
+            line1: form.address,
+            line2: form.unit || undefined,
+            city: form.city,
+            state: form.state,
+            postalCode: form.zip,
+            country: form.country,
+          },
           pudoLockerCode: isPudoLocker ? selectedPudoLocker!.lockerCode : undefined,
           pudoLockerName: isPudoLocker ? selectedPudoLocker!.name : undefined,
           pudoDeliveryType: isPudo ? (isPudoLocker ? "locker" : "door") : undefined,
@@ -803,8 +793,8 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Address form — shown for home delivery and PUDO door delivery */}
-                {(deliveryType === "home" || deliveryType === "pudo-door") && savedAddresses.length > 0 ? (
+                {/* Address form — shown for all delivery types */}
+                {savedAddresses.length > 0 ? (
                   <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
                     <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
                     <select
@@ -820,18 +810,19 @@ export default function Checkout() {
                     </select>
                   </div>
                 ) : null}
-                {(deliveryType === "home" || deliveryType === "pudo-door") && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
-                      { key: "unit", label: "Unit / Complex / Building", placeholder: "Unit 4, The Palms (optional)", full: true },
-                      { key: "address", label: "Street Address", placeholder: "123 Main St", full: true },
-                      { key: "city", label: "City", placeholder: "Miami" },
-                      { key: "state", label: "State / Province", placeholder: "FL" },
-                      { key: "zip", label: "ZIP / Postal Code", placeholder: "33101" },
-                      { key: "country", label: "Country", placeholder: "South Africa" },
+                      { key: "unit", label: "Unit / Complex / Building", placeholder: "Unit 4, The Palms (optional)", full: true, required: false },
+                      { key: "address", label: "Street Address", placeholder: "123 Main St", full: true, required: true },
+                      { key: "city", label: "City", placeholder: "Cape Town", required: true },
+                      { key: "state", label: "Province", placeholder: "Western Cape", required: false },
+                      { key: "zip", label: "Postal Code", placeholder: "8001", required: true },
+                      { key: "country", label: "Country", placeholder: "South Africa", required: true },
                     ].map(field => (
                       <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
-                        <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>
+                        <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                          {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+                        </label>
                         <input
                           type="text"
                           value={(form as any)[field.key]}
@@ -842,7 +833,6 @@ export default function Checkout() {
                       </div>
                     ))}
                   </div>
-                )}
 
                 {/* Shipping Method — only for home delivery */}
                 {deliveryType === "home" && (
@@ -893,8 +883,20 @@ export default function Checkout() {
                         setShippingStepError("Please select a PUDO locker to continue.");
                         return;
                       }
-                      if (deliveryType === "pudo-door" && !form.address.trim()) {
-                        setShippingStepError("Please enter your delivery address to continue.");
+                      if (!form.address.trim()) {
+                        setShippingStepError("Street address is required.");
+                        return;
+                      }
+                      if (!form.city.trim()) {
+                        setShippingStepError("City is required.");
+                        return;
+                      }
+                      if (!form.zip.trim()) {
+                        setShippingStepError("Postal code is required.");
+                        return;
+                      }
+                      if (!form.country.trim()) {
+                        setShippingStepError("Country is required.");
                         return;
                       }
                       if (!canProceedToPayment) {

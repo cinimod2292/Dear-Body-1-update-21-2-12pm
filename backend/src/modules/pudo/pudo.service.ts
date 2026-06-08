@@ -577,13 +577,13 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
 
 /** PUDO tracking status → internal order status mapping */
 const PUDO_STATUS_MAP: Record<string, { fulfillmentStatus?: string; status?: string }> = {
-  "collected":      { fulfillmentStatus: "SHIPPED" },
-  "in_transit":     { fulfillmentStatus: "SHIPPED" },
-  "out_for_delivery": { fulfillmentStatus: "SHIPPED" },
-  "delivered":      { fulfillmentStatus: "FULFILLED", status: "DELIVERED" },
-  "failed_delivery": { fulfillmentStatus: "SHIPPED" },
-  "exception":      {},
-  "return_to_sender": {},
+  "collected":        { status: "SHIPPED" },
+  "in_transit":       { status: "SHIPPED" },
+  "out_for_delivery": { status: "SHIPPED" },
+  "delivered":        { status: "DELIVERED", fulfillmentStatus: "FULFILLED" },
+  "failed_delivery":  { status: "SHIPPED" },
+  "exception":        {},
+  "return_to_sender": { fulfillmentStatus: "RETURNED" },
 };
 
 /** Polls PUDO tracking for all open PUDO orders and updates order status. */
@@ -597,7 +597,7 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
     where: {
       courier: { contains: "PUDO", mode: "insensitive" },
       trackingNumber: { not: null },
-      NOT: { status: { in: ["DELIVERED", "CANCELLED", "REFUNDED"] as any } },
+      NOT: { status: { in: ["DELIVERED", "CANCELLED"] } },
     },
     select: { id: true, orderNumber: true, trackingNumber: true, fulfillmentStatus: true, status: true },
   });

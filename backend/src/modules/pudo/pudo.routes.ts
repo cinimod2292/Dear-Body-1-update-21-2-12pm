@@ -109,9 +109,10 @@ export async function pudoRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
+      const { suburb } = (request.body as { suburb?: string } | null) ?? {};
       const order = await prisma.order.findUnique({
         where: { id: orderId },
-        select: { id: true, pudoDeliveryType: true, trackingNumber: true, pudoLockerCode: true },
+        select: { id: true, pudoDeliveryType: true, trackingNumber: true, pudoLockerCode: true, shippingAddressId: true },
       });
       if (!order) {
         return reply.status(404).send({ error: { message: "Order not found" } });
@@ -121,6 +122,13 @@ export async function pudoRoutes(app: FastifyInstance) {
       }
       if (!order.pudoDeliveryType) {
         return reply.status(400).send({ error: { message: "Order does not have a PUDO delivery type — cannot create shipment" } });
+      }
+      // Save suburb to the address record so autoCreatePudoShipment picks it up
+      if (suburb?.trim() && order.shippingAddressId) {
+        await prisma.address.update({
+          where: { id: order.shippingAddressId },
+          data: { suburb: suburb.trim() },
+        });
       }
       await autoCreatePudoShipment(orderId);
       const updated = await prisma.order.findUnique({

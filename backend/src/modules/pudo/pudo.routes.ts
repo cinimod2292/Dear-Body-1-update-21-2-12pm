@@ -1,5 +1,7 @@
 import { FastifyInstance } from "fastify";
+import { prisma } from "../../lib/prisma.js";
 import {
+  autoCreatePudoShipment,
   createPudoShipment,
   diagnosePudoApi,
   downloadPudoWaybill,
@@ -103,10 +105,36 @@ export async function pudoRoutes(app: FastifyInstance) {
   );
 
   app.post(
-    "/admin/pudo/sync",
+    "/admin/orders/:orderId/pudo-shipment",
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] },
-    async (_request, reply) => reply.send({ data: await syncPudoTrackingStatuses() }),
+    async (request, reply) => {
+      const { orderId } = request.params as { orderId: string };
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, pudoDeliveryType: true, trackingNumber: true, pudoLockerCode: true },
+      });
+      if (!order) {
+        return reply.status(404).send({ error: { message: "Order not found" } });
+      }
+      if (order.trackingNumber) {
+        return reply.send({ data: { waybillNumber: order.trackingNumber, alreadyExists: true } });
+      }
+      if (!order.pudoDeliveryType) {
+        return reply.status(400).send({ error: { message: "Order does not have a PUDO delivery type — cannot create shipment" } });
+      }
+      await autoCreatePudoShipment(orderId);
+      const updated = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { trackingNumber: true },
+      });
+      if (!updated?.trackingNumber) {
+        return reply.status(502).send({ error: { message: "PUDO shipment creation failed — check server logs for details" } });
+      }
+      return reply.send({ data: { waybillNumber: updated.trackingNumber } });
+    },
   );
+
+
 
   app.get(
     "/admin/pudo/diagnose",

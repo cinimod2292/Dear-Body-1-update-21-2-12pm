@@ -713,6 +713,7 @@ model Order {
   courier          String?
   pudoLockerCode   String?
   pudoLockerName   String?
+  pudoDeliveryType String?
   shippedAt        DateTime?
   deliveredAt      DateTime?
   fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)

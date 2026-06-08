@@ -1,6 +1,8 @@
 import { Agent } from "undici";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
+import { sendEmail } from "../notifications/notification.service.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
 const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
@@ -84,7 +86,16 @@ export interface PudoLocker {
 
 export interface PudoShipmentInput {
   orderId: string;
-  lockerCode: string;
+  /** Locker terminal_id for locker deliveries — omit for door-to-door */
+  lockerCode?: string;
+  /** Full delivery address for door-to-door; required when lockerCode is absent */
+  doorAddress?: {
+    streetAddress: string;
+    localArea?: string;
+    city: string;
+    postalCode?: string;
+    province?: string;
+  };
   serviceLevelCode: string;
   recipientName: string;
   recipientPhone: string;
@@ -288,8 +299,22 @@ export async function createPudoShipment(input: PudoShipmentInput) {
   if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
+  if (!input.lockerCode && !input.doorAddress) {
+    throw new AppError(400, "Either lockerCode (locker delivery) or doorAddress (door delivery) is required", "PUDO_DELIVERY_ADDRESS_REQUIRED");
+  }
   const order = await prisma.order.findUnique({ where: { id: input.orderId } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+
+  const deliveryAddress = input.lockerCode
+    ? { terminal_id: input.lockerCode }
+    : {
+        street_address: input.doorAddress!.streetAddress,
+        local_area: input.doorAddress!.localArea ?? "",
+        city: input.doorAddress!.city,
+        code: input.doorAddress!.postalCode ?? "",
+        zone: input.doorAddress!.province ?? "",
+        country: "South Africa",
+      };
 
   const payload = {
     collection_address: {
@@ -306,7 +331,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
       mobile_number: settings.senderPhone ?? "",
       email: settings.senderEmail ?? "",
     },
-    delivery_address: { terminal_id: input.lockerCode },
+    delivery_address: deliveryAddress,
     delivery_contact: {
       name: input.recipientName,
       mobile_number: input.recipientPhone,
@@ -331,7 +356,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     });
   }
 
-  return { waybillNumber: waybill, labelUrl };
+  return { waybillNumber: waybill, labelUrl, shipmentId };
 }
 
 export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: Buffer; contentType: string }> {
@@ -443,4 +468,213 @@ export async function diagnosePudoApi() {
   }
 
   return results;
+}
+
+async function sendPudoShippingEmail(orderId: string, waybillNumber: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true },
+  });
+  if (!order?.customer?.email) return;
+
+  const trackingUrl = `https://pudo.co.za/track/${encodeURIComponent(waybillNumber)}`;
+
+  const template = await resolveTemplateByKey("shipping_confirmation", {
+    orderNumber: order.orderNumber,
+    carrier: "PUDO",
+    trackingNumber: waybillNumber,
+    trackingUrl,
+  });
+
+  await sendEmail({
+    to: order.customer.email,
+    subject: template.subject,
+    html: template.htmlBody,
+    meta: { templateKey: template.key, orderId: order.id },
+  });
+}
+
+/** Resolves the service-level code for an order based on item count and delivery type. */
+async function resolveServiceCode(settings: PudoSettings, itemCount: number, deliveryType: "locker" | "door"): Promise<string> {
+  const rule = settings.itemRules.find(
+    (r) => itemCount >= r.minItems && (r.maxItems === null || itemCount <= r.maxItems),
+  );
+  const pkg = rule ? settings.packageSizes.find((p) => p.code === rule.packageCode) : null;
+  if (pkg) return deliveryType === "locker" ? pkg.lockerServiceCode : pkg.doorServiceCode;
+  return deliveryType === "locker" ? "D2L-EXPRESS" : "D2D-EXPRESS";
+}
+
+/** Auto-creates a PUDO shipment when an order is paid. Called from payments.service.ts. */
+export async function autoCreatePudoShipment(orderId: string): Promise<void> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      customer: true,
+      shippingAddress: true,
+      items: true,
+    },
+  });
+
+  if (!order) return;
+  if (!order.pudoDeliveryType) return;
+  if (order.trackingNumber) return; // already has waybill
+
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !getEffectiveApiKey(settings)) return;
+
+  const deliveryType = order.pudoDeliveryType as "locker" | "door";
+  const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
+  const serviceCode = await resolveServiceCode(settings, itemCount, deliveryType);
+
+  const recipientName = (
+    order.shippingAddress?.recipientName
+    ?? (order.customer ? [order.customer.firstName, order.customer.lastName].filter(Boolean).join(" ") : "")
+  ) || "Customer";
+  const recipientPhone = order.customer?.phone ?? "";
+  const recipientEmail = order.customer?.email ?? undefined;
+
+  const input: PudoShipmentInput = {
+    orderId,
+    serviceLevelCode: serviceCode,
+    recipientName,
+    recipientPhone,
+    recipientEmail,
+  };
+
+  if (deliveryType === "locker") {
+    if (!order.pudoLockerCode) {
+      console.warn(`[PUDO] autoCreate skipped for order ${orderId}: locker delivery but no pudoLockerCode`);
+      return;
+    }
+    input.lockerCode = order.pudoLockerCode;
+  } else {
+    const addr = order.shippingAddress;
+    if (!addr?.line1 || !addr.city) {
+      console.warn(`[PUDO] autoCreate skipped for order ${orderId}: door delivery but no shipping address`);
+      return;
+    }
+    input.doorAddress = {
+      streetAddress: [addr.line2, addr.line1].filter(Boolean).join(", "),
+      city: addr.city,
+      postalCode: addr.postalCode ?? undefined,
+      province: addr.state ?? undefined,
+    };
+  }
+
+  console.info(`[PUDO] autoCreatePudoShipment start for order ${orderId}`, { deliveryType, serviceCode });
+  try {
+    const { waybillNumber } = await createPudoShipment(input);
+    if (waybillNumber) {
+      console.info(`[PUDO] autoCreatePudoShipment success for order ${orderId}: waybill ${waybillNumber}`);
+      await sendPudoShippingEmail(orderId, waybillNumber).catch((err) => {
+        console.error(`[PUDO] shipping email failed for order ${orderId}:`, err);
+      });
+    }
+  } catch (err) {
+    console.error(`[PUDO] autoCreatePudoShipment failed for order ${orderId}:`, err);
+  }
+}
+
+/** PUDO tracking status → internal order status mapping */
+const PUDO_STATUS_MAP: Record<string, { fulfillmentStatus?: string; status?: string }> = {
+  "collected":      { fulfillmentStatus: "SHIPPED" },
+  "in_transit":     { fulfillmentStatus: "SHIPPED" },
+  "out_for_delivery": { fulfillmentStatus: "SHIPPED" },
+  "delivered":      { fulfillmentStatus: "FULFILLED", status: "DELIVERED" },
+  "failed_delivery": { fulfillmentStatus: "SHIPPED" },
+  "exception":      {},
+  "return_to_sender": {},
+};
+
+/** Polls PUDO tracking for all open PUDO orders and updates order status. */
+export async function syncPudoTrackingStatuses(): Promise<{ synced: number; errors: number }> {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
+    return { synced: 0, errors: 0 };
+  }
+
+  const pudoOrders = await prisma.order.findMany({
+    where: {
+      courier: { contains: "PUDO", mode: "insensitive" },
+      trackingNumber: { not: null },
+      NOT: { status: { in: ["DELIVERED", "CANCELLED", "REFUNDED"] as any } },
+    },
+    select: { id: true, orderNumber: true, trackingNumber: true, fulfillmentStatus: true, status: true },
+  });
+
+  let synced = 0;
+  let errors = 0;
+
+  for (const order of pudoOrders) {
+    if (!order.trackingNumber) continue;
+    try {
+      const tracking = await pudoFetch<Record<string, unknown>>(
+        "GET",
+        `/tracking/shipments/public?waybill=${encodeURIComponent(order.trackingNumber)}`,
+        settings,
+      );
+
+      const rawStatus = String((tracking as any)?.status ?? (tracking as any)?.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
+      const mapped = PUDO_STATUS_MAP[rawStatus];
+      if (!mapped) continue;
+
+      const updates: Record<string, unknown> = {};
+      if (mapped.fulfillmentStatus && order.fulfillmentStatus !== mapped.fulfillmentStatus) {
+        updates.fulfillmentStatus = mapped.fulfillmentStatus;
+      }
+      if (mapped.status && order.status !== mapped.status) {
+        updates.status = mapped.status;
+        if (mapped.status === "DELIVERED") updates.deliveredAt = new Date();
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await prisma.order.update({ where: { id: order.id }, data: updates as any });
+        await prisma.orderEvent.create({
+          data: {
+            orderId: order.id,
+            eventType: "TRACKING_UPDATED",
+            nextValue: rawStatus,
+            details: { source: "pudo_sync", pudoStatus: rawStatus, updates } as any,
+          },
+        });
+        console.info(`[PUDO] tracking sync updated order ${order.orderNumber}: ${rawStatus}`, updates);
+      }
+      synced++;
+    } catch (err) {
+      console.error(`[PUDO] tracking sync error for order ${order.orderNumber}:`, err);
+      errors++;
+    }
+  }
+
+  return { synced, errors };
+}
+
+/** Lists all our own PUDO orders (from the DB, with tracking info). */
+export async function listLocalPudoOrders(page = 1, perPage = 50) {
+  const skip = (page - 1) * perPage;
+  const [items, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { pudoDeliveryType: { not: null } },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: perPage,
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        status: true,
+        paymentStatus: true,
+        fulfillmentStatus: true,
+        trackingNumber: true,
+        courier: true,
+        pudoDeliveryType: true,
+        pudoLockerCode: true,
+        pudoLockerName: true,
+        totalAmount: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    }),
+    prisma.order.count({ where: { pudoDeliveryType: { not: null } } }),
+  ]);
+  return { items, total, page, perPage };
 }

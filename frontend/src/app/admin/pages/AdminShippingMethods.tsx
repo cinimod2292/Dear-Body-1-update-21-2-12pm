@@ -40,6 +40,7 @@ type PudoSettings = {
   senderName?: string;
   senderPhone?: string;
   senderEmail?: string;
+  senderUnitAddress?: string;
   senderStreetAddress?: string;
   senderLocalArea?: string;
   senderCity?: string;
@@ -330,6 +331,10 @@ export default function AdminShippingMethods() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
                   <input type="email" className={inputCls} placeholder="store@example.com" value={pudoSettings.senderEmail ?? ""} onChange={(e) => setPudoSettings((s) => ({ ...s, senderEmail: e.target.value || undefined }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit / Complex / Building (optional)</label>
+                  <input type="text" className={inputCls} placeholder="Unit 4, The Palms" value={pudoSettings.senderUnitAddress ?? ""} onChange={(e) => setPudoSettings((s) => ({ ...s, senderUnitAddress: e.target.value || undefined }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Street Address</label>

@@ -54,7 +54,7 @@ export default function AdminPudoShipments() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<{ data: { items: PudoOrder[]; total: number } }>("/admin/pudo/orders?perPage=100", { token });
+      const res = await apiRequest<{ data: { items: PudoOrder[]; total: number } }>("/admin/pudo/orders?perPage=100", {}, token);
       setOrders(res.data.items);
       setTotal(res.data.total);
     } catch {
@@ -69,8 +69,7 @@ export default function AdminPudoShipments() {
     try {
       const res = await apiRequest<{ data: { synced: number; errors: number } }>("/admin/pudo/sync", {
         method: "POST",
-        token,
-      });
+      }, token);
       const { synced, errors } = res.data;
       toast.success(`Tracking synced: ${synced} updated${errors ? `, ${errors} errors` : ""}`);
       await load();

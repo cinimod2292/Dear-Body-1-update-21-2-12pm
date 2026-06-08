@@ -3,7 +3,7 @@ import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { toast } from "sonner";
 
-type Tab = "settings" | "lockers" | "rates" | "shipment" | "track" | "shipments";
+type Tab = "diagnose" | "settings" | "lockers" | "rates" | "shipment" | "track" | "shipments";
 
 interface PudoSettings {
   enabled: boolean;
@@ -78,6 +78,11 @@ export default function AdminPudoTest() {
   const [shipmentsResult, setShipmentsResult] = useState<unknown>(null);
   const [shipmentsError, setShipmentsError] = useState<string | null>(null);
   const [shipmentsLoading, setShipmentsLoading] = useState(false);
+
+  // Diagnose tab
+  const [diagnoseResult, setDiagnoseResult] = useState<unknown>(null);
+  const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
+  const [diagnoseLoading, setDiagnoseLoading] = useState(false);
 
   useEffect(() => {
     if (activeTab === "settings" && !settings) {
@@ -178,7 +183,22 @@ export default function AdminPudoTest() {
     }
   }
 
+  async function runDiagnose() {
+    setDiagnoseLoading(true);
+    setDiagnoseError(null);
+    setDiagnoseResult(null);
+    try {
+      const r = await apiRequest<{ data: unknown }>("/admin/pudo/diagnose", {}, token);
+      setDiagnoseResult(r.data);
+    } catch (e: unknown) {
+      setDiagnoseError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setDiagnoseLoading(false);
+    }
+  }
+
   const tabs: { key: Tab; label: string }[] = [
+    { key: "diagnose", label: "Diagnose" },
     { key: "settings", label: "Settings" },
     { key: "lockers", label: "Lockers" },
     { key: "rates", label: "Rates" },
@@ -214,6 +234,21 @@ export default function AdminPudoTest() {
           </button>
         ))}
       </div>
+
+      {/* Diagnose */}
+      {activeTab === "diagnose" && (
+        <div>
+          <h2 className="text-lg font-semibold mb-1">API Diagnostics</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Probes multiple locker endpoint paths using both <code>api_key</code> query param and <code>Bearer</code> header auth.
+            Use this to identify which path and auth method the PUDO API accepts.
+          </p>
+          <button type="button" className={btnCls} disabled={diagnoseLoading} onClick={runDiagnose}>
+            {diagnoseLoading ? "Running…" : "Run Diagnostics"}
+          </button>
+          <ResultSection result={diagnoseResult} error={diagnoseError} />
+        </div>
+      )}
 
       {/* Settings */}
       {activeTab === "settings" && (

@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   createPudoShipment,
+  diagnosePudoApi,
   getPudoLockers,
   getPudoRates,
   getPudoSettings,
@@ -79,5 +80,11 @@ export async function pudoRoutes(app: FastifyInstance) {
     "/admin/pudo/shipments",
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
     async (_request, reply) => reply.send({ data: await listPudoShipments() }),
+  );
+
+  app.get(
+    "/admin/pudo/diagnose",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
+    async (_request, reply) => reply.send({ data: await diagnosePudoApi() }),
   );
 }

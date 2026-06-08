@@ -5,8 +5,7 @@ import { AppError } from "../../lib/errors.js";
 const PUDO_API_PROD = "https://api-pudo.co.za";
 const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
 
-// PUDO sandbox custom domain doesn't have a TLS cert covering the hostname —
-// it resolves to AWS API Gateway whose cert only covers *.execute-api.af-south-1.amazonaws.com.
+// Sandbox custom domain doesn't have a TLS cert covering the custom domain name.
 const pudoSandboxAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
 export interface PudoSettings {
@@ -94,14 +93,12 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
   return value;
 }
 
+// All PUDO API routes live under /api/v1/ and require Bearer token auth.
 async function pudoFetch<T>(method: string, path: string, settings: PudoSettings, body?: object): Promise<T> {
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
-  const sep = path.includes("?") ? "&" : "?";
-  const keyPreview = settings.apiKey ? `${settings.apiKey.slice(0, 6)}…(len=${settings.apiKey.length})` : "(empty)";
-  const url = `${base}${path}${sep}api_key=${encodeURIComponent(settings.apiKey)}`;
-  const logUrl = `${base}${path}${sep}api_key=${keyPreview}`;
+  const url = `${base}/api/v1${path}`;
 
-  console.log(`[PUDO] → ${method} ${logUrl} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
+  console.log(`[PUDO] → ${method} ${url} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
   if (body) console.log(`[PUDO] request body:`, JSON.stringify(body));
 
   let res: Response;
@@ -111,6 +108,7 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
       },
       body: body ? JSON.stringify(body) : undefined,
       // @ts-ignore — undici dispatcher option not in standard RequestInit types
@@ -118,11 +116,11 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     });
   } catch (networkErr: unknown) {
     const msg = networkErr instanceof Error ? networkErr.message : String(networkErr);
-    console.error(`[PUDO] network error on ${method} ${logUrl}:`, msg);
+    console.error(`[PUDO] network error on ${method} ${url}:`, msg);
     throw new AppError(502, `PUDO network error: ${msg}`, "PUDO_NETWORK_ERROR");
   }
 
-  console.log(`[PUDO] ← ${res.status} ${res.statusText} | content-type=${res.headers.get("content-type")}`);
+  console.log(`[PUDO] ← ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
     let rawBody = "";
@@ -141,12 +139,11 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     parsed = await res.json() as T;
   } catch (parseErr: unknown) {
     const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-    console.error(`[PUDO] JSON parse error on ${method} ${logUrl}:`, msg);
+    console.error(`[PUDO] JSON parse error:`, msg);
     throw new AppError(502, `PUDO response parse error: ${msg}`, "PUDO_PARSE_ERROR");
   }
 
-  const preview = JSON.stringify(parsed);
-  console.log(`[PUDO] response preview (first 300 chars):`, preview.slice(0, 300));
+  console.log(`[PUDO] response preview:`, JSON.stringify(parsed).slice(0, 300));
   return parsed;
 }
 
@@ -161,9 +158,12 @@ export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
   const mapped: PudoLocker[] = (raw as any[]).map((item) => ({
     lockerCode: String(item.code ?? ""),
     name: String(item.name ?? ""),
-    address: String(item.address ?? ""),
-    city: String(item.place?.town ?? ""),
-    postalCode: item.place?.postalCode ? String(item.place.postalCode) : undefined,
+    // The API returns an `address` field directly (not nested)
+    address: String(item.address ?? item.street_address ?? ""),
+    // city may be at top-level or nested under place
+    city: String(item.town ?? item.city ?? item.place?.town ?? item.place?.city ?? ""),
+    province: item.province ?? item.place?.province ?? undefined,
+    postalCode: item.postal_code ?? item.postalCode ?? item.place?.postalCode ?? undefined,
     latitude: item.latitude != null ? parseFloat(String(item.latitude)) : undefined,
     longitude: item.longitude != null ? parseFloat(String(item.longitude)) : undefined,
     businessHours: Array.isArray(item.openinghours)
@@ -206,7 +206,6 @@ export async function createPudoShipment(input: PudoShipmentInput) {
       mobile_number: settings.senderPhone ?? "",
       email: settings.senderEmail ?? "",
     },
-    // D2L: delivery to a locker identified by terminal_id
     delivery_address: { terminal_id: input.lockerCode },
     delivery_contact: {
       name: input.recipientName,
@@ -222,11 +221,8 @@ export async function createPudoShipment(input: PudoShipmentInput) {
 
   const waybill = String(result.custom_tracking_reference ?? "");
   const shipmentId = result.id as number | undefined;
-  const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
-  // generate/waybill uses api_key query param per PUDO docs (not Bearer header)
-  const labelUrl = shipmentId
-    ? `${base}/generate/waybill/${shipmentId}?api_key=${encodeURIComponent(settings.apiKey)}`
-    : undefined;
+  // Waybill PDF is proxied through our backend since the PUDO API requires Bearer auth
+  const labelUrl = shipmentId ? `/api/admin/pudo/waybill/${shipmentId}` : undefined;
 
   if (waybill) {
     await prisma.order.update({
@@ -238,25 +234,39 @@ export async function createPudoShipment(input: PudoShipmentInput) {
   return { waybillNumber: waybill, labelUrl };
 }
 
+export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: Buffer; contentType: string }> {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !settings.apiKey) {
+    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
+  }
+  const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
+  const url = `${base}/api/v1/generate/waybill/${shipmentId}`;
+  console.log(`[PUDO] → GET waybill ${url}`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${settings.apiKey}` },
+      // @ts-ignore
+      dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
+    });
+  } catch (e: unknown) {
+    throw new AppError(502, `PUDO network error: ${e instanceof Error ? e.message : String(e)}`, "PUDO_NETWORK_ERROR");
+  }
+  if (!res.ok) {
+    const rawBody = await res.text().catch(() => "");
+    throw new AppError(502, `PUDO waybill error ${res.status}: ${rawBody.slice(0, 200)}`, "PUDO_API_ERROR");
+  }
+  const contentType = res.headers.get("content-type") ?? "application/pdf";
+  const arrayBuf = await res.arrayBuffer();
+  return { body: Buffer.from(arrayBuf), contentType };
+}
+
 export async function trackPudoShipment(waybillNumber: string) {
   const settings = await getPudoSettings();
   if (!settings.enabled || !settings.apiKey) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
-  // Public tracking endpoint — no auth required, identified by custom_tracking_reference
-  const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
-  const url = `${base}/tracking/shipments/public?waybill=${encodeURIComponent(waybillNumber)}`;
-  const res = await fetch(url, {
-    // @ts-ignore — undici dispatcher option not in standard RequestInit types
-    dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
-  });
-  if (!res.ok) {
-    let rawBody = "";
-    try { rawBody = await res.text(); } catch {}
-    console.error(`PUDO tracking GET ${url} → ${res.status}`, rawBody);
-    throw new AppError(502, `PUDO API error ${res.status}`, "PUDO_API_ERROR");
-  }
-  return res.json();
+  return pudoFetch<unknown>("GET", `/tracking/shipments/public?waybill=${encodeURIComponent(waybillNumber)}`, settings);
 }
 
 export async function getPudoRates(lockerCode: string) {
@@ -277,6 +287,14 @@ export async function getPudoRates(lockerCode: string) {
     delivery_address: { terminal_id: lockerCode },
   };
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
+}
+
+export async function listPudoShipments() {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !settings.apiKey) {
+    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
+  }
+  return pudoFetch<unknown>("GET", "/shipments", settings);
 }
 
 export async function diagnosePudoApi() {
@@ -324,12 +342,4 @@ export async function diagnosePudoApi() {
   }
 
   return results;
-}
-
-export async function listPudoShipments() {
-  const settings = await getPudoSettings();
-  if (!settings.enabled || !settings.apiKey) {
-    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
-  }
-  return pudoFetch<unknown>("GET", "/shipments", settings);
 }

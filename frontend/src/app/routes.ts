@@ -15,7 +15,6 @@ const CustomerRegister = lazy(() => import("./pages/CustomerRegister"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const CustomerDashboard = lazy(() => import("./pages/CustomerDashboard"));
-const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
 const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
@@ -77,7 +76,7 @@ export const router = createBrowserRouter([
         Component: CustomerProtectedRoute,
         children: [
           { index: true, Component: CustomerDashboard },
-          { path: "orders", Component: CustomerOrders },
+          { path: "orders", loader: () => redirect("/account?tab=orders") },
           { path: "orders/:orderId", Component: CustomerOrderDetail },
         ],
       },

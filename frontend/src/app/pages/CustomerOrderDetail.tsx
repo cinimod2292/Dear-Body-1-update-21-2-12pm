@@ -49,7 +49,7 @@ export default function CustomerOrderDetail() {
 
   useEffect(() => {
     if (!token || !orderId) return;
-    fetch(`${API_BASE}/store/account/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_BASE}/store/account?tab=orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((payload) => setOrder(payload.data))
       .finally(() => setLoading(false));
@@ -102,7 +102,7 @@ export default function CustomerOrderDetail() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-10 text-center">
         <p className="text-gray-500 mb-3">Order not found.</p>
-        <Link to="/account/orders" className="text-sm text-pink-600 hover:underline">
+        <Link to="/account?tab=orders" className="text-sm text-pink-600 hover:underline">
           Back to orders
         </Link>
       </div>
@@ -114,7 +114,7 @@ export default function CustomerOrderDetail() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
-      <Link to="/account/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-pink-500 transition-colors">
+      <Link to="/account?tab=orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-pink-500 transition-colors">
         <ArrowLeft size={14} /> Back to orders
       </Link>
 

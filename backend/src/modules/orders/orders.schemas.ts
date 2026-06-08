@@ -42,11 +42,19 @@ export const addressSchema = z.object({
   country: z.string().min(2),
 });
 
+// Relaxed address for checkout — PUDO locker addresses come from the API and
+// may have empty city / postal fields; the terminal_id is the real delivery key.
+const checkoutAddressSchema = addressSchema.extend({
+  line1: z.string().min(1),
+  city: z.string().min(0).default(""),
+  postalCode: z.string().min(0).default(""),
+});
+
 export const checkoutSchema = z.object({
   email: z.string().email(),
   customerId: z.string().cuid().optional(),
-  shippingAddress: addressSchema,
-  billingAddress: addressSchema.optional(),
+  shippingAddress: checkoutAddressSchema,
+  billingAddress: checkoutAddressSchema.optional(),
   shippingMethodId: z.string().cuid().optional(),
   couponCode: z.string().optional(),
   paymentReference: z.string().optional(),

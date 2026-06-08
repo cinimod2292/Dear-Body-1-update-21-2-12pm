@@ -470,8 +470,8 @@ export default function Checkout() {
                 firstName: form.firstName,
                 lastName: form.lastName,
                 phone: form.phone,
-                line1: selectedPudoLocker!.address,
-                city: selectedPudoLocker!.city,
+                line1: selectedPudoLocker!.address || selectedPudoLocker!.name,
+                city: selectedPudoLocker!.city || "South Africa",
                 postalCode: selectedPudoLocker!.postalCode || "0000",
                 country: "South Africa",
               }

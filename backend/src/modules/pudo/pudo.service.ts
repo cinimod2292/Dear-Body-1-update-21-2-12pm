@@ -100,9 +100,12 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     dispatcher: settings.sandbox ? pudoSandboxAgent : undefined,
   });
   if (!res.ok) {
+    let rawBody = "";
+    try { rawBody = await res.text(); } catch {}
+    console.error(`PUDO API ${method} ${url} → ${res.status}`, rawBody);
     let message = `PUDO API error ${res.status}`;
     try {
-      const err = (await res.json()) as { message?: string };
+      const err = JSON.parse(rawBody) as { message?: string };
       if (err?.message) message = `PUDO: ${err.message}`;
     } catch {}
     throw new AppError(502, message, "PUDO_API_ERROR");

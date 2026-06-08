@@ -23,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/builder", label: "Page Builder", permission: "settings:read" },
   { to: "/admin/staff-users", label: "Admin Users", permission: "settings:read" },
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
+  { to: "/admin/pudo-test", label: "PUDO Test", permission: "settings:read" },
 ];
 
 function NavLinks({ items, currentPath, onNavigate }: { items: NavItem[]; currentPath: string; onNavigate?: () => void }) {

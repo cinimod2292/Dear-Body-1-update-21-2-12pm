@@ -7,7 +7,9 @@ import {
   getPudoRates,
   getPudoSettings,
   getPudoShippingOption,
+  listLocalPudoOrders,
   listPudoShipments,
+  syncPudoTrackingStatuses,
   trackPudoShipment,
   upsertPudoSettings,
 } from "./pudo.service.js";
@@ -89,6 +91,21 @@ export async function pudoRoutes(app: FastifyInstance) {
     "/admin/pudo/shipments",
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
     async (_request, reply) => reply.send({ data: await listPudoShipments() }),
+  );
+
+  app.get(
+    "/admin/pudo/orders",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const { page, perPage } = request.query as { page?: string; perPage?: string };
+      return reply.send({ data: await listLocalPudoOrders(Number(page ?? 1), Number(perPage ?? 50)) });
+    },
+  );
+
+  app.post(
+    "/admin/pudo/sync",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] },
+    async (_request, reply) => reply.send({ data: await syncPudoTrackingStatuses() }),
   );
 
   app.get(

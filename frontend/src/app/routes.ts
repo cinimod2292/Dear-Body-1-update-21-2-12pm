@@ -43,6 +43,7 @@ const AdminShippingMethods = lazy(() => import("./admin/pages/AdminShippingMetho
 const AdminEmailTemplates = lazy(() => import("./admin/pages/AdminEmailTemplates"));
 const AdminStaffUsers = lazy(() => import("./admin/pages/AdminStaffUsers"));
 const AdminPudoTest = lazy(() => import("./admin/pages/AdminPudoTest"));
+const AdminPudoShipments = lazy(() => import("./admin/pages/AdminPudoShipments"));
 
 export const router = createBrowserRouter([
   {
@@ -133,6 +134,7 @@ export const router = createBrowserRouter([
           { path: "email-templates", Component: AdminEmailTemplates },
           { path: "staff-users", Component: AdminStaffUsers },
           { path: "pudo-test", Component: AdminPudoTest },
+          { path: "pudo-shipments", Component: AdminPudoShipments },
         ],
       },
     ],

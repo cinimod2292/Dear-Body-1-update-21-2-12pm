@@ -22,6 +22,7 @@ import {
 } from "./payment-settings.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { autoCreatePudoShipment } from "../pudo/pudo.service.js";
 
 const SETTING_SCOPE = "payments";
 const STITCH_SETTING_KEY = "stitch";
@@ -475,6 +476,9 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
   const becamePaid = status === "PAID" && currentOrder.paymentStatus !== "PAID";
   if (becamePaid) {
     await sendPaymentSuccessEmail(orderId).catch(() => undefined);
+    autoCreatePudoShipment(orderId).catch((err) => {
+      console.error("[payments] autoCreatePudoShipment error for order", orderId, err);
+    });
   }
   await prisma.orderEvent.create({
     data: {

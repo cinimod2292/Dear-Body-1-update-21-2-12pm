@@ -88,7 +88,7 @@ export async function processAbandonedCarts(now = new Date()) {
         cartId: cart.id,
         OR: [
           { paymentStatus: "PAID" },
-          { status: { in: ["AWAITING_PAYMENT", "PENDING"] } },
+          { status: "AWAITING_PAYMENT" },
         ],
       },
     });

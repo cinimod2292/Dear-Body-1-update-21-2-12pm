@@ -468,7 +468,7 @@ export default function Checkout() {
         body: JSON.stringify({
           email: customer.email,
           shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
-          shippingAddress: {
+          shippingAddress: isPudoLocker ? undefined : {
             firstName: form.firstName,
             lastName: form.lastName,
             phone: form.phone,
@@ -563,6 +563,9 @@ export default function Checkout() {
   }
 
   if (orderPlaced) {
+    const isLockerConfirm = deliveryType === "pudo-locker";
+    const isDoorConfirm = deliveryType === "pudo-door";
+    const deliveryLabel = isLockerConfirm ? "PUDO Locker Collection" : isDoorConfirm ? "PUDO Door Delivery" : "Home Delivery";
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
         <div className="max-w-md w-full text-center">
@@ -574,48 +577,66 @@ export default function Checkout() {
           <p className="text-gray-500 mb-2">
             Thank you for your order! We're getting your goodies ready.
           </p>
-          <p className="text-gray-400 text-sm mb-8">
-            Order #{orderInfo?.orderNumber} · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
-          </p>
-          <p className="text-sm mb-4">
-            Payment status: <strong>{orderInfo?.paymentStatus || "PENDING"}</strong>
+          <p className="text-gray-400 text-sm mb-6">
+            Order <strong>#{orderInfo?.orderNumber}</strong> · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
           </p>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm mb-8 text-left">
-            <div className="flex items-center gap-3 mb-4">
-              <Truck size={20} className="text-pink-500" />
+          <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 text-left space-y-4">
+            {/* Delivery type */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-pink-100 flex items-center justify-center shrink-0">
+                <Truck size={17} className="text-pink-500" />
+              </div>
               <div>
-                <p className="font-bold text-gray-900">Estimated Delivery</p>
-                <p className="text-gray-500 text-sm">3–5 business days</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Delivery Method</p>
+                <p className="font-bold text-gray-900">{deliveryLabel}</p>
               </div>
             </div>
-            {deliveryType === "pudo-locker" && selectedPudoLocker ? (
+
+            <div className="border-t border-gray-100" />
+
+            {/* Delivery destination */}
+            {isLockerConfirm && selectedPudoLocker ? (
               <div>
-                <p className="text-gray-700 text-sm font-semibold">PUDO Locker collection:</p>
-                <p className="text-gray-500 text-sm">{selectedPudoLocker.name}</p>
-                <p className="text-gray-500 text-sm">{selectedPudoLocker.address}, {selectedPudoLocker.city}</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Locker Location</p>
+                <p className="font-semibold text-gray-900">{selectedPudoLocker.name}</p>
+                <p className="text-sm text-gray-500">{selectedPudoLocker.address}, {selectedPudoLocker.city}{selectedPudoLocker.postalCode ? `, ${selectedPudoLocker.postalCode}` : ""}</p>
+                <p className="text-xs text-gray-400 mt-1">You will receive a notification when your parcel is ready to collect.</p>
               </div>
-            ) : deliveryType === "pudo-door" ? (
+            ) : isDoorConfirm ? (
               <div>
-                <p className="text-gray-700 text-sm font-semibold">PUDO Door delivery:</p>
-                <p className="text-gray-500 text-sm">{form.address}, {form.city}</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Delivery Address</p>
+                {form.unit && <p className="text-sm text-gray-500">{form.unit}</p>}
+                <p className="font-semibold text-gray-900">{form.address}</p>
+                <p className="text-sm text-gray-500">{[form.suburb, form.city, form.zip].filter(Boolean).join(", ")}</p>
+                <p className="text-sm text-gray-500">{form.country}</p>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">
-                Your order will be shipped to: {form.address || "your address"}, {form.city}
-              </p>
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Delivery Address</p>
+                {form.unit && <p className="text-sm text-gray-500">{form.unit}</p>}
+                <p className="font-semibold text-gray-900">{form.address}</p>
+                <p className="text-sm text-gray-500">{[form.suburb, form.city, form.zip].filter(Boolean).join(", ")}</p>
+                <p className="text-sm text-gray-500">{form.country}</p>
+              </div>
             )}
+
+            <div className="border-t border-gray-100" />
+            <p className="text-xs text-gray-400">Estimated delivery: 3–5 business days</p>
           </div>
 
           <div className="flex flex-col gap-3">
             <Link
-              to="/shop"
+              to={orderInfo?.id ? `/account/orders/${orderInfo.id}` : "/account"}
               className="w-full py-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold flex items-center justify-center hover:opacity-90 transition-opacity"
             >
-              Continue Shopping
+              View My Order
             </Link>
-            <Link to="/" className="text-sm text-gray-400 hover:text-pink-500 transition-colors">
-              Back to Home
+            <Link
+              to="/shop"
+              className="w-full py-4 border-2 border-gray-200 text-gray-700 rounded-full font-bold flex items-center justify-center hover:border-pink-300 transition-colors"
+            >
+              Continue Shopping
             </Link>
           </div>
         </div>
@@ -797,7 +818,8 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Address form — shown for all delivery types */}
+                {/* Address form — only for door / home delivery */}
+                {deliveryType !== "pudo-locker" && (<>
                 {savedAddresses.length > 0 ? (
                   <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
                     <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
@@ -838,6 +860,7 @@ export default function Checkout() {
                       </div>
                     ))}
                   </div>
+                </>)}
 
                 {/* Shipping Method — only for home delivery */}
                 {deliveryType === "home" && (
@@ -888,25 +911,12 @@ export default function Checkout() {
                         setShippingStepError("Please select a PUDO locker to continue.");
                         return;
                       }
-                      if (!form.address.trim()) {
-                        setShippingStepError("Street address is required.");
-                        return;
-                      }
-                      if (!form.suburb.trim()) {
-                        setShippingStepError("Suburb / local area is required.");
-                        return;
-                      }
-                      if (!form.city.trim()) {
-                        setShippingStepError("City is required.");
-                        return;
-                      }
-                      if (!form.zip.trim()) {
-                        setShippingStepError("Postal code is required.");
-                        return;
-                      }
-                      if (!form.country.trim()) {
-                        setShippingStepError("Country is required.");
-                        return;
+                      if (deliveryType !== "pudo-locker") {
+                        if (!form.address.trim()) { setShippingStepError("Street address is required."); return; }
+                        if (!form.suburb.trim()) { setShippingStepError("Suburb / local area is required."); return; }
+                        if (!form.city.trim()) { setShippingStepError("City is required."); return; }
+                        if (!form.zip.trim()) { setShippingStepError("Postal code is required."); return; }
+                        if (!form.country.trim()) { setShippingStepError("Country is required."); return; }
                       }
                       if (!canProceedToPayment) {
                         setShippingStepError("Please select a shipping method to continue.");

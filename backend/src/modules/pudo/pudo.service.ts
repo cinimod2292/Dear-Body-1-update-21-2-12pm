@@ -906,10 +906,26 @@ function extractRateForServiceCode(ratesResponse: unknown, serviceCode: string):
   return null;
 }
 
+/** Returns the first rate (incl. VAT) from a PUDO rates response, regardless of service code. */
+function extractFirstRate(ratesResponse: unknown): number | null {
+  const items = Array.isArray(ratesResponse)
+    ? ratesResponse
+    : Array.isArray((ratesResponse as any)?.rates) ? (ratesResponse as any).rates
+    : Array.isArray((ratesResponse as any)?.data) ? (ratesResponse as any).data
+    : [];
+  const first = (items as any[])[0];
+  if (!first) return null;
+  // Prefer explicit incl-VAT fields, then the top-level "rate" string
+  const price = first.rate?.total_inc_vat ?? first.total_inc_vat ?? first.price ?? first.rate ?? null;
+  return price != null ? Number(price) : null;
+}
+
 /**
  * Fetches current rates from the PUDO API for each configured package size and stores them
  * as `lockerApiRate`/`doorApiRate` on the package size config. These are read-only reference
  * values — they do NOT automatically change what customers are charged.
+ *
+ * Uses a Cape Town reference address/locker so the rates reflect worst-case cross-province pricing.
  */
 export async function syncPudoRates(): Promise<PudoSettings> {
   const settings = await getPudoSettings();
@@ -935,22 +951,25 @@ export async function syncPudoRates(): Promise<PudoSettings> {
     type: "residential",
   };
 
-  // Reference delivery address for D2D: same zone as sender (gives base rate)
+  // Fixed Cape Town reference address for D2D — cross-province gives worst-case (highest) pricing
   const doorDeliveryAddress = {
-    street_address: senderStreet,
-    local_area: settings.senderLocalArea ?? "",
-    city: settings.senderCity,
-    code: settings.senderPostalCode ?? "",
-    zone: senderZone,
+    street_address: "10 Adderley Street",
+    local_area: "Cape Town City Centre",
+    city: "Cape Town",
+    code: "8001",
+    zone: "WC",
     country: "South Africa",
     type: "door",
   };
 
-  // Get a reference locker for D2L rates
+  // Prefer a Cape Town locker for D2L rates — cross-province gives worst-case pricing
   let referenceLockerCode: string | null = null;
   try {
     const lockers = await getPudoLockers();
-    referenceLockerCode = lockers[0]?.lockerCode ?? null;
+    const ctLocker = lockers.find(
+      (l) => l.city?.toLowerCase().includes("cape town") || l.province?.toLowerCase().includes("western cape"),
+    );
+    referenceLockerCode = (ctLocker ?? lockers[0])?.lockerCode ?? null;
     console.info(`[PUDO] syncPudoRates: using locker ${referenceLockerCode} as D2L reference`);
   } catch (err) {
     console.warn("[PUDO] syncPudoRates: could not fetch lockers for D2L reference:", err);
@@ -972,13 +991,18 @@ export async function syncPudoRates(): Promise<PudoSettings> {
           delivery_address: { terminal_id: referenceLockerCode },
           parcels: parcel,
         });
-        const rate = extractRateForServiceCode(resp, pkg.lockerServiceCode);
-        if (rate !== null) {
-          lockerApiRate = rate;
-          console.info(`[PUDO] syncPudoRates: ${pkg.code} locker rate for "${pkg.lockerServiceCode}" = R${rate}`);
+        let rate = extractRateForServiceCode(resp, pkg.lockerServiceCode);
+        if (rate === null) {
+          rate = extractFirstRate(resp);
+          if (rate !== null) {
+            console.info(`[PUDO] syncPudoRates: ${pkg.code} locker — code "${pkg.lockerServiceCode}" not in response; using first rate R${rate}`);
+          } else {
+            console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker — no rate found in response`);
+          }
         } else {
-          console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker — service code "${pkg.lockerServiceCode}" not found in response`);
+          console.info(`[PUDO] syncPudoRates: ${pkg.code} locker rate for "${pkg.lockerServiceCode}" = R${rate}`);
         }
+        if (rate !== null) lockerApiRate = rate;
       } catch (err) {
         console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker rate fetch failed:`, err);
       }
@@ -990,13 +1014,18 @@ export async function syncPudoRates(): Promise<PudoSettings> {
         delivery_address: doorDeliveryAddress,
         parcels: parcel,
       });
-      const rate = extractRateForServiceCode(resp, pkg.doorServiceCode);
-      if (rate !== null) {
-        doorApiRate = rate;
-        console.info(`[PUDO] syncPudoRates: ${pkg.code} door rate for "${pkg.doorServiceCode}" = R${rate}`);
+      let rate = extractRateForServiceCode(resp, pkg.doorServiceCode);
+      if (rate === null) {
+        rate = extractFirstRate(resp);
+        if (rate !== null) {
+          console.info(`[PUDO] syncPudoRates: ${pkg.code} door — code "${pkg.doorServiceCode}" not in response; using first rate R${rate}`);
+        } else {
+          console.warn(`[PUDO] syncPudoRates: ${pkg.code} door — no rate found in response`);
+        }
       } else {
-        console.warn(`[PUDO] syncPudoRates: ${pkg.code} door — service code "${pkg.doorServiceCode}" not found in response`);
+        console.info(`[PUDO] syncPudoRates: ${pkg.code} door rate for "${pkg.doorServiceCode}" = R${rate}`);
       }
+      if (rate !== null) doorApiRate = rate;
     } catch (err) {
       console.warn(`[PUDO] syncPudoRates: ${pkg.code} door rate fetch failed:`, err);
     }

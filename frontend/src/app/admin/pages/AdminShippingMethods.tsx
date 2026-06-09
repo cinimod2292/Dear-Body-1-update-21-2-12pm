@@ -24,6 +24,10 @@ type PackageSizeConfig = {
   doorPrice: number;
   lockerServiceCode: string;
   doorServiceCode: string;
+  /** Last rate fetched from PUDO API — reference only, not what customers are charged */
+  lockerApiRate?: number;
+  /** Last rate fetched from PUDO API — reference only, not what customers are charged */
+  doorApiRate?: number;
 };
 
 type ItemRule = {
@@ -52,6 +56,7 @@ type PudoSettings = {
   roundPricing: boolean;
   packageSizes: PackageSizeConfig[];
   itemRules: ItemRule[];
+  lastRatesSync?: string;
 };
 
 const DEFAULT_PACKAGE_SIZES: PackageSizeConfig[] = [
@@ -69,6 +74,13 @@ const DEFAULT_ITEM_RULES: ItemRule[] = [
   { minItems: 11, maxItems: 13, packageCode: "L" },
   { minItems: 14, maxItems: null, packageCode: "XL" },
 ];
+
+function roundToX9(price: number): number {
+  const intPrice = Math.ceil(price);
+  const mod = intPrice % 10;
+  if (mod === 9) return intPrice;
+  return intPrice + ((9 - mod + 10) % 10);
+}
 
 export default function AdminShippingMethods() {
   const { session } = useAdminAuth();
@@ -104,6 +116,7 @@ export default function AdminShippingMethods() {
   });
   const [pudoSaving, setPudoSaving] = useState(false);
   const [pudoTesting, setPudoTesting] = useState(false);
+  const [pudoSyncing, setPudoSyncing] = useState(false);
 
   const load = async () => {
     if (!session?.accessToken) return;
@@ -179,6 +192,43 @@ export default function AdminShippingMethods() {
     } finally {
       setPudoTesting(false);
     }
+  };
+
+  const syncPudoRatesFromApi = async () => {
+    if (!session?.accessToken) return;
+    try {
+      setPudoSyncing(true);
+      const result = await apiRequest<{ data: PudoSettings }>("/admin/pudo/sync-rates", { method: "POST" }, session.accessToken);
+      setPudoSettings((s) => ({
+        ...s,
+        packageSizes: s.packageSizes.map((pkg) => {
+          const synced = result.data.packageSizes?.find((p) => p.code === pkg.code);
+          return synced ? { ...pkg, lockerApiRate: synced.lockerApiRate, doorApiRate: synced.doorApiRate } : pkg;
+        }),
+        lastRatesSync: result.data.lastRatesSync,
+      }));
+      toast.success("Rates synced from PUDO API");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rate sync failed");
+    } finally {
+      setPudoSyncing(false);
+    }
+  };
+
+  const applyApiRatesToPrices = () => {
+    setPudoSettings((s) => ({
+      ...s,
+      packageSizes: s.packageSizes.map((pkg) => ({
+        ...pkg,
+        lockerPrice: pkg.lockerApiRate != null
+          ? (s.roundPricing ? roundToX9(pkg.lockerApiRate) : Math.ceil(pkg.lockerApiRate))
+          : pkg.lockerPrice,
+        doorPrice: pkg.doorApiRate != null
+          ? (s.roundPricing ? roundToX9(pkg.doorApiRate) : Math.ceil(pkg.doorApiRate))
+          : pkg.doorPrice,
+      })),
+    }));
+    toast.success("API rates applied to prices — click Save PUDO Settings to persist");
   };
 
   const createMethod = async (e: FormEvent) => {
@@ -395,7 +445,31 @@ export default function AdminShippingMethods() {
 
             {/* Package sizes */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Package Sizes &amp; Pricing</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-gray-700">Package Sizes &amp; Pricing</h4>
+                <div className="flex items-center gap-2">
+                  {pudoSettings.lastRatesSync && (
+                    <span className="text-xs text-gray-400">Last synced: {new Date(pudoSettings.lastRatesSync).toLocaleString()}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={syncPudoRatesFromApi}
+                    disabled={pudoSyncing}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {pudoSyncing ? "Syncing…" : "Sync Rates from PUDO"}
+                  </button>
+                  {pudoSettings.packageSizes.some((p) => p.lockerApiRate != null || p.doorApiRate != null) && (
+                    <button
+                      type="button"
+                      onClick={applyApiRatesToPrices}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    >
+                      Apply API Rates as Prices{pudoSettings.roundPricing ? " (rounded)" : ""}
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
                   <thead className="bg-gray-50">
@@ -423,9 +497,15 @@ export default function AdminShippingMethods() {
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" step="1" min="0" className="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs" value={pkg.lockerPrice} onChange={(e) => updatePackageSize(idx, "lockerPrice", Number(e.target.value))} />
+                          {pkg.lockerApiRate != null && (
+                            <div className="text-gray-400 mt-0.5">API: R{pkg.lockerApiRate.toFixed(2)}</div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" step="1" min="0" className="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs" value={pkg.doorPrice} onChange={(e) => updatePackageSize(idx, "doorPrice", Number(e.target.value))} />
+                          {pkg.doorApiRate != null && (
+                            <div className="text-gray-400 mt-0.5">API: R{pkg.doorApiRate.toFixed(2)}</div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5">
                           <input className="w-28 border border-gray-200 rounded px-1 py-0.5 text-xs font-mono" value={pkg.lockerServiceCode} onChange={(e) => updatePackageSize(idx, "lockerServiceCode", e.target.value)} />

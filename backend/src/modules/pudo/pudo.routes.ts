@@ -14,6 +14,7 @@ import {
   listLocalPudoOrders,
   listPudoShipments,
   processPudoTrackingWebhook,
+  syncPudoRates,
   syncPudoTrackingStatuses,
   trackPudoShipment,
   upsertPudoSettings,
@@ -155,6 +156,12 @@ export async function pudoRoutes(app: FastifyInstance) {
   );
 
 
+
+  app.post(
+    "/admin/pudo/sync-rates",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (_request, reply) => reply.send({ data: await syncPudoRates() }),
+  );
 
   app.get(
     "/admin/pudo/diagnose",

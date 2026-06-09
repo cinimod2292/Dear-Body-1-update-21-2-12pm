@@ -72,12 +72,35 @@ function roundToX9(price: number): number {
   return intPrice + ((9 - mod + 10) % 10);
 }
 
-/** Normalises a South African phone number to 0XXXXXXXXX (10-digit local format). */
+/** Normalises a South African phone number to +27XXXXXXXXX (international format). */
 function normalizeSAPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("27")) return "0" + digits.slice(2);
-  if (digits.length === 10 && digits.startsWith("0")) return digits;
+  if (digits.length === 11 && digits.startsWith("27")) return "+" + digits;
+  if (digits.length === 10 && digits.startsWith("0")) return "+27" + digits.slice(1);
+  if (phone.startsWith("+27")) return phone;
   return phone;
+}
+
+/** Parses a dimension string like "60×17×8cm" into [length, width, height] in cm. */
+function parseDimensions(dimensions: string): [number, number, number] {
+  const parts = dimensions.replace(/cm/gi, "").split(/[×x*]/);
+  const nums = parts.map((p) => parseFloat(p.trim())).filter((n) => !isNaN(n));
+  return [nums[0] ?? 10, nums[1] ?? 10, nums[2] ?? 10];
+}
+
+/** Maps SA province names to PUDO zone codes. */
+const PROVINCE_CODES: Record<string, string> = {
+  "gauteng": "GP", "western cape": "WC", "eastern cape": "EC",
+  "kwazulu-natal": "KZN", "kwazulu natal": "KZN",
+  "limpopo": "LP", "mpumalanga": "MP", "north west": "NW",
+  "northern cape": "NC", "free state": "FS",
+};
+function toProvinceCode(province: string): string {
+  return PROVINCE_CODES[province.toLowerCase().trim()] ?? province;
+}
+
+function buildEnteredAddress(...parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(", ");
 }
 
 export interface PudoLocker {
@@ -108,6 +131,12 @@ export interface PudoShipmentInput {
   recipientName: string;
   recipientPhone: string;
   recipientEmail?: string;
+  parcel?: {
+    lengthCm: number;
+    widthCm: number;
+    heightCm: number;
+    weightKg: number;
+  };
 }
 
 export async function getPudoSettings(): Promise<PudoSettings> {
@@ -316,33 +345,57 @@ export async function createPudoShipment(input: PudoShipmentInput) {
   const order = await prisma.order.findUnique({ where: { id: input.orderId } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
 
+  const now = new Date().toISOString();
+  const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
+  const senderZone = toProvinceCode(settings.senderProvince ?? "");
+
   const deliveryAddress = input.lockerCode
     ? { terminal_id: input.lockerCode }
     : {
         street_address: input.doorAddress!.streetAddress,
         local_area: input.doorAddress!.localArea ?? "",
+        suburb: input.doorAddress!.localArea ?? "",
         city: input.doorAddress!.city,
         code: input.doorAddress!.postalCode ?? "",
-        zone: input.doorAddress!.province ?? "",
+        zone: toProvinceCode(input.doorAddress!.province ?? ""),
         country: "South Africa",
         type: "residential",
+        entered_address: buildEnteredAddress(
+          input.doorAddress!.streetAddress,
+          input.doorAddress!.localArea,
+          input.doorAddress!.city,
+          input.doorAddress!.postalCode,
+          "South Africa",
+        ),
       };
 
   const payload = {
+    collection_min_date: now,
     collection_address: {
-      street_address: [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", "),
+      street_address: senderStreet,
       local_area: settings.senderLocalArea ?? "",
+      suburb: settings.senderLocalArea ?? "",
       city: settings.senderCity ?? "",
       code: settings.senderPostalCode ?? "",
-      zone: settings.senderProvince ?? "",
+      zone: senderZone,
       country: "South Africa",
       type: "business",
+      company: settings.senderName ?? "",
+      entered_address: buildEnteredAddress(
+        senderStreet,
+        settings.senderLocalArea,
+        settings.senderCity,
+        settings.senderPostalCode,
+        "South Africa",
+      ),
     },
+    special_instructions_collection: "",
     collection_contact: {
       name: settings.senderName ?? "",
       mobile_number: normalizeSAPhone(settings.senderPhone ?? ""),
       email: settings.senderEmail ?? "",
     },
+    delivery_min_date: now,
     delivery_address: deliveryAddress,
     delivery_contact: {
       name: input.recipientName,
@@ -352,6 +405,16 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     service_level_code: input.serviceLevelCode,
     opt_in_rates: [],
     opt_in_time_based_rates: [],
+    parcels: [
+      {
+        submitted_length_cm: String(input.parcel?.lengthCm ?? 10),
+        submitted_width_cm: String(input.parcel?.widthCm ?? 10),
+        submitted_height_cm: String(input.parcel?.heightCm ?? 10),
+        submitted_weight_kg: String(input.parcel?.weightKg ?? 0.5),
+        parcel_description: "Package",
+        alternative_tracking_reference: "",
+      },
+    ],
   };
 
   const result = await pudoFetch<Record<string, unknown>>("POST", "/shipments", settings, payload);
@@ -538,6 +601,12 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
   const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
   const serviceCode = await resolveServiceCode(settings, itemCount, deliveryType);
 
+  // Resolve package size for parcel dimensions
+  const rule = settings.itemRules.find(
+    (r) => itemCount >= r.minItems && (r.maxItems === null || itemCount <= r.maxItems),
+  );
+  const pkg = rule ? settings.packageSizes.find((p) => p.code === rule.packageCode) : null;
+
   const recipientName = (
     order.shippingAddress?.recipientName
     ?? (order.customer ? [order.customer.firstName, order.customer.lastName].filter(Boolean).join(" ") : "")
@@ -553,12 +622,16 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
     throw new AppError(400, "PUDO shipment cannot be created: sender address (street + city) is not configured in PUDO settings", "PUDO_MISSING_SENDER_ADDRESS");
   }
 
+  const [lengthCm, widthCm, heightCm] = pkg ? parseDimensions(pkg.dimensions) : [10, 10, 10];
+  const weightKg = pkg ? pkg.maxWeight : 0.5;
+
   const input: PudoShipmentInput = {
     orderId,
     serviceLevelCode: serviceCode,
     recipientName,
     recipientPhone,
     recipientEmail,
+    parcel: { lengthCm, widthCm, heightCm, weightKg },
   };
 
   if (deliveryType === "locker") {

@@ -468,7 +468,7 @@ export default function Checkout() {
         body: JSON.stringify({
           email: customer.email,
           shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
-          shippingAddress: {
+          shippingAddress: isPudoLocker ? undefined : {
             firstName: form.firstName,
             lastName: form.lastName,
             phone: form.phone,
@@ -797,47 +797,51 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Address form — shown for all delivery types */}
-                {savedAddresses.length > 0 ? (
-                  <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
-                    <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
-                    <select
-                      value={selectedAddressId}
-                      onChange={(e) => applySavedAddress(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm"
-                    >
-                      {savedAddresses.map((address) => (
-                        <option value={address.id} key={address.id}>
-                          {(address.recipientName || "Address")} — {address.line1}, {address.city}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      { key: "unit", label: "Unit / Complex / Building", placeholder: "Unit 4, The Palms (optional)", full: true, required: false },
-                      { key: "address", label: "Street Address", placeholder: "123 Main St", full: true, required: true },
-                      { key: "suburb", label: "Suburb / Local Area", placeholder: "Claremont", full: true, required: true },
-                      { key: "city", label: "City", placeholder: "Cape Town", required: true },
-                      { key: "state", label: "Province", placeholder: "Western Cape", required: false },
-                      { key: "zip", label: "Postal Code", placeholder: "8001", required: true },
-                      { key: "country", label: "Country", placeholder: "South Africa", required: true },
-                    ].map(field => (
-                      <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
-                        <label className="block text-sm font-bold text-gray-700 mb-1.5">
-                          {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </label>
-                        <input
-                          type="text"
-                          value={(form as any)[field.key]}
-                          onChange={e => update(field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
-                        />
+                {/* Address form — hidden for locker delivery; the selected locker is the delivery address */}
+                {deliveryType !== "pudo-locker" && (
+                  <>
+                    {savedAddresses.length > 0 ? (
+                      <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">Use a saved address</label>
+                        <select
+                          value={selectedAddressId}
+                          onChange={(e) => applySavedAddress(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        >
+                          {savedAddresses.map((address) => (
+                            <option value={address.id} key={address.id}>
+                              {(address.recipientName || "Address")} — {address.line1}, {address.city}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    ))}
-                  </div>
+                    ) : null}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {[
+                        { key: "unit", label: "Unit / Complex / Building", placeholder: "Unit 4, The Palms (optional)", full: true, required: false },
+                        { key: "address", label: "Street Address", placeholder: "123 Main St", full: true, required: true },
+                        { key: "suburb", label: "Suburb / Local Area", placeholder: "Claremont", full: true, required: true },
+                        { key: "city", label: "City", placeholder: "Cape Town", required: true },
+                        { key: "state", label: "Province", placeholder: "Western Cape", required: false },
+                        { key: "zip", label: "Postal Code", placeholder: "8001", required: true },
+                        { key: "country", label: "Country", placeholder: "South Africa", required: true },
+                      ].map(field => (
+                        <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
+                          <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                            {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={(form as any)[field.key]}
+                            onChange={e => update(field.key, e.target.value)}
+                            placeholder={field.placeholder}
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 text-gray-800 transition-colors"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 {/* Shipping Method — only for home delivery */}
                 {deliveryType === "home" && (
@@ -888,25 +892,12 @@ export default function Checkout() {
                         setShippingStepError("Please select a PUDO locker to continue.");
                         return;
                       }
-                      if (!form.address.trim()) {
-                        setShippingStepError("Street address is required.");
-                        return;
-                      }
-                      if (!form.suburb.trim()) {
-                        setShippingStepError("Suburb / local area is required.");
-                        return;
-                      }
-                      if (!form.city.trim()) {
-                        setShippingStepError("City is required.");
-                        return;
-                      }
-                      if (!form.zip.trim()) {
-                        setShippingStepError("Postal code is required.");
-                        return;
-                      }
-                      if (!form.country.trim()) {
-                        setShippingStepError("Country is required.");
-                        return;
+                      if (deliveryType !== "pudo-locker") {
+                        if (!form.address.trim()) { setShippingStepError("Street address is required."); return; }
+                        if (!form.suburb.trim()) { setShippingStepError("Suburb / local area is required."); return; }
+                        if (!form.city.trim()) { setShippingStepError("City is required."); return; }
+                        if (!form.zip.trim()) { setShippingStepError("Postal code is required."); return; }
+                        if (!form.country.trim()) { setShippingStepError("Country is required."); return; }
                       }
                       if (!canProceedToPayment) {
                         setShippingStepError("Please select a shipping method to continue.");

@@ -344,17 +344,25 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   if (existingCart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
   if (existingCart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
 
-  const shippingAddress = await prisma.address.create({ data: body.shippingAddress });
-  const billingAddress = body.billingAddress ? await prisma.address.create({ data: body.billingAddress }) : shippingAddress;
+  const isLockerDelivery = body.pudoDeliveryType === "locker";
+  if (!isLockerDelivery && !body.shippingAddress) {
+    throw new AppError(400, "Shipping address is required", "SHIPPING_ADDRESS_REQUIRED");
+  }
+  const shippingAddress = body.shippingAddress
+    ? await prisma.address.create({ data: body.shippingAddress })
+    : null;
+  const billingAddress = body.billingAddress
+    ? await prisma.address.create({ data: body.billingAddress })
+    : shippingAddress;
   console.info("[checkout] incoming shipping selection", {
     cartId,
-    incomingShippingAddressId: shippingAddress.id,
+    incomingShippingAddressId: shippingAddress?.id ?? null,
     incomingShippingMethodId: body.shippingMethodId ?? null,
   });
   await prisma.cart.update({
     where: { id: cartId },
     data: {
-      shippingAddressId: shippingAddress.id,
+      ...(shippingAddress ? { shippingAddressId: shippingAddress.id } : {}),
       shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
     },
   });
@@ -401,7 +409,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       data: {
         status: "CHECKED_OUT",
         customerId,
-        shippingAddressId: shippingAddress.id,
+        ...(shippingAddress ? { shippingAddressId: shippingAddress.id } : {}),
         abandonedAt: null,
         reminderSentAt: null,
         clearedAt: null,
@@ -419,8 +427,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         currency: cart.currency,
         couponId: cart.couponId,
         shippingMethodId: cart.shippingMethodId,
-        shippingAddressId: shippingAddress.id,
-        billingAddressId: billingAddress.id,
+        shippingAddressId: shippingAddress?.id ?? null,
+        billingAddressId: billingAddress?.id ?? null,
         pudoLockerCode: body.pudoLockerCode ?? null,
         pudoLockerName: body.pudoLockerName ?? null,
         pudoDeliveryType: body.pudoDeliveryType ?? null,

@@ -19,6 +19,10 @@ export interface PackageSizeConfig {
   doorPrice: number;
   lockerServiceCode: string;
   doorServiceCode: string;
+  /** Price returned by the PUDO API on last sync — read-only, set by syncPudoRates() */
+  lockerApiRate?: number;
+  /** Price returned by the PUDO API on last sync — read-only, set by syncPudoRates() */
+  doorApiRate?: number;
 }
 
 export interface ItemRule {
@@ -47,6 +51,8 @@ export interface PudoSettings {
   roundPricing: boolean;
   packageSizes: PackageSizeConfig[];
   itemRules: ItemRule[];
+  /** ISO timestamp of when PUDO rates were last fetched from the API */
+  lastRatesSync?: string;
 }
 
 const DEFAULT_PACKAGE_SIZES: PackageSizeConfig[] = [
@@ -169,11 +175,19 @@ export async function getPudoSettings(): Promise<PudoSettings> {
     roundPricing: v.roundPricing !== false,
     packageSizes: Array.isArray(v.packageSizes) && v.packageSizes.length ? v.packageSizes as PackageSizeConfig[] : DEFAULT_PACKAGE_SIZES,
     itemRules: Array.isArray(v.itemRules) && v.itemRules.length ? v.itemRules as ItemRule[] : DEFAULT_ITEM_RULES,
+    lastRatesSync: v.lastRatesSync ? String(v.lastRatesSync) : undefined,
   };
 }
 
 export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings> {
+  const existing = await getPudoSettings();
   const b = rawBody as Partial<PudoSettings>;
+  // Preserve synced API rates and last sync time — these come from syncPudoRates(), not user input
+  const incomingSizes = Array.isArray(b.packageSizes) && b.packageSizes.length ? b.packageSizes : existing.packageSizes;
+  const mergedSizes = incomingSizes.map((pkg) => {
+    const stored = existing.packageSizes.find((p) => p.code === pkg.code);
+    return { ...pkg, lockerApiRate: stored?.lockerApiRate ?? pkg.lockerApiRate, doorApiRate: stored?.doorApiRate ?? pkg.doorApiRate };
+  });
   const value: PudoSettings = {
     enabled: Boolean(b.enabled),
     apiKey: String(b.apiKey ?? ""),
@@ -192,8 +206,9 @@ export async function upsertPudoSettings(rawBody: unknown): Promise<PudoSettings
     allowCustomerLockerSelection: Boolean(b.allowCustomerLockerSelection),
     doorDeliveryEnabled: Boolean(b.doorDeliveryEnabled),
     roundPricing: b.roundPricing !== false,
-    packageSizes: Array.isArray(b.packageSizes) && b.packageSizes.length ? b.packageSizes : DEFAULT_PACKAGE_SIZES,
-    itemRules: Array.isArray(b.itemRules) && b.itemRules.length ? b.itemRules : DEFAULT_ITEM_RULES,
+    packageSizes: mergedSizes,
+    itemRules: Array.isArray(b.itemRules) && b.itemRules.length ? b.itemRules : existing.itemRules,
+    lastRatesSync: existing.lastRatesSync,
   };
   await prisma.setting.upsert({
     where: { scope_key: { scope: "integrations", key: "pudo" } },
@@ -811,6 +826,130 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
   }
 
   return { synced, errors };
+}
+
+/** Extracts the price for a specific service code from a PUDO rates API response. */
+function extractRateForServiceCode(ratesResponse: unknown, serviceCode: string): number | null {
+  const items = Array.isArray(ratesResponse)
+    ? ratesResponse
+    : Array.isArray((ratesResponse as any)?.rates) ? (ratesResponse as any).rates
+    : Array.isArray((ratesResponse as any)?.data) ? (ratesResponse as any).data
+    : [];
+  for (const item of items as any[]) {
+    const code = item.service_level_code ?? item.service_level?.code ?? item.code ?? "";
+    if (!code || code !== serviceCode) continue;
+    const price = item.rate?.total_inc_vat ?? item.rate?.amount ?? item.price ?? item.total_inc_vat ?? null;
+    if (price != null) return Number(price);
+  }
+  return null;
+}
+
+/**
+ * Fetches current rates from the PUDO API for each configured package size and stores them
+ * as `lockerApiRate`/`doorApiRate` on the package size config. These are read-only reference
+ * values — they do NOT automatically change what customers are charged.
+ */
+export async function syncPudoRates(): Promise<PudoSettings> {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
+    console.info("[PUDO] syncPudoRates: skipped — PUDO not enabled/configured");
+    return settings;
+  }
+  if (!settings.senderStreetAddress || !settings.senderCity) {
+    console.info("[PUDO] syncPudoRates: skipped — sender address not configured");
+    return settings;
+  }
+
+  const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
+  const senderZone = toProvinceCode(settings.senderProvince ?? "");
+
+  const collectionAddress = {
+    street_address: senderStreet,
+    local_area: settings.senderLocalArea ?? "",
+    city: settings.senderCity,
+    code: settings.senderPostalCode ?? "",
+    zone: senderZone,
+    country: "South Africa",
+    type: "residential",
+  };
+
+  // Reference delivery address for D2D: same zone as sender (gives base rate)
+  const doorDeliveryAddress = {
+    street_address: senderStreet,
+    local_area: settings.senderLocalArea ?? "",
+    city: settings.senderCity,
+    code: settings.senderPostalCode ?? "",
+    zone: senderZone,
+    country: "South Africa",
+    type: "door",
+  };
+
+  // Get a reference locker for D2L rates
+  let referenceLockerCode: string | null = null;
+  try {
+    const lockers = await getPudoLockers();
+    referenceLockerCode = lockers[0]?.lockerCode ?? null;
+    console.info(`[PUDO] syncPudoRates: using locker ${referenceLockerCode} as D2L reference`);
+  } catch (err) {
+    console.warn("[PUDO] syncPudoRates: could not fetch lockers for D2L reference:", err);
+  }
+
+  const updatedSizes: PackageSizeConfig[] = [];
+
+  for (const pkg of settings.packageSizes) {
+    const [lengthCm, widthCm, heightCm] = parseDimensions(pkg.dimensions);
+    const parcel = [{ submitted_length_cm: String(lengthCm), submitted_width_cm: String(widthCm), submitted_height_cm: String(heightCm), submitted_weight_kg: String(pkg.maxWeight) }];
+
+    let lockerApiRate: number | undefined = pkg.lockerApiRate;
+    let doorApiRate: number | undefined = pkg.doorApiRate;
+
+    if (referenceLockerCode) {
+      try {
+        const resp = await pudoFetch<unknown>("POST", "/rates", settings, {
+          collection_address: collectionAddress,
+          delivery_address: { terminal_id: referenceLockerCode },
+          parcels: parcel,
+        });
+        const rate = extractRateForServiceCode(resp, pkg.lockerServiceCode);
+        if (rate !== null) {
+          lockerApiRate = rate;
+          console.info(`[PUDO] syncPudoRates: ${pkg.code} locker rate for "${pkg.lockerServiceCode}" = R${rate}`);
+        } else {
+          console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker — service code "${pkg.lockerServiceCode}" not found in response`);
+        }
+      } catch (err) {
+        console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker rate fetch failed:`, err);
+      }
+    }
+
+    try {
+      const resp = await pudoFetch<unknown>("POST", "/rates", settings, {
+        collection_address: collectionAddress,
+        delivery_address: doorDeliveryAddress,
+        parcels: parcel,
+      });
+      const rate = extractRateForServiceCode(resp, pkg.doorServiceCode);
+      if (rate !== null) {
+        doorApiRate = rate;
+        console.info(`[PUDO] syncPudoRates: ${pkg.code} door rate for "${pkg.doorServiceCode}" = R${rate}`);
+      } else {
+        console.warn(`[PUDO] syncPudoRates: ${pkg.code} door — service code "${pkg.doorServiceCode}" not found in response`);
+      }
+    } catch (err) {
+      console.warn(`[PUDO] syncPudoRates: ${pkg.code} door rate fetch failed:`, err);
+    }
+
+    updatedSizes.push({ ...pkg, lockerApiRate, doorApiRate });
+  }
+
+  const updatedSettings: PudoSettings = { ...settings, packageSizes: updatedSizes, lastRatesSync: new Date().toISOString() };
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: "integrations", key: "pudo" } },
+    update: { value: updatedSettings as any },
+    create: { scope: "integrations", key: "pudo", value: updatedSettings as any },
+  });
+  console.info("[PUDO] syncPudoRates complete");
+  return updatedSettings;
 }
 
 /** Lists all our own PUDO orders (from the DB, with tracking info). */

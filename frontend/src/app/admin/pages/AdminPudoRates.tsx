@@ -41,6 +41,17 @@ type PudoSettings = {
   lastRatesSync?: string;
 };
 
+function roundToX9(price: number): number {
+  const intPrice = Math.ceil(price);
+  const mod = intPrice % 10;
+  if (mod === 9) return intPrice;
+  return intPrice + ((9 - mod + 10) % 10);
+}
+
+function applyRounding(rate: number, roundPricing: boolean): number {
+  return roundPricing ? roundToX9(rate) : Math.ceil(rate);
+}
+
 export default function AdminPudoRates() {
   const { session } = useAdminAuth();
   const [loading, setLoading] = useState(true);
@@ -71,10 +82,25 @@ export default function AdminPudoRates() {
     if (!session?.accessToken) return;
     try {
       setSyncing(true);
+      // Fetch latest rates from PUDO API
       const res = await apiRequest<{ data: PudoSettings }>("/admin/pudo/sync-rates", { method: "POST" }, session.accessToken);
-      setSettings(res.data);
-      setSizes(res.data.packageSizes ?? []);
-      toast.success("Rates synced from PUDO API");
+      const synced = res.data;
+      const round = synced.roundPricing;
+
+      // Automatically apply API rates (with rounding) as the new customer prices
+      const updatedSizes = (synced.packageSizes ?? []).map((pkg) => ({
+        ...pkg,
+        lockerPrice: pkg.lockerApiRate != null ? applyRounding(pkg.lockerApiRate, round) : pkg.lockerPrice,
+        doorPrice:   pkg.doorApiRate   != null ? applyRounding(pkg.doorApiRate,   round) : pkg.doorPrice,
+      }));
+
+      // Persist immediately
+      const payload = { ...synced, packageSizes: updatedSizes };
+      await apiRequest("/admin/integrations/pudo/settings", { method: "PUT", body: JSON.stringify(payload) }, session.accessToken);
+
+      setSettings(payload);
+      setSizes(updatedSizes);
+      toast.success(`Rates synced and prices updated${round ? " (rounded to nearest ×9)" : ""}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rate sync failed");
     } finally {
@@ -127,7 +153,7 @@ export default function AdminPudoRates() {
           disabled={syncing}
           className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-60"
         >
-          {syncing ? "Syncing…" : "Sync from PUDO"}
+          {syncing ? "Syncing…" : "Sync & Update Prices"}
         </button>
       </div>
 
@@ -279,9 +305,10 @@ export default function AdminPudoRates() {
       <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 text-sm text-blue-800">
         <p className="font-semibold mb-1">How rates work</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
-          <li>The <strong>PUDO API Rate</strong> is what PUDO charges you — fetched daily at 4am UTC. Red ▲ means you are charging less than PUDO charges you.</li>
-          <li><strong>Your Price</strong> is what customers see at checkout. Set it to cover costs plus any margin.</li>
-          <li>Syncing does NOT automatically change your prices — you must save after reviewing.</li>
+          <li>The <strong>PUDO API Rate</strong> is what PUDO charges you (the merchant cost).</li>
+          <li><strong>"Sync &amp; Update Prices"</strong> fetches the latest API rates and immediately saves them as your customer prices{settings?.roundPricing ? ", rounded up to the nearest ×9 (e.g. R74.84 → R79)" : ""}.</li>
+          <li><strong>Your Price</strong> is what customers see at checkout. Edit the inputs and click "Save Prices" to override manually.</li>
+          <li>Red ▲ means your price is lower than the PUDO API rate — you may be under-charging.</li>
         </ul>
       </div>
     </div>

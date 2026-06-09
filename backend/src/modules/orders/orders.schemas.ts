@@ -46,7 +46,7 @@ export const addressSchema = z.object({
 export const checkoutSchema = z.object({
   email: z.string().email(),
   customerId: z.string().cuid().optional(),
-  shippingAddress: addressSchema,
+  shippingAddress: addressSchema.optional(),
   billingAddress: addressSchema.optional(),
   shippingMethodId: z.string().cuid().optional(),
   couponCode: z.string().optional(),

@@ -702,6 +702,25 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
     }
   } catch (err) {
     console.error(`[PUDO] autoCreatePudoShipment failed for order ${orderId}:`, err);
+    // Auto-diagnose: call rates endpoint so the admin can see which service codes are valid
+    if (deliveryType === "door" && input.doorAddress) {
+      try {
+        const rates = await getPudoDoorRates({
+          streetAddress: input.doorAddress.streetAddress,
+          localArea: input.doorAddress.localArea,
+          city: input.doorAddress.city,
+          postalCode: input.doorAddress.postalCode,
+          province: input.doorAddress.province,
+        });
+        console.info(
+          `[PUDO] Available door service codes for order ${orderId}` +
+          ` (current doorServiceCode="${serviceCode}" — update "doorServiceCode" in PUDO package size settings if wrong):`,
+          JSON.stringify(rates).slice(0, 2000),
+        );
+      } catch (ratesErr) {
+        console.warn(`[PUDO] Could not fetch door rates for auto-diagnosis:`, ratesErr);
+      }
+    }
   }
 }
 

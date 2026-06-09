@@ -890,7 +890,25 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
   return { synced, errors };
 }
 
-/** Extracts the price for a specific service code from a PUDO rates API response. */
+/** Summarises all service codes and rates from a PUDO rates response for diagnostic logging. */
+function describeRatesResponse(ratesResponse: unknown): string {
+  const items = Array.isArray(ratesResponse)
+    ? ratesResponse
+    : Array.isArray((ratesResponse as any)?.rates) ? (ratesResponse as any).rates
+    : Array.isArray((ratesResponse as any)?.data) ? (ratesResponse as any).data
+    : [];
+  if (!(items as any[]).length) return "(empty)";
+  return (items as any[]).map((item) => {
+    const code = item.service_level_code ?? item.service_level?.code ?? item.code ?? "?";
+    const price = item.rate?.total_inc_vat ?? item.rate?.amount ?? item.price ?? item.total_inc_vat ?? item.rate ?? "?";
+    return `${code}=R${price}`;
+  }).join(", ");
+}
+
+/**
+ * Extracts the price for a specific service code from a PUDO rates API response.
+ * The PUDO API returns `rate` as a plain string (e.g. "74.84"), not as an object.
+ */
 function extractRateForServiceCode(ratesResponse: unknown, serviceCode: string): number | null {
   const items = Array.isArray(ratesResponse)
     ? ratesResponse
@@ -900,7 +918,8 @@ function extractRateForServiceCode(ratesResponse: unknown, serviceCode: string):
   for (const item of items as any[]) {
     const code = item.service_level_code ?? item.service_level?.code ?? item.code ?? "";
     if (!code || code !== serviceCode) continue;
-    const price = item.rate?.total_inc_vat ?? item.rate?.amount ?? item.price ?? item.total_inc_vat ?? null;
+    // item.rate may be a plain string ("74.84") or a nested object — handle both
+    const price = item.rate?.total_inc_vat ?? item.rate?.amount ?? item.price ?? item.total_inc_vat ?? item.rate ?? null;
     if (price != null) return Number(price);
   }
   return null;
@@ -1008,15 +1027,16 @@ export async function syncPudoRates(): Promise<PudoSettings> {
           parcels: parcel,
         });
         let rate = extractRateForServiceCode(resp, pkg.lockerServiceCode);
-        if (rate === null) {
+        if (rate !== null) {
+          console.info(`[PUDO] syncPudoRates: ${pkg.code} locker rate for "${pkg.lockerServiceCode}" = R${rate}`);
+        } else {
+          console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker — service code "${pkg.lockerServiceCode}" not found; available: [${describeRatesResponse(resp)}]`);
           rate = extractFirstRate(resp);
           if (rate !== null) {
-            console.info(`[PUDO] syncPudoRates: ${pkg.code} locker — code "${pkg.lockerServiceCode}" not in response; using first rate R${rate}`);
+            console.info(`[PUDO] syncPudoRates: ${pkg.code} locker — using first rate R${rate}`);
           } else {
             console.warn(`[PUDO] syncPudoRates: ${pkg.code} locker — no rate found in response`);
           }
-        } else {
-          console.info(`[PUDO] syncPudoRates: ${pkg.code} locker rate for "${pkg.lockerServiceCode}" = R${rate}`);
         }
         if (rate !== null) lockerApiRate = rate;
       } catch (err) {
@@ -1031,15 +1051,16 @@ export async function syncPudoRates(): Promise<PudoSettings> {
         parcels: parcel,
       });
       let rate = extractRateForServiceCode(resp, pkg.doorServiceCode);
-      if (rate === null) {
+      if (rate !== null) {
+        console.info(`[PUDO] syncPudoRates: ${pkg.code} door rate for "${pkg.doorServiceCode}" = R${rate}`);
+      } else {
+        console.warn(`[PUDO] syncPudoRates: ${pkg.code} door — service code "${pkg.doorServiceCode}" not found; available: [${describeRatesResponse(resp)}]`);
         rate = extractFirstRate(resp);
         if (rate !== null) {
-          console.info(`[PUDO] syncPudoRates: ${pkg.code} door — code "${pkg.doorServiceCode}" not in response; using first rate R${rate}`);
+          console.info(`[PUDO] syncPudoRates: ${pkg.code} door — using first rate R${rate}`);
         } else {
           console.warn(`[PUDO] syncPudoRates: ${pkg.code} door — no rate found in response`);
         }
-      } else {
-        console.info(`[PUDO] syncPudoRates: ${pkg.code} door rate for "${pkg.doorServiceCode}" = R${rate}`);
       }
       if (rate !== null) doorApiRate = rate;
     } catch (err) {

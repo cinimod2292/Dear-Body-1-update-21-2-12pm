@@ -359,7 +359,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
         code: input.doorAddress!.postalCode ?? "",
         zone: toProvinceCode(input.doorAddress!.province ?? ""),
         country: "South Africa",
-        type: "residential",
+        type: "door",
         entered_address: buildEnteredAddress(
           input.doorAddress!.streetAddress,
           input.doorAddress!.localArea,
@@ -480,17 +480,47 @@ export async function getPudoRates(lockerCode: string) {
   if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
+  const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
   const payload = {
     collection_address: {
-      street_address: [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", "),
+      street_address: senderStreet,
       local_area: settings.senderLocalArea ?? "",
       city: settings.senderCity ?? "",
       code: settings.senderPostalCode ?? "",
-      zone: settings.senderProvince ?? "",
+      zone: toProvinceCode(settings.senderProvince ?? ""),
       country: "South Africa",
-      type: "business",
+      type: "residential",
     },
     delivery_address: { terminal_id: lockerCode },
+  };
+  return pudoFetch<unknown>("POST", "/rates", settings, payload);
+}
+
+export async function getPudoDoorRates(deliveryAddress: { streetAddress: string; localArea?: string; city: string; postalCode?: string; province?: string }) {
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !getEffectiveApiKey(settings)) {
+    throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
+  }
+  const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
+  const payload = {
+    collection_address: {
+      street_address: senderStreet,
+      local_area: settings.senderLocalArea ?? "",
+      city: settings.senderCity ?? "",
+      code: settings.senderPostalCode ?? "",
+      zone: toProvinceCode(settings.senderProvince ?? ""),
+      country: "South Africa",
+      type: "residential",
+    },
+    delivery_address: {
+      street_address: deliveryAddress.streetAddress,
+      local_area: deliveryAddress.localArea ?? "",
+      city: deliveryAddress.city,
+      code: deliveryAddress.postalCode ?? "",
+      zone: toProvinceCode(deliveryAddress.province ?? ""),
+      country: "South Africa",
+      type: "door",
+    },
   };
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
 }

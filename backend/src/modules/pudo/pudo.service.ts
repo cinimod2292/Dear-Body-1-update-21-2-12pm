@@ -72,6 +72,14 @@ function roundToX9(price: number): number {
   return intPrice + ((9 - mod + 10) % 10);
 }
 
+/** Normalises a South African phone number to 0XXXXXXXXX (10-digit local format). */
+function normalizeSAPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("27")) return "0" + digits.slice(2);
+  if (digits.length === 10 && digits.startsWith("0")) return digits;
+  return phone;
+}
+
 export interface PudoLocker {
   lockerCode: string;
   name: string;
@@ -317,6 +325,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
         code: input.doorAddress!.postalCode ?? "",
         zone: input.doorAddress!.province ?? "",
         country: "South Africa",
+        type: "residential",
       };
 
   const payload = {
@@ -331,13 +340,13 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     },
     collection_contact: {
       name: settings.senderName ?? "",
-      mobile_number: settings.senderPhone ?? "",
+      mobile_number: normalizeSAPhone(settings.senderPhone ?? ""),
       email: settings.senderEmail ?? "",
     },
     delivery_address: deliveryAddress,
     delivery_contact: {
       name: input.recipientName,
-      mobile_number: input.recipientPhone,
+      mobile_number: normalizeSAPhone(input.recipientPhone),
       email: input.recipientEmail ?? "",
     },
     service_level_code: input.serviceLevelCode,

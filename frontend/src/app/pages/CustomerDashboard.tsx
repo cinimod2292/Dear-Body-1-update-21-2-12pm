@@ -110,10 +110,19 @@ function ProfileSection({
   return (
     <section className="bg-white rounded-2xl border p-5" data-testid="account-profile-section">
       <h2 className="font-bold mb-4">Personal Details</h2>
-      <form onSubmit={(e) => void onSave(e)} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <input className="border rounded-lg px-3 py-2" placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2" placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+      <form onSubmit={(e) => void onSave(e)} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">First Name</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Jane" value={profileForm.firstName} onChange={(e) => setProfileForm((p) => ({ ...p, firstName: e.target.value }))} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Name</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Smith" value={profileForm.lastName} onChange={(e) => setProfileForm((p) => ({ ...p, lastName: e.target.value }))} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="+27 82 000 0000" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+        </label>
         {profileError ? <p className="sm:col-span-3 text-sm text-red-600">{profileError}</p> : null}
         <div className="sm:col-span-3">
           <button disabled={profileSaving} className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm">
@@ -143,17 +152,44 @@ function AddressSection({
   return (
     <section className="bg-white rounded-2xl border p-5" data-testid="account-address-section">
       <h2 className="font-bold mb-4">Shipping Address</h2>
-      <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" onSubmit={(e) => void onSave(e)}>
+      <form className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5" onSubmit={(e) => void onSave(e)}>
         {addressError ? <p className="sm:col-span-2 text-sm text-red-600">{addressError}</p> : null}
-        <input className="border rounded-lg px-3 py-2" placeholder="Recipient name" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2" placeholder="Phone" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Unit / Complex / Building (optional)" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Street Address" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
-        <input className="border rounded-lg px-3 py-2" placeholder="City / Suburb" value={addressForm.city} onChange={(e) => setAddressForm((p) => ({ ...p, city: e.target.value }))} required />
-        <input className="border rounded-lg px-3 py-2" placeholder="Province / State" value={addressForm.state} onChange={(e) => setAddressForm((p) => ({ ...p, state: e.target.value }))} />
-        <input className="border rounded-lg px-3 py-2" placeholder="Postal code" value={addressForm.postalCode} onChange={(e) => setAddressForm((p) => ({ ...p, postalCode: e.target.value }))} required />
-        <input className="border rounded-lg px-3 py-2" placeholder="Country" value={addressForm.country} onChange={(e) => setAddressForm((p) => ({ ...p, country: e.target.value }))} required />
-        <input className="border rounded-lg px-3 py-2 sm:col-span-2" placeholder="Delivery notes (optional)" value={addressForm.deliveryNotes} onChange={(e) => setAddressForm((p) => ({ ...p, deliveryNotes: e.target.value }))} />
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Recipient Name</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Jane Smith" value={addressForm.recipientName} onChange={(e) => setAddressForm((p) => ({ ...p, recipientName: e.target.value }))} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="+27 82 000 0000" value={addressForm.phone} onChange={(e) => setAddressForm((p) => ({ ...p, phone: e.target.value }))} />
+        </label>
+        <label className="sm:col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit / Complex / Building <span className="normal-case font-normal">(optional)</span></span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Unit 4, The Palms" value={addressForm.line2} onChange={(e) => setAddressForm((p) => ({ ...p, line2: e.target.value }))} />
+        </label>
+        <label className="sm:col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Street Address</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="123 Main Street" value={addressForm.line1} onChange={(e) => setAddressForm((p) => ({ ...p, line1: e.target.value }))} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">City / Suburb</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Cape Town" value={addressForm.city} onChange={(e) => setAddressForm((p) => ({ ...p, city: e.target.value }))} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Province</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="Western Cape" value={addressForm.state} onChange={(e) => setAddressForm((p) => ({ ...p, state: e.target.value }))} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Postal Code</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="8001" value={addressForm.postalCode} onChange={(e) => setAddressForm((p) => ({ ...p, postalCode: e.target.value }))} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Country</span>
+          <input className="border rounded-lg px-3 py-2" placeholder="South Africa" value={addressForm.country} onChange={(e) => setAddressForm((p) => ({ ...p, country: e.target.value }))} required />
+        </label>
+        <label className="sm:col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Notes <span className="normal-case font-normal">(optional)</span></span>
+          <input className="border rounded-lg px-3 py-2" placeholder="e.g. Leave at gate / Ring doorbell" value={addressForm.deliveryNotes} onChange={(e) => setAddressForm((p) => ({ ...p, deliveryNotes: e.target.value }))} />
+        </label>
         <label className="text-sm flex items-center gap-2">
           <input type="checkbox" checked={addressForm.isDefaultShipping} onChange={(e) => setAddressForm((p) => ({ ...p, isDefaultShipping: e.target.checked }))} />
           Default shipping

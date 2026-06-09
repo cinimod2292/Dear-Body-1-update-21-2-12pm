@@ -80,6 +80,13 @@ function normalizeSAPhone(phone: string): string {
   return phone;
 }
 
+/** Parses a dimension string like "60×17×8cm" into [length, width, height] in cm. */
+function parseDimensions(dimensions: string): [number, number, number] {
+  const parts = dimensions.replace(/cm/gi, "").split(/[×x*]/);
+  const nums = parts.map((p) => parseFloat(p.trim())).filter((n) => !isNaN(n));
+  return [nums[0] ?? 10, nums[1] ?? 10, nums[2] ?? 10];
+}
+
 export interface PudoLocker {
   lockerCode: string;
   name: string;
@@ -108,6 +115,12 @@ export interface PudoShipmentInput {
   recipientName: string;
   recipientPhone: string;
   recipientEmail?: string;
+  parcel?: {
+    lengthCm: number;
+    widthCm: number;
+    heightCm: number;
+    weightKg: number;
+  };
 }
 
 export async function getPudoSettings(): Promise<PudoSettings> {
@@ -352,6 +365,14 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     service_level_code: input.serviceLevelCode,
     opt_in_rates: [],
     opt_in_time_based_rates: [],
+    parcels: [
+      {
+        submitted_length_cm: input.parcel?.lengthCm ?? 10,
+        submitted_width_cm: input.parcel?.widthCm ?? 10,
+        submitted_height_cm: input.parcel?.heightCm ?? 10,
+        submitted_weight_kg: input.parcel?.weightKg ?? 0.5,
+      },
+    ],
   };
 
   const result = await pudoFetch<Record<string, unknown>>("POST", "/shipments", settings, payload);
@@ -538,6 +559,12 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
   const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
   const serviceCode = await resolveServiceCode(settings, itemCount, deliveryType);
 
+  // Resolve package size for parcel dimensions
+  const rule = settings.itemRules.find(
+    (r) => itemCount >= r.minItems && (r.maxItems === null || itemCount <= r.maxItems),
+  );
+  const pkg = rule ? settings.packageSizes.find((p) => p.code === rule.packageCode) : null;
+
   const recipientName = (
     order.shippingAddress?.recipientName
     ?? (order.customer ? [order.customer.firstName, order.customer.lastName].filter(Boolean).join(" ") : "")
@@ -553,12 +580,16 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
     throw new AppError(400, "PUDO shipment cannot be created: sender address (street + city) is not configured in PUDO settings", "PUDO_MISSING_SENDER_ADDRESS");
   }
 
+  const [lengthCm, widthCm, heightCm] = pkg ? parseDimensions(pkg.dimensions) : [10, 10, 10];
+  const weightKg = pkg ? pkg.maxWeight : 0.5;
+
   const input: PudoShipmentInput = {
     orderId,
     serviceLevelCode: serviceCode,
     recipientName,
     recipientPhone,
     recipientEmail,
+    parcel: { lengthCm, widthCm, heightCm, weightKg },
   };
 
   if (deliveryType === "locker") {

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Package, Truck } from "lucide-react";
+import { ArrowLeft, Package, Truck, CheckCircle, Circle, AlertCircle, RotateCcw, Clock } from "lucide-react";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
+
+type PudoTrackingEvent = { timestamp: string; status: string; statusLabel: string; description: string; location?: string };
+type PudoTracking = { waybillNumber: string; currentStatus: string; currentStatusLabel: string; events: PudoTrackingEvent[] };
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
@@ -35,6 +38,61 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const TRACKING_STATUS_STYLE: Record<string, { icon: React.ReactNode; color: string }> = {
+  delivered:            { icon: <CheckCircle size={14} />, color: "text-green-600" },
+  ready_for_collection: { icon: <CheckCircle size={14} />, color: "text-green-600" },
+  out_for_delivery:     { icon: <Truck size={14} />,       color: "text-blue-600" },
+  in_transit:           { icon: <Truck size={14} />,       color: "text-blue-500" },
+  collected:            { icon: <Package size={14} />,     color: "text-indigo-600" },
+  failed_delivery:      { icon: <AlertCircle size={14} />, color: "text-amber-600" },
+  exception:            { icon: <AlertCircle size={14} />, color: "text-red-600" },
+  return_to_sender:     { icon: <RotateCcw size={14} />,   color: "text-orange-600" },
+};
+
+function PudoTrackingTimeline({ tracking }: { tracking: PudoTracking }) {
+  const { currentStatusLabel, events } = tracking;
+  const style = TRACKING_STATUS_STYLE[tracking.currentStatus] ?? { icon: <Circle size={14} />, color: "text-gray-500" };
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+      {/* Current status banner */}
+      <div className={`flex items-center gap-2 font-semibold text-sm ${style.color}`}>
+        {style.icon}
+        <span>{currentStatusLabel}</span>
+      </div>
+
+      {/* Event timeline */}
+      {events.length > 0 && (
+        <div className="space-y-2 pt-1">
+          {events.map((event, i) => (
+            <div key={i} className="flex gap-3 text-xs">
+              <div className="flex flex-col items-center shrink-0 mt-0.5">
+                <div className={`w-2 h-2 rounded-full ${i === 0 ? "bg-pink-500" : "bg-gray-300"}`} />
+                {i < events.length - 1 && <div className="w-px flex-1 bg-gray-200 mt-1" />}
+              </div>
+              <div className="pb-2">
+                <p className={`font-semibold ${i === 0 ? "text-gray-900" : "text-gray-600"}`}>
+                  {event.statusLabel || event.description}
+                </p>
+                {event.description && event.description !== event.statusLabel && (
+                  <p className="text-gray-400">{event.description}</p>
+                )}
+                <p className="text-gray-400 mt-0.5 flex items-center gap-1">
+                  <Clock size={10} />
+                  {event.timestamp
+                    ? new Date(event.timestamp).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" })
+                    : ""}
+                  {event.location ? ` · ${event.location}` : ""}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CustomerOrderDetail() {
   const { orderId } = useParams();
   const { token } = useCustomerAuth();
@@ -42,6 +100,8 @@ export default function CustomerOrderDetail() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [preferredGateway, setPreferredGateway] = useState<"stitch" | "payfast">("payfast");
+  const [pudoTracking, setPudoTracking] = useState<PudoTracking | null>(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
 
   useEffect(() => {
     document.title = "Order Details — Dear Body";
@@ -54,6 +114,16 @@ export default function CustomerOrderDetail() {
       .then((payload) => setOrder(payload.data))
       .finally(() => setLoading(false));
   }, [orderId, token]);
+
+  useEffect(() => {
+    if (!token || !orderId || !order?.trackingNumber || !order?.courier?.toLowerCase().includes("pudo")) return;
+    setTrackingLoading(true);
+    fetch(`${API_BASE}/store/orders/${orderId}/pudo-tracking`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((payload) => { if (payload?.data) setPudoTracking(payload.data); })
+      .catch(() => undefined)
+      .finally(() => setTrackingLoading(false));
+  }, [orderId, token, order?.trackingNumber, order?.courier]);
 
   useEffect(() => {
     fetch(`${API_BASE}/store/payments/gateways`)
@@ -257,15 +327,21 @@ export default function CustomerOrderDetail() {
                 {order.courier ? `${order.courier} — ` : ""}
                 {order.trackingNumber ?? "Not yet assigned"}
               </p>
+
+              {/* Inline PUDO tracking timeline */}
               {order.trackingNumber && order.courier?.toLowerCase().includes("pudo") && (
-                <a
-                  href={`https://pudo.co.za/track/${order.trackingNumber}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-2 text-xs text-pink-600 hover:underline font-medium"
-                >
-                  Track on PUDO →
-                </a>
+                <div className="mt-3">
+                  {trackingLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <div className="w-3 h-3 border-2 border-pink-300 border-t-pink-500 rounded-full animate-spin" />
+                      Loading tracking…
+                    </div>
+                  ) : pudoTracking ? (
+                    <PudoTrackingTimeline tracking={pudoTracking} />
+                  ) : (
+                    <p className="text-xs text-gray-400">No tracking events yet.</p>
+                  )}
+                </div>
               )}
             </div>
           ) : null}

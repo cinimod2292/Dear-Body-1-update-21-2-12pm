@@ -476,6 +476,24 @@ export default function AdminShippingMethods() {
               <p className="text-xs text-gray-400 mt-1">Set Max blank for the last rule to catch all remaining quantities.</p>
             </div>
 
+            {/* Tracking webhook URL */}
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+              <p className="font-semibold mb-1">Tracking webhook URL</p>
+              <p className="mb-2 text-blue-700">Enter this URL in the PUDO portal under <strong>Tracking → Webhook tracking URLs</strong> to receive live shipment status updates:</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-white border border-blue-200 rounded px-2 py-1 text-xs font-mono break-all select-all">
+                  {window.location.origin.replace(/:5173$/, "").replace(/\/+$/, "")}/api/webhooks/pudo-tracking
+                </code>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(`${window.location.origin.replace(/:5173$/, "").replace(/\/+$/, "")}/api/webhooks/pudo-tracking`)}
+                  className="px-2 py-1 text-xs rounded border border-blue-300 text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <button type="submit" disabled={pudoSaving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm disabled:opacity-60">
                 {pudoSaving ? "Saving…" : "Save PUDO Settings"}

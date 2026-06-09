@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { RefreshCw, ExternalLink, Package, Truck } from "lucide-react";
+import { RefreshCw, ExternalLink, Package, Truck, Zap } from "lucide-react";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { toast } from "sonner";
@@ -49,7 +49,6 @@ export default function AdminPudoShipments() {
   const [orders, setOrders] = useState<PudoOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -64,22 +63,6 @@ export default function AdminPudoShipments() {
     }
   };
 
-  const syncTracking = async () => {
-    setSyncing(true);
-    try {
-      const res = await apiRequest<{ data: { synced: number; errors: number } }>("/admin/pudo/sync", {
-        method: "POST",
-      }, token);
-      const { synced, errors } = res.data;
-      toast.success(`Tracking synced: ${synced} updated${errors ? `, ${errors} errors` : ""}`);
-      await load();
-    } catch {
-      toast.error("Tracking sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   useEffect(() => { void load(); }, []);
 
   return (
@@ -90,13 +73,21 @@ export default function AdminPudoShipments() {
           <p className="text-sm text-gray-500 mt-0.5">{total} orders with PUDO delivery</p>
         </div>
         <button
-          onClick={syncTracking}
-          disabled={syncing || loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+          onClick={load}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-colors disabled:opacity-60"
         >
-          <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Syncing…" : "Sync Tracking"}
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          Refresh
         </button>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+        <Zap size={15} className="mt-0.5 shrink-0 text-green-600" />
+        <p>
+          Tracking statuses update automatically — PUDO sends a webhook each time a shipment status changes.
+          Make sure the webhook URL is configured in the PUDO portal under <strong>Tracking → Webhook tracking URLs</strong> (see Admin → Shipping → PUDO Settings).
+        </p>
       </div>
 
       {loading ? (

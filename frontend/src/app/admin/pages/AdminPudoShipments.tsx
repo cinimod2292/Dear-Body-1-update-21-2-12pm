@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { RefreshCw, ExternalLink, Package, Truck } from "lucide-react";
+import { RefreshCw, ExternalLink, Package, Truck, Zap } from "lucide-react";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ interface PudoOrder {
   pudoDeliveryType: string | null;
   pudoLockerCode: string | null;
   pudoLockerName: string | null;
+  pudoTrackingStatus: string | null;
   totalAmount: string;
   customer: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
 }
@@ -33,13 +34,32 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
   AWAITING_PAYMENT: "bg-amber-100 text-amber-700",
   PROCESSING: "bg-blue-100 text-blue-700",
+  SHIPPED: "bg-blue-100 text-blue-700",
   FULFILLED: "bg-green-100 text-green-700",
   DELIVERED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
 };
 
+const TRACKING_STATUS_STYLES: Record<string, { label: string; color: string }> = {
+  collected:            { label: "Collected",       color: "bg-indigo-100 text-indigo-700" },
+  in_transit:           { label: "In Transit",      color: "bg-blue-100 text-blue-700" },
+  out_for_delivery:     { label: "Out for Delivery", color: "bg-amber-100 text-amber-700" },
+  delivered:            { label: "Delivered",       color: "bg-green-100 text-green-700" },
+  ready_for_collection: { label: "Ready to Collect", color: "bg-teal-100 text-teal-700" },
+  failed_delivery:      { label: "Failed Delivery", color: "bg-red-100 text-red-700" },
+  exception:            { label: "Exception",       color: "bg-red-100 text-red-700" },
+  return_to_sender:     { label: "Returning",       color: "bg-orange-100 text-orange-700" },
+};
+
 function Badge({ label, color }: { label: string; color: string }) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{label}</span>;
+}
+
+function TrackingBadge({ status }: { status: string | null }) {
+  if (!status) return <span className="text-xs text-gray-400">—</span>;
+  const style = TRACKING_STATUS_STYLES[status];
+  if (!style) return <Badge label={status.replace(/_/g, " ")} color="bg-gray-100 text-gray-700" />;
+  return <Badge label={style.label} color={style.color} />;
 }
 
 export default function AdminPudoShipments() {
@@ -49,7 +69,6 @@ export default function AdminPudoShipments() {
   const [orders, setOrders] = useState<PudoOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -64,22 +83,6 @@ export default function AdminPudoShipments() {
     }
   };
 
-  const syncTracking = async () => {
-    setSyncing(true);
-    try {
-      const res = await apiRequest<{ data: { synced: number; errors: number } }>("/admin/pudo/sync", {
-        method: "POST",
-      }, token);
-      const { synced, errors } = res.data;
-      toast.success(`Tracking synced: ${synced} updated${errors ? `, ${errors} errors` : ""}`);
-      await load();
-    } catch {
-      toast.error("Tracking sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   useEffect(() => { void load(); }, []);
 
   return (
@@ -90,13 +93,21 @@ export default function AdminPudoShipments() {
           <p className="text-sm text-gray-500 mt-0.5">{total} orders with PUDO delivery</p>
         </div>
         <button
-          onClick={syncTracking}
-          disabled={syncing || loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+          onClick={load}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-colors disabled:opacity-60"
         >
-          <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Syncing…" : "Sync Tracking"}
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          Refresh
         </button>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+        <Zap size={15} className="mt-0.5 shrink-0 text-green-600" />
+        <p>
+          Tracking statuses update automatically via PUDO webhook and are polled every 30 minutes. Customers receive an email on each status change.
+          Make sure the webhook URL is configured in the PUDO portal under <strong>Tracking → Webhook tracking URLs</strong> (see Admin → Shipping → PUDO Settings).
+        </p>
       </div>
 
       {loading ? (
@@ -118,9 +129,10 @@ export default function AdminPudoShipments() {
                   <th className="px-4 py-3 text-left">Customer</th>
                   <th className="px-4 py-3 text-left">Type</th>
                   <th className="px-4 py-3 text-left">Destination</th>
-                  <th className="px-4 py-3 text-left">Waybill / Tracking</th>
+                  <th className="px-4 py-3 text-left">Waybill</th>
+                  <th className="px-4 py-3 text-left">Shipping Status</th>
                   <th className="px-4 py-3 text-left">Fulfillment</th>
-                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Order Status</th>
                   <th className="px-4 py-3 text-right">Total</th>
                 </tr>
               </thead>
@@ -170,6 +182,9 @@ export default function AdminPudoShipments() {
                       ) : (
                         <span className="text-xs text-amber-600 font-medium">Pending</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <TrackingBadge status={order.pudoTrackingStatus} />
                     </td>
                     <td className="px-4 py-3">
                       <Badge

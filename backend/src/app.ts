@@ -30,6 +30,7 @@ import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
+import { syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
 
 export async function buildApp() {
   const app = Fastify({

@@ -14,6 +14,7 @@ import {
 } from "./orders.schemas.js";
 import { AppError } from "../../lib/errors.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
+import { env } from "../../config/env.js";
 import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
@@ -303,18 +304,36 @@ function generateOrderNumber() {
 
 
 async function sendOrderCreatedEmail(orderId: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true, items: true } });
   if (!order?.customer?.email) return;
+  const orderItems = order.items.map((item) => `${item.productName} x${item.quantity}`).join(", ");
   const template = await resolveTemplateByKey("order_confirmation", {
     firstName: order.customer.firstName ?? "Customer",
     orderNumber: order.orderNumber,
-    totalAmount: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`
+    orderDate: order.createdAt.toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }),
+    orderItems: orderItems || "—",
+    orderTotal: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`,
   });
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
+async function sendAdminNewOrderEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  const adminEmail = process.env.ADMIN_EMAIL ?? env.EMAIL_FROM;
+  if (!adminEmail || !order) return;
+  const template = await resolveTemplateByKey("admin_new_order_notification", {
+    orderNumber: order.orderNumber,
+    orderDate: order.createdAt.toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }),
+    orderTotal: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`,
+  });
+  await sendEmail({ to: adminEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
 export async function sendOrderCreatedEmailSafe(orderId: string) {
-  await sendOrderCreatedEmail(orderId).catch(() => undefined);
+  await Promise.allSettled([
+    sendOrderCreatedEmail(orderId),
+    sendAdminNewOrderEmail(orderId),
+  ]);
 }
 
 async function sendShippingEmail(orderId: string) {
@@ -792,6 +811,20 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
   });
 
   await recordOrderEvent(orderId, actorId, "ORDER_REFUNDED", undefined, undefined, { amount: body.amount, reason: body.reason });
+
+  const refundOrder = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  const refundCustomerEmail = refundOrder?.customer?.email;
+  if (refundCustomerEmail && refundOrder) {
+    const { orderNumber, currency } = refundOrder;
+    resolveTemplateByKey("refund_cancellation", {
+      orderNumber,
+      eventType: "refunded",
+      amount: `${currency} ${body.amount.toFixed(2)}`,
+    }).then((template) =>
+      sendEmail({ to: refundCustomerEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } })
+    ).catch(() => undefined);
+  }
+
   return refund;
 }
 

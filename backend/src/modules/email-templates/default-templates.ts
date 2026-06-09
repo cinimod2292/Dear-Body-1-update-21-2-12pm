@@ -11,33 +11,33 @@ export interface DefaultTemplate {
 
 function brandedEmailShell(input: { preheader: string; title: string; body: string; ctaLabel?: string; ctaUrl?: string }) {
   const cta = input.ctaLabel && input.ctaUrl
-    ? `<tr><td style="padding:0 32px 20px 32px;"><a href="${input.ctaUrl}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:linear-gradient(90deg,#ec4899,#f97316);color:#ffffff;text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${input.ctaLabel}</a></td></tr>`
+    ? `<tr><td style="padding:0 32px 20px 32px;"><a href="${input.ctaUrl}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:{{buttonBg}};color:{{buttonTextColor}};text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${input.ctaLabel}</a></td></tr>`
     : "";
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1f2937;">
+  <body style="margin:0;background:{{outerBg}};font-family:Arial,sans-serif;color:{{bodyTextColor}};">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${input.preheader}</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{outerBg}};padding:24px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #f1f5f9;">
+          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:{{contentBg}};border-radius:16px;overflow:hidden;border:1px solid #f1f5f9;">
             <tr>
-              <td style="padding:18px 24px;background:linear-gradient(90deg,#ec4899,#fb7185,#f97316);text-align:center;">
-                <div style="font-size:20px;font-weight:800;letter-spacing:.3px;color:#ffffff;">Dear Body</div>
+              <td style="padding:18px 24px;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});text-align:center;">
+                <div style="font-size:20px;font-weight:800;letter-spacing:.3px;color:#ffffff;">{{brandName}}</div>
               </td>
             </tr>
             <tr>
-              <td style="padding:28px 32px 8px 32px;font-size:28px;line-height:1.2;font-weight:800;color:#111827;">${input.title}</td>
+              <td style="padding:28px 32px 8px 32px;font-size:28px;line-height:1.2;font-weight:800;color:{{headingColor}};">${input.title}</td>
             </tr>
             <tr>
-              <td style="padding:8px 32px 8px 32px;font-size:16px;line-height:1.6;color:#374151;">${input.body}</td>
+              <td style="padding:8px 32px 8px 32px;font-size:16px;line-height:1.6;color:{{bodyTextColor}};">${input.body}</td>
             </tr>
             ${cta}
             <tr>
-              <td style="padding:22px 32px;background:#111827;color:#d1d5db;font-size:13px;line-height:1.6;">
-                Need help? Email <a href="mailto:{{supportEmail}}" style="color:#f9a8d4;text-decoration:none;">{{supportEmail}}</a><br />
-                <a href="{{siteUrl}}" style="color:#ffffff;text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}
+              <td style="padding:22px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">
+                Need help? Email <a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a><br />
+                <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}
               </td>
             </tr>
           </table>

@@ -961,17 +961,14 @@ export async function syncPudoRates(): Promise<PudoSettings> {
     type: "door",
   };
 
-  // Probe locker candidates until we find one that actually returns rates.
-  // Prefer Cape Town lockers for cross-province worst-case pricing.
+  // Find the first locker in the API list that actually returns rates.
+  // PUDO locker rates are flat per package size (route-independent), so any working locker gives the correct reference rate.
   let referenceLockerCode: string | null = null;
   try {
     const lockers = await getPudoLockers();
-    const ct = lockers.filter(
-      (l) => l.city?.toLowerCase().includes("cape town") || l.province?.toLowerCase().includes("western cape"),
-    );
-    const candidates = [...ct, ...lockers.filter((l) => !ct.includes(l))].slice(0, 20);
     const probeParcel = [{ submitted_length_cm: "10", submitted_width_cm: "10", submitted_height_cm: "5", submitted_weight_kg: "0.5" }];
-    for (const locker of candidates) {
+    for (const locker of lockers.slice(0, 10)) {
+      if (!locker.lockerCode) continue;
       try {
         const testResp = await pudoFetch<unknown>("POST", "/rates", settings, {
           collection_address: collectionAddress,
@@ -980,12 +977,11 @@ export async function syncPudoRates(): Promise<PudoSettings> {
         });
         if (Array.isArray((testResp as any)?.rates) && (testResp as any).rates.length > 0) {
           referenceLockerCode = locker.lockerCode;
-          const area = ct.some((l) => l.lockerCode === locker.lockerCode) ? "Cape Town" : "other area";
-          console.info(`[PUDO] syncPudoRates: selected locker ${referenceLockerCode} (${locker.name}, ${area}) as D2L reference`);
+          console.info(`[PUDO] syncPudoRates: selected locker ${referenceLockerCode} (${locker.name}) as D2L reference`);
           break;
         }
       } catch {
-        // try next candidate
+        // try next locker
       }
     }
     if (!referenceLockerCode) {

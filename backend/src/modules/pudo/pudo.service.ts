@@ -238,8 +238,11 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     console.error(`[PUDO] error body:`, rawBody);
     let message = `PUDO API error ${res.status}`;
     try {
-      const err = JSON.parse(rawBody) as { message?: string };
+      const err = JSON.parse(rawBody) as { message?: string; errors?: unknown; detail?: unknown; details?: unknown };
       if (err?.message) message = `PUDO: ${err.message}`;
+      if (err?.errors) console.error(`[PUDO] validation errors:`, JSON.stringify(err.errors));
+      if (err?.detail) console.error(`[PUDO] detail:`, JSON.stringify(err.detail));
+      if (err?.details) console.error(`[PUDO] details:`, JSON.stringify(err.details));
     } catch {}
     throw new AppError(502, message, "PUDO_API_ERROR");
   }
@@ -532,6 +535,14 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
   ) || "Customer";
   const recipientPhone = order.customer?.phone ?? "";
   const recipientEmail = order.customer?.email ?? undefined;
+
+  // Pre-flight validation — fail fast with a clear message rather than a generic PUDO error
+  if (!recipientPhone) {
+    throw new AppError(400, `PUDO shipment cannot be created: customer has no phone number on order ${orderId}`, "PUDO_MISSING_PHONE");
+  }
+  if (!settings.senderStreetAddress || !settings.senderCity) {
+    throw new AppError(400, "PUDO shipment cannot be created: sender address (street + city) is not configured in PUDO settings", "PUDO_MISSING_SENDER_ADDRESS");
+  }
 
   const input: PudoShipmentInput = {
     orderId,

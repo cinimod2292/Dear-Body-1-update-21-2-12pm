@@ -842,3 +842,138 @@ export async function listLocalPudoOrders(page = 1, perPage = 50) {
   ]);
   return { items, total, page, perPage };
 }
+
+// ─── Live tracking for customers ────────────────────────────────────────────
+
+export interface PudoTrackingEvent {
+  timestamp: string;
+  status: string;
+  statusLabel: string;
+  description: string;
+  location?: string;
+}
+
+export interface PudoTrackingResult {
+  waybillNumber: string;
+  currentStatus: string;
+  currentStatusLabel: string;
+  events: PudoTrackingEvent[];
+}
+
+const PUDO_STATUS_LABELS: Record<string, string> = {
+  collected:            "Collected from sender",
+  in_transit:           "In transit",
+  out_for_delivery:     "Out for delivery",
+  delivered:            "Delivered",
+  ready_for_collection: "Ready for collection",
+  failed_delivery:      "Delivery attempted",
+  exception:            "Exception",
+  return_to_sender:     "Returning to sender",
+};
+
+function labelForStatus(raw: string): string {
+  return PUDO_STATUS_LABELS[raw.toLowerCase().replace(/\s+/g, "_")] ?? raw;
+}
+
+function parsePudoTrackingResponse(waybillNumber: string, data: unknown): PudoTrackingResult {
+  const d = data as any;
+  const currentStatus = String(d?.status ?? d?.tracking_status ?? d?.current_status ?? "").toLowerCase().replace(/\s+/g, "_");
+
+  const rawEvents = Array.isArray(d?.events) ? d.events
+    : Array.isArray(d?.tracking_events) ? d.tracking_events
+    : Array.isArray(d?.history) ? d.history
+    : Array.isArray(d?.statuses) ? d.statuses
+    : [];
+
+  const events: PudoTrackingEvent[] = (rawEvents as any[]).map((e) => {
+    const rawSt = String(e.status ?? e.event_status ?? e.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
+    return {
+      timestamp: String(e.timestamp ?? e.date ?? e.created_at ?? e.event_date ?? ""),
+      status: rawSt,
+      statusLabel: labelForStatus(rawSt),
+      description: String(e.description ?? e.message ?? e.event_description ?? e.name ?? ""),
+      location: e.location ?? e.hub ?? e.city ?? undefined,
+    };
+  }).filter((e) => e.timestamp);
+
+  events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  return {
+    waybillNumber,
+    currentStatus,
+    currentStatusLabel: labelForStatus(currentStatus),
+    events,
+  };
+}
+
+/** Returns live PUDO tracking for a customer's order. Verifies the order belongs to the customer. */
+export async function getOrderPudoTracking(orderId: string, customerId: string): Promise<PudoTrackingResult | null> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { trackingNumber: true, customerId: true, courier: true },
+  });
+  if (!order || order.customerId !== customerId) {
+    throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  }
+  if (!order.trackingNumber || !order.courier?.toLowerCase().includes("pudo")) return null;
+
+  const settings = await getPudoSettings();
+  if (!settings.enabled || !getEffectiveApiKey(settings)) return null;
+
+  const response = await pudoFetch<unknown>(
+    "GET",
+    `/tracking/shipments/public?waybill=${encodeURIComponent(order.trackingNumber)}`,
+    settings,
+  );
+  return parsePudoTrackingResponse(order.trackingNumber, response);
+}
+
+/**
+ * Handles an inbound PUDO tracking webhook: looks up the order by waybill number,
+ * records an OrderEvent, and updates the order status.
+ */
+export async function processPudoTrackingWebhook(payload: unknown): Promise<void> {
+  const p = payload as any;
+  const waybillNumber = String(
+    p?.waybill ?? p?.waybill_number ?? p?.tracking_reference ?? p?.custom_tracking_reference ?? "",
+  );
+  if (!waybillNumber) {
+    console.warn("[PUDO webhook] No waybill found in payload:", JSON.stringify(p).slice(0, 300));
+    return;
+  }
+
+  const order = await prisma.order.findFirst({
+    where: { trackingNumber: waybillNumber },
+    select: { id: true, orderNumber: true, status: true, fulfillmentStatus: true },
+  });
+  if (!order) {
+    console.warn(`[PUDO webhook] No order for waybill ${waybillNumber}`);
+    return;
+  }
+
+  const rawStatus = String(p?.status ?? p?.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
+  console.info(`[PUDO webhook] ${rawStatus} for order ${order.orderNumber} (waybill ${waybillNumber})`);
+
+  await prisma.orderEvent.create({
+    data: {
+      orderId: order.id,
+      eventType: "TRACKING_UPDATED",
+      nextValue: rawStatus,
+      details: { source: "pudo_webhook", pudoStatus: rawStatus, payload: p } as any,
+    },
+  });
+
+  const mapped = PUDO_STATUS_MAP[rawStatus];
+  if (!mapped) return;
+
+  const updates: Record<string, unknown> = {};
+  if (mapped.fulfillmentStatus && order.fulfillmentStatus !== mapped.fulfillmentStatus) updates.fulfillmentStatus = mapped.fulfillmentStatus;
+  if (mapped.status && order.status !== mapped.status) {
+    updates.status = mapped.status;
+    if (mapped.status === "DELIVERED") updates.deliveredAt = new Date();
+  }
+  if (Object.keys(updates).length > 0) {
+    await prisma.order.update({ where: { id: order.id }, data: updates as any });
+    console.info(`[PUDO webhook] Updated order ${order.orderNumber}:`, updates);
+  }
+}

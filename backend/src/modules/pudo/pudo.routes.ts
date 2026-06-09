@@ -10,8 +10,10 @@ import {
   getPudoRates,
   getPudoSettings,
   getPudoShippingOption,
+  getOrderPudoTracking,
   listLocalPudoOrders,
   listPudoShipments,
+  processPudoTrackingWebhook,
   syncPudoTrackingStatuses,
   trackPudoShipment,
   upsertPudoSettings,
@@ -158,6 +160,29 @@ export async function pudoRoutes(app: FastifyInstance) {
     "/admin/pudo/diagnose",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
     async (_request, reply) => reply.send({ data: await diagnosePudoApi() }),
+  );
+
+  // Customer-facing: live PUDO tracking for their own order
+  app.get(
+    "/store/orders/:orderId/pudo-tracking",
+    { preHandler: [app.verifyCustomer] },
+    async (request, reply) => {
+      const { orderId } = request.params as { orderId: string };
+      const customerId = (request as any).customer.id as string;
+      const result = await getOrderPudoTracking(orderId, customerId);
+      return reply.send({ data: result });
+    },
+  );
+
+  // PUDO tracking webhook — public, no auth (PUDO posts here when shipment status changes)
+  app.post(
+    "/webhooks/pudo-tracking",
+    async (request, reply) => {
+      void processPudoTrackingWebhook(request.body).catch((err) => {
+        console.error("[PUDO webhook] processing error:", err);
+      });
+      return reply.status(200).send({ received: true });
+    },
   );
 
   // Proxies the PUDO waybill PDF through our backend (PUDO requires Bearer auth, browsers can't send that directly)

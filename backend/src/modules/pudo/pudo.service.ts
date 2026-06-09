@@ -369,7 +369,9 @@ export async function createPudoShipment(input: PudoShipmentInput) {
         ),
       };
 
-  const payload = {
+  const isDoor = !input.lockerCode;
+
+  const payload: Record<string, unknown> = {
     collection_min_date: now,
     collection_address: {
       street_address: senderStreet,
@@ -389,7 +391,6 @@ export async function createPudoShipment(input: PudoShipmentInput) {
         "South Africa",
       ),
     },
-    special_instructions_collection: "",
     collection_contact: {
       name: settings.senderName ?? "",
       mobile_number: normalizeSAPhone(settings.senderPhone ?? ""),
@@ -405,7 +406,12 @@ export async function createPudoShipment(input: PudoShipmentInput) {
     service_level_code: input.serviceLevelCode,
     opt_in_rates: [],
     opt_in_time_based_rates: [],
-    parcels: [
+  };
+
+  // D2D only — locker deliveries omit parcels and special instructions
+  if (isDoor) {
+    payload.special_instructions_collection = "";
+    payload.parcels = [
       {
         submitted_length_cm: String(input.parcel?.lengthCm ?? 10),
         submitted_width_cm: String(input.parcel?.widthCm ?? 10),
@@ -414,8 +420,8 @@ export async function createPudoShipment(input: PudoShipmentInput) {
         parcel_description: "Package",
         alternative_tracking_reference: "",
       },
-    ],
-  };
+    ];
+  }
 
   const result = await pudoFetch<Record<string, unknown>>("POST", "/shipments", settings, payload);
 

@@ -915,7 +915,6 @@ function extractFirstRate(ratesResponse: unknown): number | null {
     : [];
   const first = (items as any[])[0];
   if (!first) return null;
-  // Prefer explicit incl-VAT fields, then the top-level "rate" string
   const price = first.rate?.total_inc_vat ?? first.total_inc_vat ?? first.price ?? first.rate ?? null;
   return price != null ? Number(price) : null;
 }
@@ -962,15 +961,36 @@ export async function syncPudoRates(): Promise<PudoSettings> {
     type: "door",
   };
 
-  // Prefer a Cape Town locker for D2L rates — cross-province gives worst-case pricing
+  // Probe locker candidates until we find one that actually returns rates.
+  // Prefer Cape Town lockers for cross-province worst-case pricing.
   let referenceLockerCode: string | null = null;
   try {
     const lockers = await getPudoLockers();
-    const ctLocker = lockers.find(
+    const ct = lockers.filter(
       (l) => l.city?.toLowerCase().includes("cape town") || l.province?.toLowerCase().includes("western cape"),
     );
-    referenceLockerCode = (ctLocker ?? lockers[0])?.lockerCode ?? null;
-    console.info(`[PUDO] syncPudoRates: using locker ${referenceLockerCode} as D2L reference`);
+    const candidates = [...ct, ...lockers.filter((l) => !ct.includes(l))].slice(0, 20);
+    const probeParcel = [{ submitted_length_cm: "10", submitted_width_cm: "10", submitted_height_cm: "5", submitted_weight_kg: "0.5" }];
+    for (const locker of candidates) {
+      try {
+        const testResp = await pudoFetch<unknown>("POST", "/rates", settings, {
+          collection_address: collectionAddress,
+          delivery_address: { terminal_id: locker.lockerCode },
+          parcels: probeParcel,
+        });
+        if (Array.isArray((testResp as any)?.rates) && (testResp as any).rates.length > 0) {
+          referenceLockerCode = locker.lockerCode;
+          const area = ct.some((l) => l.lockerCode === locker.lockerCode) ? "Cape Town" : "other area";
+          console.info(`[PUDO] syncPudoRates: selected locker ${referenceLockerCode} (${locker.name}, ${area}) as D2L reference`);
+          break;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+    if (!referenceLockerCode) {
+      console.warn("[PUDO] syncPudoRates: no working locker found; skipping D2L rates");
+    }
   } catch (err) {
     console.warn("[PUDO] syncPudoRates: could not fetch lockers for D2L reference:", err);
   }

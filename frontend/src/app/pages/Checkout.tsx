@@ -112,7 +112,7 @@ export default function Checkout() {
       : null;
   const pudoColCount = (showHomeOption ? 1 : 0) + (showLockerOption ? 1 : 0) + (showDoorOption ? 1 : 0);
   const shipping = useMemo(() => {
-    if (quote?.freeShippingApplied) return 0;
+    if (quote?.freeShippingApplied === true && quote.freeShippingEnabled) return 0;
     if (selectedShippingMethodId && selectedShippingMethod) return Number(selectedShippingMethod.price ?? 0);
     if (quote?.shippingMethodId && quote.shippingMethodId === selectedShippingMethodId) return Number(quote.shippingAmount ?? 0);
     return Number(quote?.shippingAmount ?? 0);
@@ -126,14 +126,14 @@ export default function Checkout() {
   const summaryShippingDisplay = (() => {
     if (isPudoDelivery) return pudoPrice !== null ? formatRand(pudoPrice) : "TBC";
     if (!selectedShippingMethodId) return "TBC";
-    if (quote?.freeShippingApplied) return "FREE";
+    if (quote?.freeShippingApplied === true && quote.freeShippingEnabled) return "FREE";
     if (quote && !quote.shippingMethodInvalid && quote.shippingMethodId === selectedShippingMethodId) {
       return formatRand(Number(quote.shippingAmount ?? 0));
     }
     if (selectedShippingMethod) return formatRand(Number(selectedShippingMethod.price ?? 0));
     return "TBC";
   })();
-  const shippingSelectionRequired = !(quote?.freeShippingApplied ?? false);
+  const shippingSelectionRequired = !(quote?.freeShippingApplied === true && quote.freeShippingEnabled);
   const canProceedToPayment = isPudoDelivery
     ? (pudoPrice !== null && (deliveryType !== "pudo-locker" || !!selectedPudoLocker))
     : (!shippingSelectionRequired || !!selectedShippingMethodId);

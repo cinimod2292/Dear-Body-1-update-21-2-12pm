@@ -53,7 +53,7 @@ async function calculatePricing(input: {
   const eligibleSubtotal = Math.max(0, subtotal - discount);
   const shippingMethodValid = input.shippingMethod ? isShippingMethodApplicable(input.shippingMethod) : false;
   let shipping = shippingMethodValid ? Number(input.shippingMethod?.price ?? 0) : 0;
-  const freeShippingApplied = rules.freeShippingEnabled && eligibleSubtotal >= Number(rules.freeShippingThreshold) && shipping > 0;
+  const freeShippingApplied = rules.freeShippingEnabled && Number(rules.freeShippingThreshold) > 0 && eligibleSubtotal >= Number(rules.freeShippingThreshold) && shipping > 0;
   if (freeShippingApplied) {
     shipping = 0;
     console.info("[shipping] free-shipping rule applied", { eligibleSubtotal, threshold: rules.freeShippingThreshold });
@@ -69,7 +69,7 @@ async function calculatePricing(input: {
     : null;
   const tax = eligibleSubtotal * Number(taxRate?.rate ?? 0);
   const total = Math.max(0, eligibleSubtotal + shipping + tax);
-  const freeShippingRemaining = rules.freeShippingEnabled ? Math.max(0, Number(rules.freeShippingThreshold) - eligibleSubtotal) : null;
+  const freeShippingRemaining = rules.freeShippingEnabled && Number(rules.freeShippingThreshold) > 0 ? Math.max(0, Number(rules.freeShippingThreshold) - eligibleSubtotal) : null;
 
   return {
     subtotalAmount: subtotal,

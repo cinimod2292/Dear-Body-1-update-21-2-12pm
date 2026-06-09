@@ -381,7 +381,7 @@ export async function createPudoShipment(input: PudoShipmentInput) {
       code: settings.senderPostalCode ?? "",
       zone: senderZone,
       country: "South Africa",
-      type: "business",
+      type: "residential",
       company: settings.senderName ?? "",
       entered_address: buildEnteredAddress(
         senderStreet,

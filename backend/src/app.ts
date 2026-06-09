@@ -29,6 +29,7 @@ import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
+import { syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -222,6 +223,14 @@ export async function buildApp() {
     });
   }, 60_000);
   abandonedCartInterval.unref();
+
+  // Poll PUDO tracking every 30 minutes as a fallback alongside webhooks
+  const pudoTrackingInterval = setInterval(() => {
+    syncPudoTrackingStatuses().catch((err) => {
+      app.log.warn({ err }, "PUDO tracking sync failed");
+    });
+  }, 30 * 60_000);
+  pudoTrackingInterval.unref();
 
   return app;
 }

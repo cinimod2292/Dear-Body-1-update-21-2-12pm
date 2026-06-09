@@ -712,10 +712,11 @@ model Order {
   stitchReference  String?           @unique
   trackingNumber   String?
   courier          String?
-  pudoLockerCode   String?
-  pudoLockerName   String?
-  pudoDeliveryType String?
-  shippedAt        DateTime?
+  pudoLockerCode      String?
+  pudoLockerName      String?
+  pudoDeliveryType    String?
+  pudoTrackingStatus  String?
+  shippedAt           DateTime?
   deliveredAt      DateTime?
   fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)
   currency         String            @default("USD")

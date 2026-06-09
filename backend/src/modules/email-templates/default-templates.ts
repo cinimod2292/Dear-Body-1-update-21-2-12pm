@@ -238,6 +238,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     placeholderKeys: ["orderNumber", "orderDate", "orderTotal", "companyName", "supportEmail", "siteUrl"],
   },
   {
+    key: "pudo_tracking_update",
+    name: "PUDO Tracking Update",
+    category: "SHIPPING",
+    subject: "Shipment update for order #{{orderNumber}}",
+    htmlBody: brandedEmailShell({
+      preheader: "{{trackingStatusLabel}} — order #{{orderNumber}}",
+      title: "{{trackingStatusLabel}}",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> has a new shipping update: <strong>{{trackingStatusLabel}}</strong>.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong>",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "trackingStatusLabel", "waybillNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
     key: "newsletter_signup_confirmation",
     name: "Newsletter Signup Confirmation",
     category: "MARKETING",

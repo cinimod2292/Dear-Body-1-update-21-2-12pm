@@ -617,6 +617,54 @@ async function sendPudoShippingEmail(orderId: string, waybillNumber: string) {
   });
 }
 
+const PUDO_STATUS_LABELS: Record<string, string> = {
+  collected:            "Collected from sender",
+  in_transit:           "In transit",
+  out_for_delivery:     "Out for delivery",
+  delivered:            "Delivered",
+  ready_for_collection: "Ready for collection",
+  failed_delivery:      "Delivery attempted",
+  exception:            "Exception",
+  return_to_sender:     "Returning to sender",
+};
+
+function labelForStatus(raw: string): string {
+  return PUDO_STATUS_LABELS[raw.toLowerCase().replace(/\s+/g, "_")] ?? raw;
+}
+
+/** Statuses that should NOT trigger a customer email (internal/admin-only). */
+const PUDO_SILENT_STATUSES = new Set(["exception"]);
+
+async function sendPudoTrackingUpdateEmail(
+  order: { id: string; orderNumber: string; customer: { firstName: string | null; email: string } | null },
+  rawStatus: string,
+  waybillNumber: string,
+  siteUrl: string,
+) {
+  if (!order.customer?.email) return;
+  if (PUDO_SILENT_STATUSES.has(rawStatus)) return;
+
+  const statusLabel = PUDO_STATUS_LABELS[rawStatus] ?? rawStatus;
+
+  try {
+    const template = await resolveTemplateByKey("pudo_tracking_update", {
+      firstName: order.customer.firstName ?? "there",
+      orderNumber: order.orderNumber,
+      trackingStatusLabel: statusLabel,
+      waybillNumber,
+      orderUrl: `${siteUrl}/account/orders/${order.id}`,
+    });
+    await sendEmail({
+      to: order.customer.email,
+      subject: template.subject,
+      html: template.htmlBody,
+      meta: { templateKey: template.key, orderId: order.id, pudoStatus: rawStatus },
+    });
+  } catch (err) {
+    console.error(`[PUDO] Failed to send tracking update email for order ${order.orderNumber}:`, err);
+  }
+}
+
 /** Resolves the service-level code for an order based on item count and delivery type. */
 async function resolveServiceCode(settings: PudoSettings, itemCount: number, deliveryType: "locker" | "door"): Promise<string> {
   const rule = settings.itemRules.find(
@@ -757,13 +805,19 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
     return { synced: 0, errors: 0 };
   }
 
+  const siteUrl = process.env.STOREFRONT_URL ?? "";
+
   const pudoOrders = await prisma.order.findMany({
     where: {
       courier: { contains: "PUDO", mode: "insensitive" },
       trackingNumber: { not: null },
       NOT: { status: { in: ["DELIVERED", "CANCELLED"] } },
     },
-    select: { id: true, orderNumber: true, trackingNumber: true, fulfillmentStatus: true, status: true },
+    select: {
+      id: true, orderNumber: true, trackingNumber: true,
+      fulfillmentStatus: true, status: true, pudoTrackingStatus: true,
+      customer: { select: { firstName: true, email: true } },
+    },
   });
 
   let synced = 0;
@@ -790,6 +844,9 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
         updates.status = mapped.status;
         if (mapped.status === "DELIVERED") updates.deliveredAt = new Date();
       }
+      if (order.pudoTrackingStatus !== rawStatus) {
+        updates.pudoTrackingStatus = rawStatus;
+      }
 
       if (Object.keys(updates).length > 0) {
         await prisma.order.update({ where: { id: order.id }, data: updates as any });
@@ -802,6 +859,11 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
           },
         });
         console.info(`[PUDO] tracking sync updated order ${order.orderNumber}: ${rawStatus}`, updates);
+
+        // Send email only when the tracking status actually changes
+        if (order.pudoTrackingStatus !== rawStatus) {
+          void sendPudoTrackingUpdateEmail(order, rawStatus, order.trackingNumber, siteUrl);
+        }
       }
       synced++;
     } catch (err) {
@@ -834,6 +896,7 @@ export async function listLocalPudoOrders(page = 1, perPage = 50) {
         pudoDeliveryType: true,
         pudoLockerCode: true,
         pudoLockerName: true,
+        pudoTrackingStatus: true,
         totalAmount: true,
         customer: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
@@ -858,21 +921,6 @@ export interface PudoTrackingResult {
   currentStatus: string;
   currentStatusLabel: string;
   events: PudoTrackingEvent[];
-}
-
-const PUDO_STATUS_LABELS: Record<string, string> = {
-  collected:            "Collected from sender",
-  in_transit:           "In transit",
-  out_for_delivery:     "Out for delivery",
-  delivered:            "Delivered",
-  ready_for_collection: "Ready for collection",
-  failed_delivery:      "Delivery attempted",
-  exception:            "Exception",
-  return_to_sender:     "Returning to sender",
-};
-
-function labelForStatus(raw: string): string {
-  return PUDO_STATUS_LABELS[raw.toLowerCase().replace(/\s+/g, "_")] ?? raw;
 }
 
 function parsePudoTrackingResponse(waybillNumber: string, data: unknown): PudoTrackingResult {
@@ -944,7 +992,10 @@ export async function processPudoTrackingWebhook(payload: unknown): Promise<void
 
   const order = await prisma.order.findFirst({
     where: { trackingNumber: waybillNumber },
-    select: { id: true, orderNumber: true, status: true, fulfillmentStatus: true },
+    select: {
+      id: true, orderNumber: true, status: true, fulfillmentStatus: true, pudoTrackingStatus: true,
+      customer: { select: { firstName: true, email: true } },
+    },
   });
   if (!order) {
     console.warn(`[PUDO webhook] No order for waybill ${waybillNumber}`);
@@ -972,8 +1023,16 @@ export async function processPudoTrackingWebhook(payload: unknown): Promise<void
     updates.status = mapped.status;
     if (mapped.status === "DELIVERED") updates.deliveredAt = new Date();
   }
+  if (order.pudoTrackingStatus !== rawStatus) updates.pudoTrackingStatus = rawStatus;
+
   if (Object.keys(updates).length > 0) {
     await prisma.order.update({ where: { id: order.id }, data: updates as any });
     console.info(`[PUDO webhook] Updated order ${order.orderNumber}:`, updates);
+  }
+
+  // Send email whenever PUDO reports a new status (webhook fires once per status)
+  if (order.pudoTrackingStatus !== rawStatus) {
+    const siteUrl = process.env.STOREFRONT_URL ?? "";
+    void sendPudoTrackingUpdateEmail(order, rawStatus, waybillNumber, siteUrl);
   }
 }

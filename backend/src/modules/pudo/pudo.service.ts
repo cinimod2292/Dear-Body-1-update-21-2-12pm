@@ -496,12 +496,16 @@ export async function getPudoRates(lockerCode: string) {
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
 }
 
-export async function getPudoDoorRates(deliveryAddress: { streetAddress: string; localArea?: string; city: string; postalCode?: string; province?: string }) {
+export async function getPudoDoorRates(
+  deliveryAddress: { streetAddress: string; localArea?: string; city: string; postalCode?: string; province?: string },
+  parcel?: { lengthCm: number; widthCm: number; heightCm: number; weightKg: number },
+) {
   const settings = await getPudoSettings();
   if (!settings.enabled || !getEffectiveApiKey(settings)) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
   const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
+  const p = parcel ?? { lengthCm: 10, widthCm: 10, heightCm: 10, weightKg: 0.5 };
   const payload = {
     collection_address: {
       street_address: senderStreet,
@@ -521,6 +525,14 @@ export async function getPudoDoorRates(deliveryAddress: { streetAddress: string;
       country: "South Africa",
       type: "door",
     },
+    parcels: [
+      {
+        submitted_length_cm: String(p.lengthCm),
+        submitted_width_cm: String(p.widthCm),
+        submitted_height_cm: String(p.heightCm),
+        submitted_weight_kg: String(p.weightKg),
+      },
+    ],
   };
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
 }
@@ -705,13 +717,16 @@ export async function autoCreatePudoShipment(orderId: string): Promise<void> {
     // Auto-diagnose: call rates endpoint so the admin can see which service codes are valid
     if (deliveryType === "door" && input.doorAddress) {
       try {
-        const rates = await getPudoDoorRates({
-          streetAddress: input.doorAddress.streetAddress,
-          localArea: input.doorAddress.localArea,
-          city: input.doorAddress.city,
-          postalCode: input.doorAddress.postalCode,
-          province: input.doorAddress.province,
-        });
+        const rates = await getPudoDoorRates(
+          {
+            streetAddress: input.doorAddress.streetAddress,
+            localArea: input.doorAddress.localArea,
+            city: input.doorAddress.city,
+            postalCode: input.doorAddress.postalCode,
+            province: input.doorAddress.province,
+          },
+          input.parcel,
+        );
         console.info(
           `[PUDO] Available door service codes for order ${orderId}` +
           ` (current doorServiceCode="${serviceCode}" — update "doorServiceCode" in PUDO package size settings if wrong):`,

@@ -5,6 +5,7 @@ import {
   createPudoShipment,
   diagnosePudoApi,
   downloadPudoWaybill,
+  getPudoDoorRates,
   getPudoLockers,
   getPudoRates,
   getPudoSettings,
@@ -86,6 +87,15 @@ export async function pudoRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { lockerCode } = request.body as { lockerCode: string };
       return reply.send({ data: await getPudoRates(lockerCode) });
+    },
+  );
+
+  app.post(
+    "/admin/pudo/rates/door",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
+    async (request, reply) => {
+      const body = request.body as { streetAddress: string; localArea?: string; city: string; postalCode?: string; province?: string };
+      return reply.send({ data: await getPudoDoorRates(body) });
     },
   );
 

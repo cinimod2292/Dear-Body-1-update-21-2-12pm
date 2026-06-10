@@ -11,42 +11,7 @@ import {
   upsertTemplateSchema,
 } from "./email-template.schemas.js";
 import { DEFAULT_EMAIL_TEMPLATES } from "./default-templates.js";
-
-const DEFAULT_SAMPLE_DATA: Record<string, unknown> = {
-  firstName: "Customer",
-  lastName: "Smith",
-  customerName: "Customer Smith",
-  storeName: "Dear Body",
-  companyName: "Dear Body",
-  brandName: "Dear Body",
-  supportEmail: "hello@dearbody.com",
-  siteUrl: "https://example.com",
-  orderNumber: "10001234",
-  orderDate: "2026-01-01",
-  orderItems: "Hydrating Serum x1, Body Butter x2",
-  totalAmount: "$120.00",
-  orderTotal: "$120.00",
-  amount: "$120.00",
-  carrier: "UPS",
-  trackingNumber: "1Z12345E0205271688",
-  trackingUrl: "https://tracking.example.com/1Z12345E0205271688",
-  resetUrl: "https://example.com/reset?token=test",
-  verificationUrl: "https://example.com/verify?token=test",
-  eventType: "refunded",
-  name: "Jane Doe",
-  email: "jane@example.com",
-  message: "I need help with my order",
-  primaryColor: "#f472b6",
-  accentColor: "#fb923c",
-  buttonBg: "#111827",
-  buttonTextColor: "#ffffff",
-  headingColor: "#111827",
-  bodyTextColor: "#374151",
-  contentBg: "#ffffff",
-  outerBg: "#f8fafc",
-  footerBg: "#111827",
-  footerText: "#d1d5db",
-};
+import { mergeEmailRenderData, retainsSystemDefaultStatus } from "./email-template.render.js";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -60,7 +25,6 @@ function renderTemplateString(template: string, data: Record<string, unknown>) {
     return String(value);
   });
 }
-
 
 async function loadEmailTheme(): Promise<Record<string, string>> {
   const setting = await prisma.setting.findUnique({
@@ -77,13 +41,7 @@ async function loadEmailTheme(): Promise<Record<string, string>> {
 
 async function buildRenderData(sampleData: Record<string, unknown>): Promise<Record<string, unknown>> {
   const theme = await loadEmailTheme();
-  const merged: Record<string, unknown> = {
-    ...DEFAULT_SAMPLE_DATA,
-    ...theme,
-    ...(theme.brandName ? { storeName: theme.brandName, companyName: theme.brandName } : {}),
-    ...sampleData,
-  };
-  return merged;
+  return mergeEmailRenderData(theme, sampleData);
 }
 
 const SYSTEM_TEMPLATES_VERSION = "v3-force-theme-tokens";
@@ -211,6 +169,9 @@ export async function createOrUpdateEmailTemplate(rawBody: unknown) {
       textBody: body.textBody,
       placeholderKeys: body.placeholderKeys,
       isEnabled: body.isEnabled,
+      // An admin-authored upsert is a customization. Keeping this true would
+      // make the send resolver silently replace the saved HTML with source defaults.
+      isSystemDefault: false,
     },
     create: {
       key: body.key,
@@ -241,7 +202,9 @@ export async function patchEmailTemplate(id: string, rawBody: unknown) {
       ...(body.textBody !== undefined ? { textBody: body.textBody } : {}),
       ...(body.placeholderKeys !== undefined ? { placeholderKeys: body.placeholderKeys } : {}),
       ...(body.isEnabled !== undefined ? { isEnabled: body.isEnabled } : {}),
-      isSystemDefault: current.isSystemDefault,
+      // Once an administrator changes rendered content, production sends must
+      // use that database version rather than the bundled system fallback.
+      isSystemDefault: retainsSystemDefaultStatus(current.isSystemDefault, body),
     },
   });
 }

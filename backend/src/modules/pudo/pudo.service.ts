@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { calculateNextCollectionDate, getCollectionSchedule } from "../fulfillment/collection-schedule.service.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
 const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
@@ -360,7 +361,20 @@ export async function createPudoShipment(input: PudoShipmentInput) {
   const order = await prisma.order.findUnique({ where: { id: input.orderId } });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
 
-  const now = new Date().toISOString();
+  // Use the configured collection schedule to determine the collection date,
+  // falling back to now if no schedule is set.
+  let collectionMinDate = new Date().toISOString();
+  try {
+    const schedule = await getCollectionSchedule();
+    if (schedule) {
+      const result = calculateNextCollectionDate(schedule);
+      if (result) collectionMinDate = result.windowStart.toISOString();
+    }
+  } catch {
+    // non-fatal: fall back to now
+  }
+
+  const now = collectionMinDate;
   const senderStreet = [settings.senderUnitAddress, settings.senderStreetAddress].filter(Boolean).join(", ");
   const senderZone = toProvinceCode(settings.senderProvince ?? "");
 

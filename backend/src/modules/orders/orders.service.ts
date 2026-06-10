@@ -364,9 +364,7 @@ export async function sendOrderCreatedEmailSafe(orderId: string) {
 async function sendReadyForCollectionEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email) return;
-  const collectionDetails = order.shippingAddress
-    ? `Please bring your order confirmation when collecting.`
-    : `Please bring your order confirmation when collecting.`;
+  const collectionDetails = `Please bring your order confirmation when collecting.`;
   const template = await resolveTemplateByKey("ready_for_collection", {
     orderNumber: order.orderNumber,
     collectionDetails,

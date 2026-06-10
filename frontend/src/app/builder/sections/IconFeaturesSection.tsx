@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import {
   Award,
   CheckCircle2,
@@ -12,6 +11,7 @@ import {
   Star,
   Truck,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 
 export type FeatureIconName =
@@ -51,7 +51,7 @@ const FEATURE_ICON_MAP = {
   heart: Heart,
   leaf: Leaf,
   truck: Truck,
-} satisfies Record<FeatureIconName, ComponentType<{ size?: number; className?: string }>>;
+} satisfies Record<FeatureIconName, LucideIcon>;
 
 export function IconFeaturesSection(props: IconFeaturesProps) {
   const items = Array.isArray(props.items) ? props.items : [];

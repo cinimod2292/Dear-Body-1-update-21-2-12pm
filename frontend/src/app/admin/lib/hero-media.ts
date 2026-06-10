@@ -74,8 +74,6 @@ export function synthesizeOptimizedHeroVariants<T extends { variants?: unknown; 
   const thumbnail = build("width=300,fit=cover,format=auto,quality=85");
   const gallery = build("width=1200,fit=contain,format=auto,quality=85");
 
-  console.log("[hero-repair] generated", { heroDesktop, card, thumbnail });
-
   return {
     ...asset,
     variants: {

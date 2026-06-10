@@ -27,7 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
   { to: "/admin/pudo-shipments", label: "PUDO Shipments", permission: "orders:read" },
   { to: "/admin/pudo-rates", label: "PUDO Rates", permission: "settings:read" },
-  { to: "/admin/pudo-test", label: "PUDO Test", permission: "settings:read" },
+  { to: "/admin/pudo-test", label: "PUDO Diagnostics", permission: "settings:read" },
 ];
 
 function NavLinks({ items, currentPath, onNavigate }: { items: NavItem[]; currentPath: string; onNavigate?: () => void }) {

@@ -344,7 +344,7 @@ async function sendOrderCreatedEmail(orderId: string) {
 
 async function sendAdminNewOrderEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
-  const adminEmail = process.env.ADMIN_EMAIL ?? env.EMAIL_FROM;
+  const adminEmail = env.ADMIN_EMAIL ?? env.EMAIL_FROM;
   if (!adminEmail || !order) return;
   const template = await resolveTemplateByKey("admin_new_order_notification", {
     orderNumber: order.orderNumber,

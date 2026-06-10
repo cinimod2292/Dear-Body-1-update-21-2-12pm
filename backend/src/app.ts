@@ -36,8 +36,8 @@ import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV === "production"
-      ? { transport: { target: "pino-pretty" } }
-      : true,
+      ? { level: "info" }
+      : { transport: { target: "pino-pretty" } },
   });
 
   await app.register(cors, {
@@ -62,7 +62,10 @@ export async function buildApp() {
       if (
         url === "/ping" ||
         url === `${env.API_PREFIX}/health` ||
-        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`)
+        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`) ||
+        url.startsWith(`${env.API_PREFIX}/payments/payfast/webhook`) ||
+        url.startsWith(`${env.API_PREFIX}/payments/stitch/webhook`) ||
+        url.startsWith(`${env.API_PREFIX}/webhooks`)
       ) return;
       reply.status(503).send({
         error: {
@@ -183,16 +186,6 @@ export async function buildApp() {
   });
 
   app.get("/ping", async (_request, reply) => reply.status(200).send({ ok: true }));
-
-  app.get("/__debug/routes", async () => {
-    const expectedAdminLoginPath = `${env.API_PREFIX}/auth/admin/login`;
-
-    return {
-      apiPrefix: env.API_PREFIX,
-      expectedAdminLoginPath,
-      routes: app.printRoutes(),
-    };
-  });
 
   app.register(async (api) => {
     await api.register(setupRoutes);

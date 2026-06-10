@@ -1194,14 +1194,31 @@ function GalleryImagesEditor({
   };
 
   const handleLibrarySelect = (asset: MediaAsset) => {
-    const url = asset.publicUrl ?? "";
-    if (addingIndex !== null) {
-      updateItem(addingIndex, { url });
-    } else {
-      updateItems([...items, { url, alt: asset.altText ?? asset.filename }]);
-    }
-    setAddingIndex(null);
-    setShowLibrary(false);
+    void (async () => {
+      // Resolve the full asset so variant URLs are available (the library list
+      // payload may omit them), then prefer an optimized variant over the
+      // full-size original — consistent with every other builder image field.
+      let resolvedAsset = asset;
+      if (accessToken) {
+        try {
+          const response = await apiRequest<{ data: MediaAsset[] }>("/admin/media/by-ids", {
+            method: "POST",
+            body: JSON.stringify({ ids: [asset.id], view: "full" }),
+          }, accessToken);
+          resolvedAsset = response.data[0] ?? asset;
+        } catch {
+          // fall back to the asset from the list
+        }
+      }
+      const url = mapSelectedMediaVariantToFieldValue("", resolvedAsset, ["gallery", "card", "thumbnail"], { allowOriginalFallback: true });
+      if (addingIndex !== null) {
+        updateItem(addingIndex, { url });
+      } else {
+        updateItems([...items, { url, alt: resolvedAsset.altText ?? resolvedAsset.filename }]);
+      }
+      setAddingIndex(null);
+      setShowLibrary(false);
+    })();
   };
 
   return (

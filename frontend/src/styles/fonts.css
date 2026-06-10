@@ -1,5 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap');
-
+/* Montserrat is loaded via <link rel="stylesheet"> in index.html (with preconnect)
+   so the browser discovers it during initial HTML parse instead of after this
+   stylesheet downloads and the @import chain resolves. Keeps font fetch off the
+   critical CSS path. */
 body {
   font-family: 'Montserrat', sans-serif;
 }

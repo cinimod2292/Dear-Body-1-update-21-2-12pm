@@ -24,11 +24,23 @@ type SavedAddress = {
   isDefaultShipping: boolean;
 };
 
+type CollectionAddress = {
+  line1: string;
+  line2?: string | null;
+  suburb?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+};
+
 type StoreShippingMethod = {
   id: string;
   name: string;
   price: number;
   description?: string | null;
+  type: "DELIVERY" | "COLLECTION";
+  collectionAddress?: CollectionAddress | null;
 };
 
 type PudoLocker = {
@@ -84,7 +96,15 @@ export default function Checkout() {
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [orderInfo, setOrderInfo] = useState<{ id: string; orderNumber: string; paymentStatus: string; status: string; checkoutUrl?: string | null } | null>(null);
+  const [orderInfo, setOrderInfo] = useState<{
+    id: string;
+    orderNumber: string;
+    paymentStatus: string;
+    status: string;
+    checkoutUrl?: string | null;
+    shippingMethod?: { id: string; name: string; type: "DELIVERY" | "COLLECTION" } | null;
+    collectionAddress?: CollectionAddress | null;
+  } | null>(null);
   const { customer, token } = useCustomerAuth();
   const [shippingMethods, setShippingMethods] = useState<StoreShippingMethod[]>([]);
   const [shippingMethodsLoaded, setShippingMethodsLoaded] = useState(false);
@@ -100,6 +120,7 @@ export default function Checkout() {
   const [selectedPudoLocker, setSelectedPudoLocker] = useState<PudoLocker | null>(null);
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
   const selectedShippingMethod = shippingMethods.find((m) => m.id === selectedShippingMethodId);
+  const isCollection = selectedShippingMethod?.type === "COLLECTION";
   const showHomeOption = shippingMethods.length > 0;
   const showLockerOption = pudoEnabled && !!pudoShippingOptions?.locker && pudoAllowCustomerSelection;
   const showDoorOption = pudoEnabled && !!pudoShippingOptions?.door && pudoDoorDeliveryEnabled;
@@ -192,12 +213,15 @@ export default function Checkout() {
       paymentStatus: o.paymentStatus,
       status: o.status,
       checkoutUrl: null,
+      shippingMethod: o.shippingMethod ?? null,
+      collectionAddress: o.collectionAddress ?? null,
     });
 
     // Restore the delivery context that was lost when the payment gateway
     // redirect unloaded the page. Without this, the confirmation screen falls
     // back to default in-memory state and shows the generic shipping address
     // ("South Africa") instead of the chosen PUDO locker / delivery address.
+    if (o.shippingMethod?.id) setSelectedShippingMethodId(o.shippingMethod.id);
     if (o.pudoDeliveryType === "locker") {
       setDeliveryType("pudo-locker");
       setSelectedPudoLocker({
@@ -313,7 +337,7 @@ export default function Checkout() {
       body: JSON.stringify({
         items,
         shippingMethodId: selectedShippingMethodId || undefined,
-        shippingAddress: { country: form.country, state: form.state || undefined },
+        shippingAddress: isCollection ? undefined : { country: form.country, state: form.state || undefined },
       }),
     })
       .then((r) => r.json())
@@ -329,7 +353,7 @@ export default function Checkout() {
         else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
-  }, [cartItems, selectedShippingMethodId, form.country, form.state]);
+  }, [cartItems, selectedShippingMethodId, form.country, form.state, isCollection]);
 
   useEffect(() => {
     if (!selectedShippingMethodId) return;
@@ -500,7 +524,7 @@ export default function Checkout() {
         body: JSON.stringify({
           email: customer.email,
           shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
-          shippingAddress: isPudoLocker ? undefined : {
+          shippingAddress: isPudoLocker || isCollection ? undefined : {
             firstName: form.firstName,
             lastName: form.lastName,
             phone: form.phone,
@@ -549,6 +573,8 @@ export default function Checkout() {
         paymentStatus: order.paymentStatus,
         status: order.status,
         checkoutUrl: payment?.checkoutUrl ?? null,
+        shippingMethod: selectedShippingMethod ? { id: selectedShippingMethod.id, name: selectedShippingMethod.name, type: selectedShippingMethod.type } : null,
+        collectionAddress: isCollection ? selectedShippingMethod?.collectionAddress ?? null : null,
       });
       setProcessingPayment(order.paymentStatus !== "PAID");
       setOrderPlaced(order.paymentStatus === "PAID");
@@ -597,7 +623,9 @@ export default function Checkout() {
   if (orderPlaced) {
     const isLockerConfirm = deliveryType === "pudo-locker";
     const isDoorConfirm = deliveryType === "pudo-door";
-    const deliveryLabel = isLockerConfirm ? "PUDO Locker Collection" : isDoorConfirm ? "PUDO Door Delivery" : "Home Delivery";
+    const isCollectionConfirm = orderInfo?.shippingMethod?.type === "COLLECTION" || isCollection;
+    const confirmationCollectionAddress = orderInfo?.collectionAddress ?? selectedShippingMethod?.collectionAddress ?? null;
+    const deliveryLabel = isLockerConfirm ? "PUDO Locker Collection" : isDoorConfirm ? "PUDO Door Delivery" : isCollectionConfirm ? (orderInfo?.shippingMethod?.name || selectedShippingMethod?.name || "Collection") : "Home Delivery";
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-20">
         <div className="max-w-md w-full text-center">
@@ -628,7 +656,16 @@ export default function Checkout() {
             <div className="border-t border-gray-100" />
 
             {/* Delivery destination */}
-            {isLockerConfirm && selectedPudoLocker ? (
+            {isCollectionConfirm && confirmationCollectionAddress ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Collection Address</p>
+                <p className="font-semibold text-gray-900">{confirmationCollectionAddress.line1}</p>
+                {confirmationCollectionAddress.line2 ? <p className="text-sm text-gray-500">{confirmationCollectionAddress.line2}</p> : null}
+                <p className="text-sm text-gray-500">{[confirmationCollectionAddress.suburb, confirmationCollectionAddress.city, confirmationCollectionAddress.state, confirmationCollectionAddress.postalCode].filter(Boolean).join(", ")}</p>
+                <p className="text-sm text-gray-500">{confirmationCollectionAddress.country}</p>
+                <p className="text-xs text-gray-400 mt-1">We will let you know when your order is ready to collect.</p>
+              </div>
+            ) : isLockerConfirm && selectedPudoLocker ? (
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Locker Location</p>
                 <p className="font-semibold text-gray-900">{selectedPudoLocker.name}</p>
@@ -656,7 +693,7 @@ export default function Checkout() {
             )}
 
             <div className="border-t border-gray-100" />
-            <p className="text-xs text-gray-400">Estimated delivery: 3–5 business days</p>
+            <p className="text-xs text-gray-400">{isCollectionConfirm ? "We will notify you when your order is ready for collection." : "Estimated delivery: 3–5 business days"}</p>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -852,8 +889,15 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Address form — hidden for locker delivery; the selected locker is the delivery address */}
-                {deliveryType !== "pudo-locker" && (
+                {deliveryType === "home" && isCollection && selectedShippingMethod?.collectionAddress ? (
+                  <div className="rounded-xl border border-pink-200 bg-pink-50 p-4 mb-6">
+                    <p className="font-bold text-pink-900 text-sm">No delivery address needed</p>
+                    <p className="text-sm text-pink-800 mt-1">Collect from {selectedShippingMethod.collectionAddress.line1}, {[selectedShippingMethod.collectionAddress.suburb, selectedShippingMethod.collectionAddress.city, selectedShippingMethod.collectionAddress.postalCode].filter(Boolean).join(", ")}.</p>
+                  </div>
+                ) : null}
+
+                {/* Address form — hidden for locker delivery and customer collection */}
+                {deliveryType !== "pudo-locker" && !isCollection && (
                   <>
                     {savedAddresses.length > 0 ? (
                       <div className="mb-4 rounded-xl border border-gray-200 p-3 bg-gray-50">
@@ -918,7 +962,7 @@ export default function Checkout() {
                             />
                             <div>
                               <p className="font-bold text-gray-900 text-sm">{opt.name}</p>
-                              <p className="text-gray-400 text-xs">{opt.description || "Fixed-rate shipping"}</p>
+                              <p className="text-gray-400 text-xs">{opt.description || (opt.type === "COLLECTION" ? "Collect from our location — no delivery address needed" : "Fixed-rate shipping")}</p>
                             </div>
                           </div>
                           <span className="font-bold text-gray-700">{Number(opt.price) === 0 ? "FREE" : formatRand(Number(opt.price))}</span>
@@ -947,7 +991,7 @@ export default function Checkout() {
                         setShippingStepError("Please select a PUDO locker to continue.");
                         return;
                       }
-                      if (deliveryType !== "pudo-locker") {
+                      if (deliveryType !== "pudo-locker" && !isCollection) {
                         if (!form.address.trim()) { setShippingStepError("Street address is required."); return; }
                         if (!form.suburb.trim()) { setShippingStepError("Suburb / local area is required."); return; }
                         if (!form.city.trim()) { setShippingStepError("City is required."); return; }

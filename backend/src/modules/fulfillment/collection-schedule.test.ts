@@ -75,20 +75,20 @@ describe("calculateNextCollectionDate", () => {
     assert.equal(result.windowLabel, "Mon 09:00–11:00");
   });
 
-  it("calculates slaDeadline correctly (cutoff before window end)", () => {
-    // Tuesday 10:00 SAST — next is Wednesday 14:00-16:00, cutoff at 15:00 SAST = 13:00 UTC
+  it("calculates slaDeadline correctly (cutoff before window start)", () => {
+    // Tuesday 10:00 SAST — next is Wednesday 14:00-16:00, cutoff = 14:00 - 60min = 13:00 SAST = 11:00 UTC
     const from = jhbDate(2026, 6, 9, 10, 0); // Tuesday
     const result = calculateNextCollectionDate(baseSchedule, from);
     assert.ok(result, "Expected a result");
-    // Window end = Wednesday 16:00 SAST = 14:00 UTC
-    // SLA deadline = 15:00 SAST = 13:00 UTC
-    assert.equal(result.slaDeadline.getUTCHours(), 13);
+    // Window start = Wednesday 14:00 SAST = 12:00 UTC
+    // SLA deadline = 13:00 SAST = 11:00 UTC
+    assert.equal(result.slaDeadline.getUTCHours(), 11);
   });
 
-  it("handles zero cutoff — entire window is valid", () => {
+  it("handles zero cutoff — valid right up until window start", () => {
     const schedule: CollectionSchedule = { ...baseSchedule, cutoffMinutesBefore: 0 };
-    // Monday 10:59 — within the window even at zero cutoff
-    const from = jhbDate(2026, 6, 8, 10, 59); // Monday
+    // Monday 08:59 — one minute before window start, zero cutoff means cutoff = 09:00 exactly
+    const from = jhbDate(2026, 6, 8, 8, 59); // Monday
     const result = calculateNextCollectionDate(schedule, from);
     assert.ok(result, "Expected a result");
     assert.equal(result.windowLabel, "Mon 09:00–11:00");

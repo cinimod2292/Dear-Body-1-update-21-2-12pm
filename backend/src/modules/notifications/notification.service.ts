@@ -77,12 +77,11 @@ export async function sendEmail(input: SendEmailInput) {
       });
       return;
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 500) : "SendGrid send failed";
+      console.error(`[email] send FAILED to=${input.to} subject="${input.subject}": ${msg}`);
       await prisma.notificationLog.update({
         where: { id: log.id },
-        data: {
-          status: "FAILED",
-          error: error instanceof Error ? error.message.slice(0, 500) : "SendGrid send failed",
-        },
+        data: { status: "FAILED", error: msg },
       });
       return;
     }

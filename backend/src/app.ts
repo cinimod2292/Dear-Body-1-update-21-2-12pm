@@ -25,12 +25,11 @@ import { xeroRoutes } from "./modules/accounting/xero.routes.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { pudoRoutes } from "./modules/pudo/pudo.routes.js";
-import { syncPudoRates } from "./modules/pudo/pudo.service.js";
+import { syncPudoRates, syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
-import { syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -224,6 +223,14 @@ export async function buildApp() {
     });
   }, 60_000);
   abandonedCartInterval.unref();
+
+  // Poll PUDO tracking API every 30 minutes as a fallback alongside webhooks
+  const pudoTrackingInterval = setInterval(() => {
+    syncPudoTrackingStatuses().catch((error) => {
+      app.log.warn({ err: error }, "PUDO tracking sync failed");
+    });
+  }, 30 * 60_000);
+  pudoTrackingInterval.unref();
 
   // Daily 4am UTC rate sync (= 6am SAST)
   function scheduleNextRateSync() {

@@ -1,5 +1,5 @@
-import { lazy } from "react";
 import { createBrowserRouter, redirect } from "react-router";
+import { lazyWithRetry as lazy } from "./lib/lazy-with-retry";
 
 const Root = lazy(() => import("./components/Root").then((mod) => ({ default: mod.Root })));
 const Home = lazy(() => import("./pages/Home"));

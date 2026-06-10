@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { SlidersHorizontal, X, ChevronDown } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
+import { ALL_PRODUCTS_CATEGORY, getShopCategory, setShopCategory } from "./shop-query";
 
 const sortOptions = [
   { value: "", label: "Featured" },
@@ -12,10 +13,9 @@ const sortOptions = [
 
 export default function Shop() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialCategory = searchParams.get("category") || "All";
+  const selectedCategory = getShopCategory(searchParams);
   const initialSearch = searchParams.get("search") || "";
 
-  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [sortBy, setSortBy] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
@@ -43,18 +43,13 @@ export default function Shop() {
   }, []);
 
   const handleCategoryChange = (cat: string) => {
-    setSelectedCategory(cat);
-    if (cat === "All") {
-      setSearchParams(prev => { prev.delete("category"); return prev; });
-    } else {
-      setSearchParams(prev => { prev.set("category", cat); return prev; });
-    }
+    setSearchParams((currentSearchParams) => setShopCategory(currentSearchParams, cat));
   };
 
   const productsForFilters = useMemo(() => {
     let result = [...products];
 
-    if (selectedCategory !== "All") {
+    if (selectedCategory !== ALL_PRODUCTS_CATEGORY) {
       result = result.filter(p => p.category === selectedCategory);
     }
 

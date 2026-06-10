@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { runManualMigrations } from "./lib/migrate.js";
+import { initEmailTemplates } from "./modules/email-templates/email-template.service.js";
 
 process.on("unhandledRejection", (reason) => {
   console.error("[startup] Unhandled promise rejection", reason);
@@ -29,6 +30,10 @@ try {
   app.log.info("[startup] Running pending manual migrations");
   await runManualMigrations();
   app.log.info("[startup] Migrations complete");
+
+  app.log.info("[startup] Syncing email templates");
+  await initEmailTemplates();
+  app.log.info("[startup] Email templates synced");
 
   const address = await app.listen({ port: env.PORT, host: "0.0.0.0" });
 

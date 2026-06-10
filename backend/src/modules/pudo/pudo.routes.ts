@@ -158,6 +158,12 @@ export async function pudoRoutes(app: FastifyInstance) {
 
 
   app.post(
+    "/admin/pudo/sync-tracking",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] },
+    async (_request, reply) => reply.send({ data: await syncPudoTrackingStatuses() }),
+  );
+
+  app.post(
     "/admin/pudo/sync-rates",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
     async (_request, reply) => reply.send({ data: await syncPudoRates() }),

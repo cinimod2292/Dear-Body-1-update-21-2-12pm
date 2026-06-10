@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { RefreshCw, ExternalLink, Package, Truck, Zap } from "lucide-react";
+import { RefreshCw, ExternalLink, Package, Truck, Zap, RotateCcw } from "lucide-react";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { toast } from "sonner";
@@ -69,6 +69,7 @@ export default function AdminPudoShipments() {
   const [orders, setOrders] = useState<PudoOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -80,6 +81,24 @@ export default function AdminPudoShipments() {
       toast.error("Failed to load PUDO shipments");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiRequest<{ data: { synced: number; errors: number } }>("/admin/pudo/sync-tracking", { method: "POST" }, token);
+      const { synced, errors } = res.data;
+      if (errors > 0) {
+        toast.warning(`Sync complete: ${synced} updated, ${errors} failed`);
+      } else {
+        toast.success(synced > 0 ? `Updated ${synced} shipment${synced !== 1 ? "s" : ""}` : "All statuses already up to date");
+      }
+      await load();
+    } catch {
+      toast.error("Sync failed");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -96,14 +115,24 @@ export default function AdminPudoShipments() {
           <h1 className="text-2xl font-black text-gray-900">PUDO Shipments</h1>
           <p className="text-sm text-gray-500 mt-0.5">{total} orders with PUDO delivery</p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-colors disabled:opacity-60"
-        >
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={syncNow}
+            disabled={syncing || loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold transition-colors disabled:opacity-60"
+          >
+            <RotateCcw size={15} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync Now"}
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-colors disabled:opacity-60"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">

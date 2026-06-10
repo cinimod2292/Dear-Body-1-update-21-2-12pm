@@ -23,6 +23,7 @@ import {
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { autoCreatePudoShipment } from "../pudo/pudo.service.js";
+import { initWarehouseOnPayment } from "../fulfillment/fulfillment.service.js";
 
 const SETTING_SCOPE = "payments";
 const STITCH_SETTING_KEY = "stitch";
@@ -478,6 +479,9 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
     await sendPaymentSuccessEmail(orderId).catch(() => undefined);
     autoCreatePudoShipment(orderId).catch((err) => {
       console.error("[payments] autoCreatePudoShipment error for order", orderId, err);
+    });
+    initWarehouseOnPayment(orderId).catch((err) => {
+      console.error("[payments] initWarehouseOnPayment error for order", orderId, err);
     });
   }
   await prisma.orderEvent.create({

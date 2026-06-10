@@ -26,6 +26,8 @@ import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { pudoRoutes } from "./modules/pudo/pudo.routes.js";
 import { syncPudoRates, syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
+import { fulfillmentRoutes } from "./modules/fulfillment/fulfillment.routes.js";
+import { notifySlaWarning } from "./modules/fulfillment/fulfillment.service.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
@@ -211,6 +213,7 @@ export async function buildApp() {
     await api.register(cmsRoutes);
     await api.register(opsRoutes);
     await api.register(pudoRoutes);
+    await api.register(fulfillmentRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });
@@ -231,6 +234,28 @@ export async function buildApp() {
     });
   }, 30 * 60_000);
   pudoTrackingInterval.unref();
+
+  // SLA warning check every 15 minutes
+  const slaCheckInterval = setInterval(async () => {
+    try {
+      const { prisma: db } = await import("./lib/prisma.js");
+      const now = new Date();
+      const warningCutoff = new Date(now.getTime() + 90 * 60 * 1000); // warn at 90 min before deadline
+      const urgentOrders = await db.order.findMany({
+        where: {
+          warehouseStatus: { notIn: ["AWAITING_COLLECTION", "EXCEPTION"] as any },
+          slaDeadline: { lte: warningCutoff, gte: now },
+        },
+        select: { id: true },
+      });
+      for (const { id } of urgentOrders) {
+        notifySlaWarning(id).catch(() => undefined);
+      }
+    } catch (err) {
+      app.log.warn({ err }, "SLA warning check failed");
+    }
+  }, 15 * 60_000);
+  slaCheckInterval.unref();
 
   // Daily 4am UTC rate sync (= 6am SAST)
   function scheduleNextRateSync() {

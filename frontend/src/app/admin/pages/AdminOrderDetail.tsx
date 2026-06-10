@@ -44,6 +44,14 @@ interface OrderDetail {
   status: string;
   paymentStatus: string;
   fulfillmentStatus: string;
+  warehouseStatus?: string | null;
+  stockIssueStatus?: string | null;
+  collectionDate?: string | null;
+  collectionWindowStart?: string | null;
+  collectionWindowEnd?: string | null;
+  slaDeadline?: string | null;
+  pickedAt?: string | null;
+  packedAt?: string | null;
   trackingNumber?: string | null;
   courier?: string | null;
   pudoLockerCode?: string | null;
@@ -320,6 +328,31 @@ export default function AdminOrderDetail() {
         <div><p className="text-xs text-gray-400">Fulfillment</p><p className="font-semibold">{order.fulfillmentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{formatRand(order.totalAmount)}</p></div>
         <div><p className="text-xs text-gray-400">Placed</p><p className="font-semibold">{new Date(order.placedAt).toLocaleString()}</p></div>
+        {order.warehouseStatus && (
+          <div className="md:col-span-2 bg-blue-50 rounded-lg px-3 py-2">
+            <p className="text-xs text-blue-500 font-semibold">Warehouse Status</p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              <span className="font-bold text-blue-900">{order.warehouseStatus.replace(/_/g, " ")}</span>
+              {order.stockIssueStatus && order.stockIssueStatus !== "NONE" && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-semibold">
+                  {order.stockIssueStatus.replace(/_/g, " ")}
+                </span>
+              )}
+              <Link
+                to={`/admin/warehouse/orders/${order.id}`}
+                className="text-xs text-blue-600 underline hover:text-blue-800 ml-auto"
+              >
+                Open in Warehouse →
+              </Link>
+            </div>
+            {order.collectionWindowStart && (
+              <p className="text-xs text-blue-700 mt-1">
+                Collection: {new Date(order.collectionWindowStart).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {order.collectionWindowEnd && ` – ${new Date(order.collectionWindowEnd).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit" })}`}
+              </p>
+            )}
+          </div>
+        )}
         {order.pudoLockerCode && (
           <div className="md:col-span-2 bg-indigo-50 rounded-lg px-3 py-2">
             <p className="text-xs text-indigo-500 font-semibold">Customer chose PUDO locker</p>

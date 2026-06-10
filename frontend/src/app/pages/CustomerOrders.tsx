@@ -25,6 +25,8 @@ const STATUS_COLORS: Record<string, string> = {
   PAYMENT_FAILED: "bg-red-100 text-red-700",
   PAID: "bg-green-100 text-green-700",
   REFUNDED: "bg-purple-100 text-purple-700",
+  READY_FOR_COLLECTION: "bg-teal-100 text-teal-700",
+  REFUND_DUE: "bg-orange-100 text-orange-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,6 +38,8 @@ const STATUS_LABELS: Record<string, string> = {
   PAYMENT_FAILED: "Payment Failed",
   PAID: "Paid",
   REFUNDED: "Refunded",
+  READY_FOR_COLLECTION: "Ready for Collection",
+  REFUND_DUE: "Refund Due",
 };
 
 function StatusBadge({ status }: { status: string }) {

@@ -106,6 +106,7 @@ enum OrderStatus {
   PROCESSING
   SHIPPED
   DELIVERED
+  READY_FOR_COLLECTION
   CANCELLED
   PAYMENT_FAILED
 }
@@ -115,6 +116,8 @@ enum PaymentStatus {
   AWAITING_PAYMENT
   PAID
   FAILED
+  CANCELLED
+  REFUND_DUE
 }
 
 enum FulfillmentStatus {

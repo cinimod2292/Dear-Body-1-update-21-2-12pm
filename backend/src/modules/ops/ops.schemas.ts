@@ -32,11 +32,30 @@ export const shippingMethodSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+
+const collectionAddressSchema = z.object({
+  line1: z.string().min(2),
+  line2: z.string().optional().nullable(),
+  suburb: z.string().optional().nullable(),
+  city: z.string().min(2),
+  state: z.string().optional().nullable(),
+  postalCode: z.string().min(2),
+  country: z.string().min(2),
+});
+
+const shippingMethodTypeSchema = z.enum(["DELIVERY", "COLLECTION"]);
+
 export const adminShippingMethodCreateSchema = z.object({
   name: z.string().min(1),
   price: z.coerce.number().nonnegative(),
   isActive: z.boolean().default(true),
   description: z.string().optional().nullable(),
+  type: shippingMethodTypeSchema.default("DELIVERY"),
+  collectionAddress: collectionAddressSchema.optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.type === "COLLECTION" && !value.collectionAddress) {
+    ctx.addIssue({ code: "custom", path: ["collectionAddress"], message: "Collection address is required" });
+  }
 });
 
 export const adminShippingMethodUpdateSchema = z.object({
@@ -44,6 +63,12 @@ export const adminShippingMethodUpdateSchema = z.object({
   price: z.coerce.number().nonnegative(),
   isActive: z.boolean(),
   description: z.string().optional().nullable(),
+  type: shippingMethodTypeSchema,
+  collectionAddress: collectionAddressSchema.optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.type === "COLLECTION" && !value.collectionAddress) {
+    ctx.addIssue({ code: "custom", path: ["collectionAddress"], message: "Collection address is required" });
+  }
 });
 
 export const shippingRulesSchema = z.object({

@@ -807,6 +807,7 @@ const PUDO_STATUS_MAP: Record<string, { fulfillmentStatus?: string; status?: str
   "collected":        { status: "SHIPPED" },
   "in_transit":       { status: "SHIPPED" },
   "out_for_delivery": { status: "SHIPPED" },
+  "ready_for_collection": { status: "SHIPPED" },
   "delivered":        { status: "DELIVERED", fulfillmentStatus: "FULFILLED" },
   "failed_delivery":  { status: "SHIPPED" },
   "exception":        {},
@@ -841,15 +842,23 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
   for (const order of pudoOrders) {
     if (!order.trackingNumber) continue;
     try {
-      const tracking = await pudoFetch<Record<string, unknown>>(
+      const tracking = await pudoFetch<unknown>(
         "GET",
         `/tracking/shipments/public?waybill=${encodeURIComponent(order.trackingNumber)}`,
         settings,
       );
 
-      const rawStatus = String((tracking as any)?.status ?? (tracking as any)?.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
-      const mapped = PUDO_STATUS_MAP[rawStatus];
-      if (!mapped) continue;
+      // The PUDO tracking API returns the current status inside an events array,
+      // not as a flat top-level field, so reuse the same parser as the customer
+      // view. A naive `tracking.status` read comes back empty and maps to nothing.
+      const parsed = parsePudoTrackingResponse(order.trackingNumber, tracking);
+      const rawStatus = parsed.currentStatus || parsed.events[0]?.status || "";
+      if (!rawStatus) continue;
+
+      // Fall back to an empty mapping so a valid-but-unmapped status still updates
+      // the displayed tracking badge (and fires the customer email) even if it
+      // doesn't trigger an order/fulfillment status transition.
+      const mapped: { fulfillmentStatus?: string; status?: string } = PUDO_STATUS_MAP[rawStatus] ?? {};
 
       const updates: Record<string, unknown> = {};
       if (mapped.fulfillmentStatus && order.fulfillmentStatus !== mapped.fulfillmentStatus) {

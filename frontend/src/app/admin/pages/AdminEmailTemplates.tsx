@@ -133,32 +133,27 @@ function stripHtml(input: string) {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function buildSimpleHtml(theme: ThemeSettings, fields: SimpleTemplateFields) {
-  const links = theme.links.filter((item) => item.label.trim() && item.url.trim());
-  const logo = theme.logoUrl.trim()
-    ? `<img src="${theme.logoUrl}" alt="${theme.brandName}" style="max-height:40px;display:block;margin:0 auto 8px auto;" />`
-    : "";
+// Builds template HTML using {{themeToken}} placeholders so the backend can
+// inject live theme values at send time. Colors are NEVER baked in here.
+function buildSimpleHtml(fields: SimpleTemplateFields) {
   const cta = fields.showCta && fields.ctaText.trim() && fields.ctaUrl.trim()
-    ? `<tr><td style="padding:8px 32px 18px 32px;"><a href="${fields.ctaUrl}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:${theme.buttonBg};color:${theme.buttonTextColor};text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${fields.ctaText}</a></td></tr>`
-    : "";
-  const footerLinks = links.length
-    ? `<div style="margin-top:8px;">${links.map((item) => `<a href="${item.url}" style="color:${theme.footerText};text-decoration:none;margin-right:10px;">${item.label}</a>`).join("")}</div>`
+    ? `<tr><td style="padding:8px 32px 18px 32px;"><a href="${fields.ctaUrl}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:{{buttonBg}};color:{{buttonTextColor}};text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${fields.ctaText}</a></td></tr>`
     : "";
   const footer = fields.showFooter
-    ? `<tr><td style="padding:20px 32px;background:${theme.footerBg};color:${theme.footerText};font-size:13px;line-height:1.6;">${fields.footerNote || "Need help? Contact us anytime."}<br/><a href="mailto:{{supportEmail}}" style="color:${theme.footerText};text-decoration:underline;">{{supportEmail}}</a> · <a href="{{siteUrl}}" style="color:${theme.footerText};text-decoration:underline;">{{siteUrl}}</a>${footerLinks}</td></tr>`
+    ? `<tr><td style="padding:20px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">${fields.footerNote || "Need help? Contact us anytime."}<br/><a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a> · <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a></td></tr>`
     : "";
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;background:${theme.outerBg};font-family:Arial,sans-serif;color:${theme.bodyTextColor};">
+  <body style="margin:0;background:{{outerBg}};font-family:Arial,sans-serif;color:{{bodyTextColor}};">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${fields.preheader}</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${theme.outerBg};padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{outerBg}};padding:24px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:${theme.contentBg};border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
-            <tr><td style="padding:18px 24px;text-align:center;background:linear-gradient(90deg,${theme.primaryColor},${theme.accentColor});color:#fff;font-size:20px;font-weight:800;">${logo}${theme.brandName}</td></tr>
-            <tr><td style="padding:26px 32px 8px 32px;color:${theme.headingColor};font-size:28px;font-weight:800;line-height:1.2;">${fields.heading}</td></tr>
-            <tr><td style="padding:8px 32px 10px 32px;color:${theme.bodyTextColor};font-size:16px;line-height:1.65;">${fields.intro}</td></tr>
+          <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:{{contentBg}};border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+            <tr><td style="padding:18px 24px;text-align:center;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});color:#fff;font-size:20px;font-weight:800;">{{brandName}}</td></tr>
+            <tr><td style="padding:26px 32px 8px 32px;color:{{headingColor}};font-size:28px;font-weight:800;line-height:1.2;">${fields.heading}</td></tr>
+            <tr><td style="padding:8px 32px 10px 32px;color:{{bodyTextColor}};font-size:16px;line-height:1.65;">${fields.intro}</td></tr>
             ${cta}
             ${footer}
           </table>
@@ -167,6 +162,28 @@ function buildSimpleHtml(theme: ThemeSettings, fields: SimpleTemplateFields) {
     </table>
   </body>
 </html>`;
+}
+
+// Replaces {{themeTokens}} with current theme values for client-side preview rendering.
+function resolveTokensForPreview(html: string, theme: ThemeSettings): string {
+  const map: Record<string, string> = {
+    primaryColor: theme.primaryColor,
+    accentColor: theme.accentColor,
+    buttonBg: theme.buttonBg,
+    buttonTextColor: theme.buttonTextColor,
+    headingColor: theme.headingColor,
+    bodyTextColor: theme.bodyTextColor,
+    contentBg: theme.contentBg,
+    outerBg: theme.outerBg,
+    footerBg: theme.footerBg,
+    footerText: theme.footerText,
+    brandName: theme.brandName,
+    companyName: theme.brandName,
+    storeName: theme.brandName,
+    supportEmail: theme.supportEmail,
+    siteUrl: theme.siteUrl,
+  };
+  return html.replace(/{{\s*([\w.]+)\s*}}/g, (_match, key) => map[key] ?? `{{${key}}}`);
 }
 
 export default function AdminEmailTemplates() {
@@ -228,7 +245,7 @@ export default function AdminEmailTemplates() {
     }),
   })).filter((group) => group.vars.length > 0), [variableSearch]);
 
-  const effectiveHtml = useMemo(() => (mode === "simple" ? buildSimpleHtml(theme, simpleFields) : form.htmlBody), [mode, theme, simpleFields, form.htmlBody]);
+  const effectiveHtml = useMemo(() => (mode === "simple" ? buildSimpleHtml(simpleFields) : form.htmlBody), [mode, simpleFields, form.htmlBody]);
   const preheaderPreview = useMemo(() => (simpleFields.preheader || stripHtml(effectiveHtml).slice(0, 120) || "Email preview text"), [simpleFields.preheader, effectiveHtml]);
 
   const parseSampleData = () => {
@@ -503,7 +520,7 @@ export default function AdminEmailTemplates() {
 
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
               <div className={`mx-auto border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ${previewMode === "mobile" ? "max-w-[360px]" : "max-w-[540px]"}`}>
-                <div className="p-4" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || effectiveHtml }} />
+                <div className="p-4" dangerouslySetInnerHTML={{ __html: preview?.htmlBody || resolveTokensForPreview(effectiveHtml, theme) }} />
               </div>
             </div>
 

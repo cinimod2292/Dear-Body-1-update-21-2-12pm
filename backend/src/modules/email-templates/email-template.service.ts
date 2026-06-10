@@ -86,8 +86,12 @@ async function buildRenderData(sampleData: Record<string, unknown>): Promise<Rec
   return merged;
 }
 
+const SYSTEM_TEMPLATES_VERSION = "v2-theme-tokens";
+let systemTemplatesSynced = false;
+
 export async function seedDefaultTemplates() {
   const created: string[] = [];
+  const updated: string[] = [];
 
   for (const template of DEFAULT_EMAIL_TEMPLATES) {
     const existing = await prisma.emailTemplate.findUnique({ where: { key: template.key } });
@@ -101,17 +105,47 @@ export async function seedDefaultTemplates() {
         },
       });
       created.push(template.key);
+    } else if (existing.isSystemDefault) {
+      await prisma.emailTemplate.update({
+        where: { key: template.key },
+        data: {
+          name: template.name,
+          category: template.category,
+          subject: template.subject,
+          htmlBody: template.htmlBody,
+          placeholderKeys: template.placeholderKeys,
+          isSystemDefault: true,
+        },
+      });
+      updated.push(template.key);
     }
   }
 
-  return { createdCount: created.length, createdKeys: created };
+  systemTemplatesSynced = false;
+  return { createdCount: created.length, createdKeys: created, updatedCount: updated.length, updatedKeys: updated };
 }
 
 async function ensureDefaultTemplates() {
-  const count = await prisma.emailTemplate.count();
-  if (count === 0) {
-    await seedDefaultTemplates();
+  if (systemTemplatesSynced) return;
+
+  const versionSetting = await prisma.setting.findUnique({
+    where: { scope_key: { scope: "email", key: "template.schema.version" } },
+  });
+
+  if ((versionSetting?.value as string) === SYSTEM_TEMPLATES_VERSION) {
+    systemTemplatesSynced = true;
+    return;
   }
+
+  await seedDefaultTemplates();
+
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: "email", key: "template.schema.version" } },
+    update: { value: SYSTEM_TEMPLATES_VERSION as any },
+    create: { scope: "email", key: "template.schema.version", value: SYSTEM_TEMPLATES_VERSION as any },
+  });
+
+  systemTemplatesSynced = true;
 }
 
 export async function listEmailTemplates(rawQuery: unknown) {

@@ -83,7 +83,11 @@ export default function AdminPudoShipments() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => { void load(); }, 5 * 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="p-6 space-y-6">

@@ -40,7 +40,7 @@ import { createSection, duplicateSection, moveSection, removeSection } from "./b
 import { buildSectionList } from "./builder/section-tree";
 import { inferInspectorGroup, INSPECTOR_GROUP_ORDER } from "./builder/inspector";
 import { extractSelectedNodeId, resolveInspectableSection } from "./builder/section-node";
-import { isHeroImageField, mapSelectedMediaVariantToFieldValue, resolveNextImageValue } from "./builder/media-picker";
+import { isHeroImageField, mapSelectedMediaVariantToFieldValue, pickHeroVariantUrl, resolveNextImageValue } from "./builder/media-picker";
 import { variantKeys } from "../lib/media-variants";
 import { BUILD_MARKER, logBuildMarker } from "../../lib/build-marker";
 import { normalizeArrayOnly, normalizeList, normalizeLoadContent } from "./builder/load-normalize";
@@ -760,10 +760,15 @@ function InspectorImageField({
       }
       builderDebugLog("library selected", { keyName, mediaId: resolvedAsset.id, variantKeys: variantKeys(resolvedAsset.variants) });
       if (isHeroField) {
+        // Desktop: prefer the hero_desktop delivery variant, else the original.
+        // Mobile: prefer hero_mobile so phones don't download the full desktop
+        // image; fall back to the resolved desktop URL (never a blurry card crop).
+        const desktopUrl = pickHeroVariantUrl(resolvedAsset, ["heroDesktop", "hero_desktop"]) ?? resolvedAsset.publicUrl ?? "";
+        const mobileUrl = pickHeroVariantUrl(resolvedAsset, ["heroMobile", "hero_mobile"]) ?? desktopUrl;
         actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
           props.imageAssetId = resolvedAsset.id;
-          props.imageUrl = resolvedAsset.publicUrl;
-          props.imageMobileUrl = resolvedAsset.publicUrl;
+          props.imageUrl = desktopUrl;
+          props.imageMobileUrl = mobileUrl;
         });
       } else {
         const next = mapSelectedMediaVariantToFieldValue(imageValue, resolvedAsset, preferredKeys, { allowOriginalFallback: true });

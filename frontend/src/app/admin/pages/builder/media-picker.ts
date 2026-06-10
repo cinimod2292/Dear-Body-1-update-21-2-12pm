@@ -21,6 +21,21 @@ function pickVariantUrl(asset: Pick<MediaAsset, "variants"> | null | undefined, 
   return null;
 }
 
+// Strict hero variant resolver: only matches real hero (or hero-equivalent
+// delivery) variants — deliberately NOT falling back to the small `card` crop,
+// which would blur a full-bleed hero / LCP image. Callers supply their own
+// non-variant fallback (typically the original publicUrl).
+export function pickHeroVariantUrl(
+  asset: Pick<MediaAsset, "variants"> | null | undefined,
+  keys: string[],
+) {
+  const variants = normalizeVariants(asset?.variants);
+  const found = findVariantByKey(variants, keys);
+  const candidate = String(found?.url ?? found?.publicUrl ?? "").trim();
+  if (candidate && isSafeImageUrl(candidate, { isHero: true })) return candidate;
+  return null;
+}
+
 export function mediaAssetToImageUrl(asset: Pick<MediaAsset, "publicUrl" | "originalUrl"> | null | undefined) {
   const candidate = String(asset?.originalUrl ?? asset?.publicUrl ?? "").trim();
   if (!candidate) return null;

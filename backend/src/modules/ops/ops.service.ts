@@ -400,11 +400,20 @@ export async function listNewsletterSubscribers() {
 
 export async function createNewsletterSubscriber(rawBody: unknown) {
   const body = newsletterCreateSchema.parse(rawBody);
-  return prisma.newsletterSubscriber.upsert({
+  const subscriber = await prisma.newsletterSubscriber.upsert({
     where: { email: body.email },
     update: { status: "active", source: body.source },
     create: { email: body.email, source: body.source, status: "active" },
   });
+
+  resolveTemplateByKey("newsletter_signup_confirmation", {
+    firstName: "there",
+    siteUrl: process.env.STOREFRONT_URL ?? "",
+  }).then((template) =>
+    sendEmail({ to: body.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key } })
+  ).catch(() => undefined);
+
+  return subscriber;
 }
 
 export async function importNewsletterSubscribers(rawBody: unknown) {

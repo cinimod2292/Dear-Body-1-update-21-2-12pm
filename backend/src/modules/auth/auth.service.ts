@@ -6,6 +6,7 @@ import { env } from "../../config/env.js";
 import { Customer, StaffRole, StaffStatus, StaffUser } from "@prisma/client";
 import { getPermissionsForRole } from "./rbac.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 
 interface TokenPair {
   accessToken: string;
@@ -224,7 +225,16 @@ export async function registerCustomer(input: { email: string; password: string;
         },
       });
 
-  return issueCustomerAccessToken(customer, app);
+  const tokens = await issueCustomerAccessToken(customer, app);
+
+  resolveTemplateByKey("welcome_email", {
+    firstName: customer.firstName ?? "there",
+    siteUrl: process.env.STOREFRONT_URL ?? "",
+  }).then((template) =>
+    sendEmail({ to: customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, customerId: customer.id } })
+  ).catch(() => undefined);
+
+  return tokens;
 }
 
 export async function loginCustomer(email: string, password: string, app: any) {
@@ -291,18 +301,13 @@ export async function requestCustomerPasswordReset(email: string, siteUrl: strin
 
   const resetUrl = `${siteUrl}/account/reset-password?token=${rawToken}`;
 
-  // Fetch the password_reset email template if available
-  const templateRecord = await prisma.emailTemplate.findUnique({ where: { key: "password_reset" } });
-  const subject = templateRecord?.subject ?? "Reset your Dear Body password";
-  let html = templateRecord?.htmlBody ?? `<p>Click the link below to reset your password (valid for ${RESET_TOKEN_TTL_MINUTES} minutes):</p><p><a href="{{resetUrl}}">Reset Password</a></p>`;
+  const template = await resolveTemplateByKey("password_reset", {
+    resetUrl,
+    siteUrl,
+    supportEmail: env.EMAIL_FROM,
+  });
 
-  html = html
-    .replace(/\{\{\s*resetUrl\s*\}\}/g, resetUrl)
-    .replace(/\{\{\s*companyName\s*\}\}/g, "Dear Body")
-    .replace(/\{\{\s*supportEmail\s*\}\}/g, env.EMAIL_FROM)
-    .replace(/\{\{\s*siteUrl\s*\}\}/g, siteUrl);
-
-  await sendEmail({ to: customer.email, subject, html });
+  await sendEmail({ to: customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key } });
 }
 
 export async function listStaffUsers() {

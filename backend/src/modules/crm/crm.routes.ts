@@ -16,6 +16,7 @@ import {
   updateCustomer,
 } from "./crm.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { env } from "../../config/env.js";
 import { z } from "zod";
 
@@ -40,15 +41,13 @@ export async function crmRoutes(app: FastifyInstance) {
 
     await createSupportInquiry({ email, subject: fullSubject, message });
 
-    await sendEmail({
-      to: env.EMAIL_FROM,
-      subject: fullSubject,
-      html: `<p><strong>From:</strong> ${name ? `${name} &lt;${email}&gt;` : email}</p>
-<p><strong>Subject:</strong> ${subject}</p>
-<hr />
-<p>${message.replace(/\n/g, "<br>")}</p>`,
-      meta: { source: "contact_form" },
-    }).catch(() => {
+    const senderDisplay = name ? `${name} (${email})` : email;
+    resolveTemplateByKey("contact_form_notification", {
+      customerName: senderDisplay,
+      message: `<strong>Subject:</strong> ${subject}<br/><br/>${message.replace(/\n/g, "<br>")}`,
+    }).then((template) =>
+      sendEmail({ to: env.EMAIL_FROM, subject: fullSubject, html: template.htmlBody, meta: { source: "contact_form" } })
+    ).catch(() => {
       // Non-fatal: inquiry is saved even if email fails
     });
 

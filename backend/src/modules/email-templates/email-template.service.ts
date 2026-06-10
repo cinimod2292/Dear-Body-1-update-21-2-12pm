@@ -18,6 +18,7 @@ const DEFAULT_SAMPLE_DATA: Record<string, unknown> = {
   customerName: "Customer Smith",
   storeName: "Dear Body",
   companyName: "Dear Body",
+  brandName: "Dear Body",
   supportEmail: "hello@dearbody.com",
   siteUrl: "https://example.com",
   orderNumber: "10001234",
@@ -35,6 +36,16 @@ const DEFAULT_SAMPLE_DATA: Record<string, unknown> = {
   name: "Jane Doe",
   email: "jane@example.com",
   message: "I need help with my order",
+  primaryColor: "#f472b6",
+  accentColor: "#fb923c",
+  buttonBg: "#111827",
+  buttonTextColor: "#ffffff",
+  headingColor: "#111827",
+  bodyTextColor: "#374151",
+  contentBg: "#ffffff",
+  outerBg: "#f8fafc",
+  footerBg: "#111827",
+  footerText: "#d1d5db",
 };
 
 function asStringArray(value: unknown): string[] {
@@ -50,11 +61,29 @@ function renderTemplateString(template: string, data: Record<string, unknown>) {
   });
 }
 
-function withMergedSampleData(sampleData: Record<string, unknown>) {
-  return {
+
+async function loadEmailTheme(): Promise<Record<string, string>> {
+  const setting = await prisma.setting.findUnique({
+    where: { scope_key: { scope: "email", key: "template.theme.v1" } },
+  });
+  if (!setting?.value || typeof setting.value !== "object") return {};
+  const v = setting.value as Record<string, unknown>;
+  const theme: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === "string") theme[k] = val;
+  }
+  return theme;
+}
+
+async function buildRenderData(sampleData: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const theme = await loadEmailTheme();
+  const merged: Record<string, unknown> = {
     ...DEFAULT_SAMPLE_DATA,
+    ...theme,
+    ...(theme.brandName ? { storeName: theme.brandName, companyName: theme.brandName } : {}),
     ...sampleData,
   };
+  return merged;
 }
 
 export async function seedDefaultTemplates() {
@@ -219,7 +248,7 @@ interface ResolvedTemplate {
 }
 
 async function buildResolvedTemplate(template: EmailTemplate, sampleData: Record<string, unknown>): Promise<ResolvedTemplate> {
-  const mergedData = withMergedSampleData(sampleData);
+  const mergedData = await buildRenderData(sampleData);
   return {
     key: template.key,
     name: template.name,
@@ -246,7 +275,7 @@ export async function resolveTemplateByKey(key: string, sampleData: Record<strin
     throw new AppError(404, "Email template not found", "EMAIL_TEMPLATE_NOT_FOUND");
   }
 
-  const mergedData = withMergedSampleData(sampleData);
+  const mergedData = await buildRenderData(sampleData);
   return {
     key: fallback.key,
     name: fallback.name,
@@ -285,7 +314,7 @@ export async function sendTestEmailTemplate(id: string, rawBody: unknown) {
   const body = testSendSchema.parse(rawBody);
   const template = await previewTemplate(id, { sampleData: body.sampleData });
 
-  const mergedData = withMergedSampleData(body.sampleData);
+  const mergedData = await buildRenderData(body.sampleData);
   const htmlBody = body.htmlBody
     ? renderTemplateString(body.htmlBody, mergedData)
     : template.htmlBody;

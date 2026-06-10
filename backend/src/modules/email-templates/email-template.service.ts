@@ -302,36 +302,49 @@ async function buildResolvedTemplate(template: EmailTemplate, sampleData: Record
 }
 
 export async function resolveTemplateByKey(key: string, sampleData: Record<string, unknown> = {}) {
-  await ensureDefaultTemplates();
+  const mergedData = await buildRenderData(sampleData);
 
-  const found = await prisma.emailTemplate.findUnique({ where: { key } });
-  if (found?.isEnabled) {
-    return buildResolvedTemplate(found, sampleData);
-  }
+  const dbRecord = await prisma.emailTemplate.findUnique({ where: { key } });
+  const sourceTemplate = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === key);
 
-  const fallback = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === key);
-  if (!fallback) {
+  if (!sourceTemplate && !dbRecord) {
     throw new AppError(404, "Email template not found", "EMAIL_TEMPLATE_NOT_FOUND");
   }
 
-  const mergedData = await buildRenderData(sampleData);
+  if (dbRecord && !dbRecord.isEnabled) {
+    throw new AppError(404, "Email template not found", "EMAIL_TEMPLATE_NOT_FOUND");
+  }
+
+  // For user-customized templates (isSystemDefault=false) use their saved DB HTML.
+  // For system defaults always use source-code HTML — it is guaranteed to contain
+  // {{themeToken}} placeholders so the live theme is always applied at send time.
+  // This bypasses any stale baked-in hex values that may have been saved to the DB.
+  const isUserCustomized = dbRecord != null && !dbRecord.isSystemDefault;
+  const html = isUserCustomized ? dbRecord.htmlBody : (sourceTemplate?.htmlBody ?? dbRecord!.htmlBody);
+  const subject = dbRecord?.subject ?? sourceTemplate?.subject ?? "";
+  const textBody = isUserCustomized ? dbRecord.textBody : null;
+  const placeholderKeys = isUserCustomized
+    ? asStringArray(dbRecord.placeholderKeys)
+    : (sourceTemplate?.placeholderKeys ?? []);
+
   return {
-    key: fallback.key,
-    name: fallback.name,
-    category: fallback.category,
-    subject: renderTemplateString(fallback.subject, mergedData),
-    htmlBody: renderTemplateString(fallback.htmlBody, mergedData),
-    textBody: null,
-    placeholderKeys: fallback.placeholderKeys,
-    isEnabled: true,
-    source: "fallback-default" as const,
+    key,
+    name: dbRecord?.name ?? sourceTemplate?.name ?? key,
+    category: dbRecord?.category ?? sourceTemplate?.category ?? ("SYSTEM" as EmailTemplateCategory),
+    subject: renderTemplateString(subject, mergedData),
+    htmlBody: renderTemplateString(html, mergedData),
+    textBody: textBody ? renderTemplateString(textBody, mergedData) : null,
+    placeholderKeys,
+    isEnabled: dbRecord?.isEnabled ?? true,
+    source: (isUserCustomized ? "database" : "fallback-default") as "database" | "fallback-default",
   };
 }
 
 export async function previewTemplate(id: string, rawBody: unknown) {
   const body = previewSchema.parse(rawBody);
   const template = await getEmailTemplate(id);
-  const rendered = await buildResolvedTemplate(template, body.sampleData);
+  // Re-use resolveTemplateByKey so system defaults always preview with live theme tokens.
+  const rendered = await resolveTemplateByKey(template.key, body.sampleData);
 
   return {
     ...rendered,

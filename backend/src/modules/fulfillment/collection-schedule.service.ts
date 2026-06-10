@@ -110,15 +110,15 @@ export function calculateNextCollectionDate(
     for (const window of sortedWindows) {
       if (window.dayOfWeek !== candidateDow) continue;
 
-      const endTime = parseTime(window.endTime);
-      const windowEndTime = buildJhbDateTime(candidateIsoDate, endTime.hours, endTime.minutes);
-      const cutoffTime = new Date(windowEndTime.getTime() - cutoffMs);
+      const startTime = parseTime(window.startTime);
+      const windowStartTime = buildJhbDateTime(candidateIsoDate, startTime.hours, startTime.minutes);
+      const cutoffTime = new Date(windowStartTime.getTime() - cutoffMs);
 
       // Skip if we're past the cutoff for this window
       if (from >= cutoffTime) continue;
 
-      const startTime = parseTime(window.startTime);
-      const windowStartTime = buildJhbDateTime(candidateIsoDate, startTime.hours, startTime.minutes);
+      const endTime = parseTime(window.endTime);
+      const windowEndTime = buildJhbDateTime(candidateIsoDate, endTime.hours, endTime.minutes);
 
       return {
         collectionDate: windowStartTime,

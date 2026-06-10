@@ -829,8 +829,9 @@ export async function cancelOrder(orderId: string, rawBody: unknown, actorId?: s
   const order = await getOrder(orderId);
   if (order.status === "CANCELLED") throw new AppError(400, "Order already cancelled", "ORDER_ALREADY_CANCELLED");
 
+  const cancelPaymentStatus = order.paymentStatus === "PAID" ? "REFUND_DUE" : "CANCELLED";
   const updated = await prisma.$transaction(async (tx) => {
-    const next = await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", fulfillmentStatus: "CANCELLED", cancelledAt: new Date() } });
+    const next = await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", fulfillmentStatus: "CANCELLED", paymentStatus: cancelPaymentStatus as any, cancelledAt: new Date() } });
     await tx.orderCancellation.upsert({ where: { orderId }, update: { reason: body.reason, cancelledById: actorId }, create: { orderId, reason: body.reason, cancelledById: actorId } });
     return next;
   });

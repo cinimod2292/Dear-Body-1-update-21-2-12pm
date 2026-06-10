@@ -682,6 +682,7 @@ export async function getStoreOrderById(orderId: string) {
     include: {
       items: true,
       payments: { orderBy: { createdAt: "desc" } },
+      shippingAddress: true,
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
@@ -709,6 +710,20 @@ export async function getStoreOrderById(orderId: string) {
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
+    shippingAddress: order.shippingAddress
+      ? {
+          firstName: order.shippingAddress.firstName,
+          lastName: order.shippingAddress.lastName,
+          recipientName: order.shippingAddress.recipientName,
+          line1: order.shippingAddress.line1,
+          line2: order.shippingAddress.line2,
+          suburb: order.shippingAddress.suburb,
+          city: order.shippingAddress.city,
+          state: order.shippingAddress.state,
+          postalCode: order.shippingAddress.postalCode,
+          country: order.shippingAddress.country,
+        }
+      : null,
     items: order.items,
     payments: order.payments.map((p) => ({
       id: p.id,

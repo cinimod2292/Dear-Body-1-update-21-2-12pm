@@ -193,6 +193,38 @@ export default function Checkout() {
       status: o.status,
       checkoutUrl: null,
     });
+
+    // Restore the delivery context that was lost when the payment gateway
+    // redirect unloaded the page. Without this, the confirmation screen falls
+    // back to default in-memory state and shows the generic shipping address
+    // ("South Africa") instead of the chosen PUDO locker / delivery address.
+    if (o.pudoDeliveryType === "locker") {
+      setDeliveryType("pudo-locker");
+      setSelectedPudoLocker({
+        lockerCode: o.pudoLockerCode || "",
+        name: o.pudoLockerName || o.pudoLockerCode || "",
+        address: "",
+        city: "",
+      });
+    } else if (o.pudoDeliveryType === "door") {
+      setDeliveryType("pudo-door");
+    }
+    if (o.shippingAddress) {
+      const a = o.shippingAddress;
+      setForm((f) => ({
+        ...f,
+        firstName: a.firstName || f.firstName,
+        lastName: a.lastName || f.lastName,
+        unit: a.line2 || f.unit,
+        address: a.line1 || f.address,
+        suburb: a.suburb || f.suburb,
+        city: a.city || f.city,
+        state: a.state || f.state,
+        zip: a.postalCode || f.zip,
+        country: normalizeCountry(a.country) || f.country,
+      }));
+    }
+
     if (o.paymentStatus === "PAID") {
       finalizeSuccessfulCheckout(orderId, "initial_load");
       return;
@@ -600,7 +632,9 @@ export default function Checkout() {
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Locker Location</p>
                 <p className="font-semibold text-gray-900">{selectedPudoLocker.name}</p>
-                <p className="text-sm text-gray-500">{selectedPudoLocker.address}, {selectedPudoLocker.city}{selectedPudoLocker.postalCode ? `, ${selectedPudoLocker.postalCode}` : ""}</p>
+                {(selectedPudoLocker.address || selectedPudoLocker.city) && (
+                  <p className="text-sm text-gray-500">{[selectedPudoLocker.address, selectedPudoLocker.city].filter(Boolean).join(", ")}{selectedPudoLocker.postalCode ? `, ${selectedPudoLocker.postalCode}` : ""}</p>
+                )}
                 <p className="text-xs text-gray-400 mt-1">You will receive a notification when your parcel is ready to collect.</p>
               </div>
             ) : isDoorConfirm ? (

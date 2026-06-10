@@ -361,6 +361,19 @@ export async function sendOrderCreatedEmailSafe(orderId: string) {
   ]);
 }
 
+async function sendReadyForCollectionEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+  const collectionDetails = order.shippingAddress
+    ? `Please bring your order confirmation when collecting.`
+    : `Please bring your order confirmation when collecting.`;
+  const template = await resolveTemplateByKey("ready_for_collection", {
+    orderNumber: order.orderNumber,
+    collectionDetails,
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
 async function sendShippingEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email || !order.trackingNumber) return;
@@ -785,6 +798,9 @@ export async function updateOrderStatus(orderId: string, rawBody: unknown, actor
   const order = await getOrder(orderId);
   const updated = await prisma.order.update({ where: { id: orderId }, data: { status: body.value as any } });
   await recordOrderEvent(orderId, actorId, "ORDER_STATUS_UPDATED", order.status, updated.status, { reason: body.reason });
+  if (updated.status === "READY_FOR_COLLECTION") {
+    await sendReadyForCollectionEmail(orderId).catch(() => undefined);
+  }
   return updated;
 }
 

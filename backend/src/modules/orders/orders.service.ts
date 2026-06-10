@@ -29,6 +29,23 @@ async function getShippingRules() {
   return shippingRulesSchema.parse(existing?.value ?? {});
 }
 
+type CollectionAddress = {
+  line1: string;
+  line2?: string | null;
+  suburb?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+};
+
+function asCollectionAddress(value: unknown): CollectionAddress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const address = value as Record<string, unknown>;
+  if (typeof address.line1 !== "string" || typeof address.city !== "string" || typeof address.postalCode !== "string" || typeof address.country !== "string") return null;
+  return address as CollectionAddress;
+}
+
 function isShippingMethodApplicable(method: { isActive: boolean }) {
   return method.isActive;
 }
@@ -97,7 +114,11 @@ async function recalcCart(cartId: string) {
     shippingMethod: cart.shippingMethod
       ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
       : null,
-    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+    destination: cart.shippingMethod?.type === "COLLECTION"
+      ? asCollectionAddress(cart.shippingMethod.collectionAddress)
+      : cart.shippingAddress
+        ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state }
+        : null,
   });
   if (cart.shippingMethodId && !pricing.shippingMethodValid) {
     console.info("[shipping] invalid shipping method cleared from cart", { cartId, shippingMethodId: cart.shippingMethodId });
@@ -189,7 +210,7 @@ export async function listStoreShippingMethods() {
   return prisma.shippingMethod.findMany({
     where: { isActive: true },
     orderBy: { price: "asc" },
-    select: { id: true, name: true, price: true, description: true },
+    select: { id: true, name: true, price: true, description: true, type: true, collectionAddress: true },
   });
 }
 
@@ -212,7 +233,11 @@ export async function quoteCart(rawBody: unknown) {
   const pricing = await calculatePricing({
     items: resolvedItems,
     shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price) } : null,
-    destination: body.shippingAddress ? { country: body.shippingAddress.country, state: body.shippingAddress.state } : null,
+    destination: shippingMethod?.type === "COLLECTION"
+      ? asCollectionAddress(shippingMethod.collectionAddress)
+      : body.shippingAddress
+        ? { country: body.shippingAddress.country, state: body.shippingAddress.state }
+        : null,
   });
   const methods = await listStoreShippingMethodsForDestination(body.shippingAddress?.country, body.shippingAddress?.state);
   return {
@@ -363,11 +388,20 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   if (existingCart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
   if (existingCart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
 
+  const selectedShippingMethod = body.shippingMethodId
+    ? await prisma.shippingMethod.findFirst({ where: { id: body.shippingMethodId, isActive: true } })
+    : null;
+  const isCollection = selectedShippingMethod?.type === "COLLECTION";
+  const collectionAddress = isCollection ? asCollectionAddress(selectedShippingMethod.collectionAddress) : null;
+  if (isCollection && !collectionAddress) {
+    throw new AppError(400, "This collection method does not have a valid collection address", "COLLECTION_ADDRESS_REQUIRED");
+  }
+
   const isLockerDelivery = body.pudoDeliveryType === "locker";
-  if (!isLockerDelivery && !body.shippingAddress) {
+  if (!isLockerDelivery && !isCollection && !body.shippingAddress) {
     throw new AppError(400, "Shipping address is required", "SHIPPING_ADDRESS_REQUIRED");
   }
-  const shippingAddress = body.shippingAddress
+  const shippingAddress = !isCollection && body.shippingAddress
     ? await prisma.address.create({ data: body.shippingAddress })
     : null;
   const billingAddress = body.billingAddress
@@ -381,7 +415,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   await prisma.cart.update({
     where: { id: cartId },
     data: {
-      ...(shippingAddress ? { shippingAddressId: shippingAddress.id } : {}),
+      shippingAddressId: isCollection ? null : shippingAddress?.id ?? existingCart.shippingAddressId,
       shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
     },
   });
@@ -394,7 +428,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
     shippingMethod: cart.shippingMethod
       ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
       : null,
-    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+    destination: isCollection
+      ? collectionAddress
+      : cart.shippingAddress
+        ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state }
+        : null,
   });
   const isPudoShipping = typeof body.pudoShippingAmount === "number";
   if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId && !isPudoShipping) {
@@ -448,6 +486,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         shippingMethodId: cart.shippingMethodId,
         shippingAddressId: shippingAddress?.id ?? null,
         billingAddressId: billingAddress?.id ?? null,
+        collectionAddress: collectionAddress ?? undefined,
         pudoLockerCode: body.pudoLockerCode ?? null,
         pudoLockerName: body.pudoLockerName ?? null,
         pudoDeliveryType: body.pudoDeliveryType ?? null,
@@ -683,6 +722,7 @@ export async function getStoreOrderById(orderId: string) {
       items: true,
       payments: { orderBy: { createdAt: "desc" } },
       shippingAddress: true,
+      shippingMethod: true,
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
@@ -710,6 +750,10 @@ export async function getStoreOrderById(orderId: string) {
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
+    shippingMethod: order.shippingMethod
+      ? { id: order.shippingMethod.id, name: order.shippingMethod.name, type: order.shippingMethod.type }
+      : null,
+    collectionAddress: asCollectionAddress(order.collectionAddress),
     shippingAddress: order.shippingAddress
       ? {
           firstName: order.shippingAddress.firstName,

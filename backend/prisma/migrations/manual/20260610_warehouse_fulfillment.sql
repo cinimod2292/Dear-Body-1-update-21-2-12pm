@@ -30,11 +30,15 @@ ALTER TABLE "Order"
   ADD COLUMN IF NOT EXISTS "warehouseNotes"       TEXT;
 
 -- Foreign key constraints for pickedBy / packedBy
-ALTER TABLE "Order"
-  ADD CONSTRAINT IF NOT EXISTS "Order_pickedById_fkey"
-    FOREIGN KEY ("pickedById") REFERENCES "StaffUser"("id") ON DELETE SET NULL,
-  ADD CONSTRAINT IF NOT EXISTS "Order_packedById_fkey"
+DO $$ BEGIN
+  ALTER TABLE "Order" ADD CONSTRAINT "Order_pickedById_fkey"
+    FOREIGN KEY ("pickedById") REFERENCES "StaffUser"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "Order" ADD CONSTRAINT "Order_packedById_fkey"
     FOREIGN KEY ("packedById") REFERENCES "StaffUser"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- Index for warehouse dashboard queries
 CREATE INDEX IF NOT EXISTS "Order_warehouseStatus_idx" ON "Order"("warehouseStatus");

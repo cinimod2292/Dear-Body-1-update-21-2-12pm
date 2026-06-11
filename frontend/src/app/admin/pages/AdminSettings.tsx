@@ -601,14 +601,14 @@ export default function AdminSettings() {
         <form onSubmit={saveStore} className="space-y-4">
           <h2 className="text-xl font-black text-gray-900">Store Settings</h2>
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Support Email</label>
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} required />
-            </div>
+            <label className="block text-sm font-medium text-gray-700">
+              Store Name
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Support Email
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} required />
+            </label>
           </div>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
         </form>
@@ -620,13 +620,34 @@ export default function AdminSettings() {
             <h2 className="text-xl font-black text-gray-900">Stitch Payments</h2>
             <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={stitchEnabled} onChange={(e) => setStitchEnabled(e.target.checked)} />Enable Stitch</label>
-              <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production")}><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Merchant ID" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
-              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${apiKeyConfigured ? "(configured)" : "(required)"}`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Webhook Secret ${webhookConfigured ? "(configured)" : "(optional)"}`} value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URL" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Callback URL" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Custom API Base URL" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
+              <label className="block text-sm font-medium text-gray-700">
+                Mode
+                <select className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={stitchMode} onChange={(e) => setStitchMode(e.target.value as "sandbox" | "production")}><option value="sandbox">Sandbox</option><option value="production">Production</option></select>
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Merchant ID
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} required />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                API Key {apiKeyConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : <span className="font-normal text-gray-500">(required)</span>}
+                <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Webhook Secret {webhookConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : <span className="font-normal text-gray-500">(optional)</span>}
+                <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Redirect URL
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Callback URL
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={callbackUrl} onChange={(e) => setCallbackUrl(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Custom API Base URL
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} />
+              </label>
             </div>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Stitch Settings"}</button>
           </form>
@@ -650,17 +671,47 @@ export default function AdminSettings() {
           <h2 className="text-xl font-black text-gray-900">PayFast Payments</h2>
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payfastEnabled} onChange={(e) => setPayfastEnabled(e.target.checked)} />Enable PayFast</label>
-            <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live")}><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
+            <label className="block text-sm font-medium text-gray-700">
+              Mode
+              <select className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastMode} onChange={(e) => setPayfastMode(e.target.value as "sandbox" | "live")}><option value="sandbox">Sandbox</option><option value="live">Live</option></select>
+            </label>
             <p className="text-xs text-gray-500">Keep sandbox and live credentials separate to avoid accidental cross-environment usage.</p>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Sandbox Merchant ID" value={sandboxMerchantId} onChange={(e) => setSandboxMerchantId(e.target.value)} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Merchant Key ${sandboxMerchantKeyConfigured ? "(configured)" : ""}`} value={sandboxMerchantKey} onChange={(e) => setSandboxMerchantKey(e.target.value)} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Sandbox Passphrase ${sandboxPassphraseConfigured ? "(configured)" : "(optional)"}`} value={sandboxPassphrase} onChange={(e) => setSandboxPassphrase(e.target.value)} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Live Merchant ID" value={liveMerchantId} onChange={(e) => setLiveMerchantId(e.target.value)} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Merchant Key ${liveMerchantKeyConfigured ? "(configured)" : ""}`} value={liveMerchantKey} onChange={(e) => setLiveMerchantKey(e.target.value)} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Live Passphrase ${livePassphraseConfigured ? "(configured)" : "(optional)"}`} value={livePassphrase} onChange={(e) => setLivePassphrase(e.target.value)} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Return URL" value={payfastReturnUrl} onChange={(e) => setPayfastReturnUrl(e.target.value)} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancel URL" value={payfastCancelUrl} onChange={(e) => setPayfastCancelUrl(e.target.value)} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Notify URL (webhook)" value={payfastNotifyUrl} onChange={(e) => setPayfastNotifyUrl(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700">
+              Sandbox Merchant ID
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={sandboxMerchantId} onChange={(e) => setSandboxMerchantId(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Sandbox Merchant Key {sandboxMerchantKeyConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : null}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={sandboxMerchantKey} onChange={(e) => setSandboxMerchantKey(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Sandbox Passphrase {sandboxPassphraseConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : <span className="font-normal text-gray-500">(optional)</span>}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={sandboxPassphrase} onChange={(e) => setSandboxPassphrase(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Live Merchant ID
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={liveMerchantId} onChange={(e) => setLiveMerchantId(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Live Merchant Key {liveMerchantKeyConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : null}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={liveMerchantKey} onChange={(e) => setLiveMerchantKey(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Live Passphrase {livePassphraseConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : <span className="font-normal text-gray-500">(optional)</span>}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={livePassphrase} onChange={(e) => setLivePassphrase(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Return URL
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastReturnUrl} onChange={(e) => setPayfastReturnUrl(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Cancel URL
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastCancelUrl} onChange={(e) => setPayfastCancelUrl(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Notify URL (webhook)
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={payfastNotifyUrl} onChange={(e) => setPayfastNotifyUrl(e.target.value)} />
+            </label>
           </div>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save PayFast Settings"}</button>
         </form>
@@ -670,7 +721,9 @@ export default function AdminSettings() {
         <form onSubmit={saveStorage} className="space-y-4">
           <h2 className="text-xl font-black text-gray-900">Storage Settings</h2>
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
-            <select className="w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
+            <label className="block text-sm font-medium text-gray-700">
+              Storage Provider
+              <select className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.provider} onChange={(e) => {
               const provider = e.target.value as StorageSettings["provider"];
               setStorageConfig((prev) => ({
                 ...prev,
@@ -681,14 +734,36 @@ export default function AdminSettings() {
               <option value="local">local</option>
               <option value="s3">s3</option>
               <option value="cloudflare-r2">cloudflare-r2</option>
-            </select>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Bucket Name" value={storageConfig.bucket} onChange={(e) => setStorageConfig((prev) => ({ ...prev, bucket: e.target.value }))} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Account ID (Cloudflare R2)" value={storageConfig.accountId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accountId: e.target.value, endpoint: prev.provider === "cloudflare-r2" && e.target.value ? `https://${e.target.value}.r2.cloudflarestorage.com` : prev.endpoint }))} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Access Key ID ${storageConfig.accessKeyIdMasked ? `(current ${storageConfig.accessKeyIdMasked})` : ""}`} value={storageConfig.accessKeyId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accessKeyId: e.target.value }))} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Secret Access Key ${storageConfig.secretAccessKeyConfigured ? "(configured, leave blank to keep)" : ""}`} value={storageSecret} onChange={(e) => setStorageSecret(e.target.value)} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Endpoint URL" value={storageConfig.endpoint} onChange={(e) => setStorageConfig((prev) => ({ ...prev, endpoint: e.target.value }))} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Public Base URL (optional public origin)" value={storageConfig.publicBaseUrl} onChange={(e) => setStorageConfig((prev) => ({ ...prev, publicBaseUrl: e.target.value }))} />
-            <input type="number" min={60} max={86400} className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Signed URL TTL (seconds)" value={storageConfig.signedUrlTtlSeconds} onChange={(e) => setStorageConfig((prev) => ({ ...prev, signedUrlTtlSeconds: Number(e.target.value) }))} />
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Bucket Name
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.bucket} onChange={(e) => setStorageConfig((prev) => ({ ...prev, bucket: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Account ID (Cloudflare R2)
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.accountId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accountId: e.target.value, endpoint: prev.provider === "cloudflare-r2" && e.target.value ? `https://${e.target.value}.r2.cloudflarestorage.com` : prev.endpoint }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Access Key ID {storageConfig.accessKeyIdMasked ? <span className="font-normal text-gray-500">(current {storageConfig.accessKeyIdMasked})</span> : null}
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.accessKeyId} onChange={(e) => setStorageConfig((prev) => ({ ...prev, accessKeyId: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Secret Access Key {storageConfig.secretAccessKeyConfigured ? <span className="font-normal text-emerald-600">(configured, leave blank to keep)</span> : null}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageSecret} onChange={(e) => setStorageSecret(e.target.value)} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Endpoint URL
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.endpoint} onChange={(e) => setStorageConfig((prev) => ({ ...prev, endpoint: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Public Base URL <span className="font-normal text-gray-500">(optional public origin)</span>
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.publicBaseUrl} onChange={(e) => setStorageConfig((prev) => ({ ...prev, publicBaseUrl: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Signed URL TTL (seconds)
+              <input type="number" min={60} max={86400} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={storageConfig.signedUrlTtlSeconds} onChange={(e) => setStorageConfig((prev) => ({ ...prev, signedUrlTtlSeconds: Number(e.target.value) }))} />
+            </label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={storageConfig.forcePathStyle} onChange={(e) => setStorageConfig((prev) => ({ ...prev, forcePathStyle: e.target.checked }))} />Force path style</label>
             <p className="text-xs text-amber-700">Cloudflare R2 endpoint suggestion: https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</p>
             <p className="text-xs text-amber-700">Browser uploads require bucket CORS for PUT from your admin origin.</p>
@@ -706,12 +781,27 @@ export default function AdminSettings() {
           <h2 className="text-xl font-black text-gray-900">SendGrid Email</h2>
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.enabled} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable SendGrid provider settings</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="From Email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="From Name" value={sendgridConfig.fromName} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromName: e.target.value }))} />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Reply-To Email (optional)" value={sendgridConfig.replyToEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, replyToEmail: e.target.value }))} />
-            <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`API Key ${sendgridConfig.apiKeyConfigured ? "(configured, leave blank to keep)" : "(required to send)"}`} value={sendgridApiKey} onChange={(e) => setSendgridApiKey(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700">
+              From Email
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={sendgridConfig.fromEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromEmail: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              From Name
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={sendgridConfig.fromName} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, fromName: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Reply-To Email <span className="font-normal text-gray-500">(optional)</span>
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={sendgridConfig.replyToEmail} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, replyToEmail: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              API Key {sendgridConfig.apiKeyConfigured ? <span className="font-normal text-emerald-600">(configured, leave blank to keep)</span> : <span className="font-normal text-gray-500">(required to send)</span>}
+              <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={sendgridApiKey} onChange={(e) => setSendgridApiKey(e.target.value)} />
+            </label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendgridConfig.sandboxMode} onChange={(e) => setSendgridConfig((prev) => ({ ...prev, sandboxMode: e.target.checked }))} />Use SendGrid sandbox mode</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="email" placeholder="Test recipient email" value={sendgridTestTo} onChange={(e) => setSendgridTestTo(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700">
+              Test Recipient Email
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="email" value={sendgridTestTo} onChange={(e) => setSendgridTestTo(e.target.value)} />
+            </label>
             <div className="flex items-center gap-2">
               <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save SendGrid Settings"}</button>
               <button type="button" onClick={testSendgrid} disabled={saving || !sendgridTestTo.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-70">Send Test Email</button>
@@ -727,11 +817,26 @@ export default function AdminSettings() {
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.enabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, enabled: e.target.checked }))} />Enable abandoned cart handling</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={abandonedConfig.reminderEnabled} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderEnabled: e.target.checked }))} />Enable reminder email</label>
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.inactivityThresholdMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, inactivityThresholdMinutes: Number(e.target.value) }))} placeholder="Inactivity threshold (minutes)" />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.reminderDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderDelayMinutes: Number(e.target.value) }))} placeholder="Reminder delay (minutes)" />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.clearDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, clearDelayMinutes: Number(e.target.value) }))} placeholder="Clear/release delay (minutes)" />
-            <input className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.templateKey} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, templateKey: e.target.value }))} placeholder="Abandoned cart email template key" />
-            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.helpText} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, helpText: e.target.value }))} />
+            <label className="block text-sm font-medium text-gray-700">
+              Inactivity Threshold (minutes)
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.inactivityThresholdMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, inactivityThresholdMinutes: Number(e.target.value) }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Reminder Delay (minutes)
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.reminderDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, reminderDelayMinutes: Number(e.target.value) }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Clear/Release Delay (minutes)
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="number" min={1} value={abandonedConfig.clearDelayMinutes} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, clearDelayMinutes: Number(e.target.value) }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Abandoned Cart Email Template Key
+              <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.templateKey} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, templateKey: e.target.value }))} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Customer Help Text
+              <textarea className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={abandonedConfig.helpText} onChange={(e) => setAbandonedConfig((prev) => ({ ...prev, helpText: e.target.value }))} />
+            </label>
           </div>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Abandoned Cart Settings"}</button>
         </form>
@@ -746,11 +851,26 @@ export default function AdminSettings() {
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={xeroEnabled} onChange={(e) => setXeroEnabled(e.target.checked)} />Enable Xero</label>
                 <span className={`text-xs px-2 py-1 rounded ${xeroConnectionStatus === "connected" ? "bg-emerald-100 text-emerald-700" : xeroConnectionStatus === "expired" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"}`}>{xeroConnectionStatus.toUpperCase()}</span>
               </div>
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Client ID" value={xeroClientId} onChange={(e) => setXeroClientId(e.target.value)} required />
-              <input type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder={`Client Secret ${xeroSecretConfigured ? "(configured)" : "(required)"}`} value={xeroClientSecret} onChange={(e) => setXeroClientSecret(e.target.value)} />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Redirect URI" value={xeroRedirectUri} onChange={(e) => setXeroRedirectUri(e.target.value)} required />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Tenant ID" value={xeroTenantId} onChange={(e) => setXeroTenantId(e.target.value)} />
-              <input className="w-full rounded-lg border border-gray-200 px-3 py-2" placeholder="Scopes (space separated)" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
+              <label className="block text-sm font-medium text-gray-700">
+                Client ID
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroClientId} onChange={(e) => setXeroClientId(e.target.value)} required />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Client Secret {xeroSecretConfigured ? <span className="font-normal text-emerald-600">(configured)</span> : <span className="font-normal text-gray-500">(required)</span>}
+                <input type="password" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroClientSecret} onChange={(e) => setXeroClientSecret(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Redirect URI
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroRedirectUri} onChange={(e) => setXeroRedirectUri(e.target.value)} required />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Tenant ID
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroTenantId} onChange={(e) => setXeroTenantId(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Scopes <span className="font-normal text-gray-500">(space separated)</span>
+                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
+              </label>
               <p className="text-xs text-gray-500">Token expiry: {xeroTokenExpiresAt ? new Date(xeroTokenExpiresAt).toLocaleString() : "Not connected"}</p>
               <button type="button" onClick={connectXero} className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm">Connect / Reconnect Xero</button>
             </div>

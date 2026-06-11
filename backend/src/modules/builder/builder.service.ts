@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
+import { env } from "../../config/env.js";
 import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
 import {
   BUILDER_PAGE_KEYS,
@@ -104,7 +105,7 @@ function nowIso() {
 }
 
 function isBuilderDebugEnabled() {
-  return process.env.NODE_ENV !== "production" || process.env.BUILDER_DEBUG === "1";
+  return env.NODE_ENV !== "production" || env.BUILDER_DEBUG;
 }
 
 function extractHeroImageUrl(content: BuilderPageContent | undefined | null): string | null {

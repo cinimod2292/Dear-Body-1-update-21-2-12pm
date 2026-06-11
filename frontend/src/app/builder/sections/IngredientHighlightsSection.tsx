@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import {
   Droplets,
   FlaskConical,
@@ -6,6 +5,7 @@ import {
   Sparkles,
   Sun,
   Wind,
+  type LucideIcon,
 } from "lucide-react";
 
 export type IngredientIconName = "leaf" | "droplets" | "sun" | "sparkles" | "flask" | "wind";
@@ -30,7 +30,7 @@ const ICON_MAP = {
   sparkles: Sparkles,
   flask: FlaskConical,
   wind: Wind,
-} satisfies Record<IngredientIconName, ComponentType<{ size?: number; className?: string }>>;
+} satisfies Record<IngredientIconName, LucideIcon>;
 
 const CARD_BG: Record<IngredientIconName, string> = {
   leaf: "bg-emerald-50",

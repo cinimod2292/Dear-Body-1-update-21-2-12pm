@@ -111,26 +111,40 @@ const THEME_HEAD = `<head>
   <style>
     :root { color-scheme: only light; supported-color-schemes: light; }
     .db-email-body, .db-email-outer, .db-email-card, .db-email-header, .db-email-heading, .db-email-content, .db-email-cta-row, .db-email-button, .db-email-footer { forced-color-adjust: none !important; }
-    .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; }
+    .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; color: {{bodyTextColor}} !important; }
     .db-email-card { background-color: {{contentBg}} !important; }
     .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+    .db-email-header div { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; forced-color-adjust: none; }
     .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
     .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
     .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
     .db-email-footer { background-color: {{footerBg}} !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
     .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
-    [data-ogsc] .db-email-body, [data-ogsc] .db-email-outer, [data-ogsb] .db-email-body, [data-ogsb] .db-email-outer { background-color: {{outerBg}} !important; background-image: linear-gradient({{outerBg}}, {{outerBg}}) !important; }
+    [data-ogsc] .db-email-body, [data-ogsc] .db-email-outer, [data-ogsb] .db-email-body, [data-ogsb] .db-email-outer { background-color: {{outerBg}} !important; color: {{bodyTextColor}} !important; background-image: linear-gradient({{outerBg}}, {{outerBg}}) !important; }
     [data-ogsc] .db-email-card, [data-ogsb] .db-email-card { background-color: {{contentBg}} !important; background-image: linear-gradient({{contentBg}}, {{contentBg}}) !important; }
     [data-ogsc] .db-email-header, [data-ogsb] .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+    [data-ogsc] .db-email-header div, [data-ogsb] .db-email-header div { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
     [data-ogsc] .db-email-heading, [data-ogsb] .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
     [data-ogsc] .db-email-content, [data-ogsb] .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
     [data-ogsc] .db-email-button, [data-ogsb] .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
     [data-ogsc] .db-email-footer, [data-ogsb] .db-email-footer { background-color: {{footerBg}} !important; background-image: linear-gradient({{footerBg}}, {{footerBg}}) !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
     [data-ogsc] .db-email-footer a, [data-ogsb] .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
-    @media (prefers-color-scheme: dark) {
-      .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; }
+    @media (prefers-color-scheme: light) {
+      .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; color: {{bodyTextColor}} !important; }
       .db-email-card { background-color: {{contentBg}} !important; }
       .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+      .db-email-header div { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+      .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
+      .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
+      .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
+      .db-email-footer { background-color: {{footerBg}} !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+      .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; color: {{bodyTextColor}} !important; }
+      .db-email-card { background-color: {{contentBg}} !important; }
+      .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+      .db-email-header div { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
       .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
       .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
       .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
@@ -180,6 +194,9 @@ function protectBackground(tag: string, color: string): string {
 function protectText(tag: string, color: string): string {
   let protectedTag = setStyleProperty(tag, "color", `${color} !important`);
   protectedTag = setStyleProperty(protectedTag, "-webkit-text-fill-color", `${color} !important`);
+  // mso-color-alt is the Outlook-specific inline property that tells classic and
+  // new Outlook which colour to render in dark mode instead of auto-inverting.
+  protectedTag = setStyleProperty(protectedTag, "mso-color-alt", color);
   return setStyleProperty(protectedTag, "forced-color-adjust", "none");
 }
 
@@ -188,7 +205,7 @@ function decorateGeneratedShell(html: string): string {
   if (!/<head[\s>]/i.test(decorated)) {
     decorated = decorated.replace(/<html([^>]*)>/i, `<html$1>${THEME_HEAD}`);
   }
-  decorated = decorated.replace(/<body\b[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-body"), "{{outerBg}}"));
+  decorated = decorated.replace(/<body\b[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-body"), "{{outerBg}}"), "{{bodyTextColor}}"));
   decorated = decorated.replace(/<table\b[^>]*style="[^"]*padding:24px 0[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-outer"), "{{outerBg}}"));
   decorated = decorated.replace(/<table\b[^>]*style="[^"]*max-width:620px[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-card"), "{{contentBg}}"));
   decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => {
@@ -196,6 +213,10 @@ function decorateGeneratedShell(html: string): string {
     header = setStyleProperty(header, "background-color", "{{primaryColor}} !important");
     return setStyleProperty(header, "background-image", "linear-gradient(90deg,{{primaryColor}},{{accentColor}}) !important");
   });
+  // The brand-name <div> inside the header uses a hardcoded #ffffff colour that
+  // Outlook dark mode can invert to black. Protect it inline so Outlook sees an
+  // explicit colour even when the CSS <style> block is stripped.
+  decorated = decorated.replace(/<div\b[^>]*style="[^"]*font-size:20px[^"]*font-weight:800[^"]*"[^>]*>/i, (tag) => protectText(tag, "#ffffff"));
   decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:28px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-heading"), "{{contentBg}}"), "{{headingColor}}"));
   decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:16px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-content"), "{{contentBg}}"), "{{bodyTextColor}}"));
   decorated = decorated.replace(/<td\b[^>]*style="[^"]*padding:0 32px 20px 32px[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-cta-row"), "{{contentBg}}"));

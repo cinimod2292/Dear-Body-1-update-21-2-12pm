@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router";
 import { useAdminAuth } from "../context/AdminAuthContext";
+import { canAccessAdminPath } from "../access";
 
 export function AdminProtectedRoute() {
   const { session, loading } = useAdminAuth();
@@ -11,6 +12,10 @@ export function AdminProtectedRoute() {
 
   if (!session) {
     return <Navigate to="/admin/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canAccessAdminPath(session.role, location.pathname)) {
+    return <Navigate to="/admin/warehouse" replace />;
   }
 
   return <Outlet />;

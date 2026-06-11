@@ -659,7 +659,7 @@ export async function generatePackingSlip(orderId: string): Promise<string> {
 
 async function getWarehouseStaffEmails(): Promise<string[]> {
   const staff = await prisma.staffUser.findMany({
-    where: { role: "WAREHOUSE_OPERATOR", status: "ACTIVE" },
+    where: { role: { in: ["WAREHOUSE_OPERATOR", "PICKER_PACKER"] }, status: "ACTIVE" },
     select: { email: true },
   });
   // Also notify STORE_MANAGER for critical events

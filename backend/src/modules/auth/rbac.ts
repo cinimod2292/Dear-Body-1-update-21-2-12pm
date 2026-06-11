@@ -27,6 +27,7 @@ export const rolePermissions: Record<StaffRole, string[]> = {
     "warehouse:read",
     "warehouse:write",
   ],
+  PICKER_PACKER: ["warehouse:read", "warehouse:write"],
   CONTENT_EDITOR: ["dashboard:read", "media:read", "media:write", "settings:read", "catalog:read"],
   SUPPORT_AGENT: ["dashboard:read", "audit:read", "settings:read", "inventory:read", "crm:read", "crm:write", "orders:read", "orders:write"],
   ANALYST: ["dashboard:read", "audit:read", "crm:read", "orders:read"],

@@ -19,6 +19,7 @@ import { env } from "../../config/env.js";
 import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { shouldSendOrderConfirmation } from "./order-email-policy.js";
 import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
 import { summarizeInventoryRestore } from "./order-danger-zone.js";
 

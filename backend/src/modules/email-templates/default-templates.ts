@@ -239,6 +239,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     placeholderKeys: ["orderNumber", "orderDate", "orderTotal", "companyName", "supportEmail", "siteUrl"],
   },
   {
+    key: "order_ready_for_collection",
+    name: "Order Ready for Collection",
+    category: "SHIPPING",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is ready for collection",
+      title: "Ready for collection",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> is ready to collect from your selected PUDO locker.<br/><br/>Please follow the collection instructions sent by PUDO.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong>",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
     key: "pudo_tracking_update",
     name: "PUDO Tracking Update",
     category: "SHIPPING",

@@ -37,7 +37,7 @@ async function buildRenderData(sampleData: Record<string, unknown>): Promise<Rec
   return mergeEmailRenderData(theme, sampleData);
 }
 
-const SYSTEM_TEMPLATES_VERSION = "v3-force-theme-tokens";
+const SYSTEM_TEMPLATES_VERSION = "v4-ready-for-collection";
 let systemTemplatesSynced = false;
 
 export async function initEmailTemplates(): Promise<void> {

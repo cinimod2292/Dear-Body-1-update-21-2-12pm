@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { emailTemplateKeyForPudoStatus, normalizePudoTrackingStatus } from "./pudo-email.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
 const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
@@ -644,7 +645,7 @@ const PUDO_STATUS_LABELS: Record<string, string> = {
 };
 
 function labelForStatus(raw: string): string {
-  return PUDO_STATUS_LABELS[raw.toLowerCase().replace(/\s+/g, "_")] ?? raw;
+  return PUDO_STATUS_LABELS[normalizePudoTrackingStatus(raw)] ?? raw;
 }
 
 /** Statuses that should NOT trigger a customer email (internal/admin-only). */
@@ -657,12 +658,13 @@ async function sendPudoTrackingUpdateEmail(
   siteUrl: string,
 ) {
   if (!order.customer?.email) return;
-  if (PUDO_SILENT_STATUSES.has(rawStatus)) return;
+  const normalizedStatus = normalizePudoTrackingStatus(rawStatus);
+  if (PUDO_SILENT_STATUSES.has(normalizedStatus)) return;
 
-  const statusLabel = PUDO_STATUS_LABELS[rawStatus] ?? rawStatus;
+  const statusLabel = PUDO_STATUS_LABELS[normalizedStatus] ?? rawStatus;
 
   try {
-    const template = await resolveTemplateByKey("pudo_tracking_update", {
+    const template = await resolveTemplateByKey(emailTemplateKeyForPudoStatus(normalizedStatus), {
       firstName: order.customer.firstName ?? "there",
       orderNumber: order.orderNumber,
       trackingStatusLabel: statusLabel,
@@ -673,7 +675,7 @@ async function sendPudoTrackingUpdateEmail(
       to: order.customer.email,
       subject: template.subject,
       html: template.htmlBody,
-      meta: { templateKey: template.key, orderId: order.id, pudoStatus: rawStatus },
+      meta: { templateKey: template.key, orderId: order.id, pudoStatus: normalizedStatus },
     });
   } catch (err) {
     console.error(`[PUDO] Failed to send tracking update email for order ${order.orderNumber}:`, err);
@@ -1139,7 +1141,7 @@ export interface PudoTrackingResult {
 
 function parsePudoTrackingResponse(waybillNumber: string, data: unknown): PudoTrackingResult {
   const d = data as any;
-  const currentStatus = String(d?.status ?? d?.tracking_status ?? d?.current_status ?? "").toLowerCase().replace(/\s+/g, "_");
+  const currentStatus = normalizePudoTrackingStatus(String(d?.status ?? d?.tracking_status ?? d?.current_status ?? ""));
 
   const rawEvents = Array.isArray(d?.events) ? d.events
     : Array.isArray(d?.tracking_events) ? d.tracking_events
@@ -1148,7 +1150,7 @@ function parsePudoTrackingResponse(waybillNumber: string, data: unknown): PudoTr
     : [];
 
   const events: PudoTrackingEvent[] = (rawEvents as any[]).map((e) => {
-    const rawSt = String(e.status ?? e.event_status ?? e.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
+    const rawSt = normalizePudoTrackingStatus(String(e.status ?? e.event_status ?? e.tracking_status ?? ""));
     return {
       timestamp: String(e.timestamp ?? e.date ?? e.created_at ?? e.event_date ?? ""),
       status: rawSt,
@@ -1216,7 +1218,7 @@ export async function processPudoTrackingWebhook(payload: unknown): Promise<void
     return;
   }
 
-  const rawStatus = String(p?.status ?? p?.tracking_status ?? "").toLowerCase().replace(/\s+/g, "_");
+  const rawStatus = normalizePudoTrackingStatus(String(p?.status ?? p?.tracking_status ?? ""));
   console.info(`[PUDO webhook] ${rawStatus} for order ${order.orderNumber} (waybill ${waybillNumber})`);
 
   await prisma.orderEvent.create({

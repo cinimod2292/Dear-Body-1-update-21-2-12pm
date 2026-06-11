@@ -224,6 +224,7 @@ test("all bundled email templates pass the rendering audit", async (t) => {
     "newsletter_signup_confirmation",
     "contact_form_notification",
     "pudo_tracking_update",
+    "order_ready_for_collection",
   ]);
   const sampleData = {
     firstName: "Dominic",

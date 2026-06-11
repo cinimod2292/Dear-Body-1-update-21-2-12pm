@@ -35,6 +35,9 @@ const envSchema = z.object({
   SETUP_TOKEN: z.string().min(16).optional(),
   MEDIA_BACKFILL_TOKEN: z.string().min(16).optional(),
   MAINTENANCE_MODE: z.coerce.boolean().default(false),
+  STOREFRONT_URL: z.string().url().optional(),
+  ADMIN_EMAIL: z.string().email().optional(),
+  BUILDER_DEBUG: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);

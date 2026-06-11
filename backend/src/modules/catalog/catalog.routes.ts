@@ -19,14 +19,28 @@ import {
   updateVariant,
 } from "./catalog.service.js";
 
-async function readCsvFromRequest(request: any) {
+const CSV_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const CSV_MAX_ROWS = 10_000;
+
+async function readCsvFromRequest(request: any): Promise<string | null> {
   const part = await request.file();
   if (!part) return null;
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of part.file) {
-    chunks.push(Buffer.from(chunk));
+    const buf = Buffer.from(chunk);
+    totalBytes += buf.byteLength;
+    if (totalBytes > CSV_MAX_BYTES) {
+      throw { statusCode: 413, message: `CSV file exceeds the ${CSV_MAX_BYTES / 1024 / 1024} MB limit.` };
+    }
+    chunks.push(buf);
   }
-  return Buffer.concat(chunks).toString("utf-8");
+  const text = Buffer.concat(chunks).toString("utf-8");
+  const rowCount = text.split("\n").length - 1; // subtract header
+  if (rowCount > CSV_MAX_ROWS) {
+    throw { statusCode: 413, message: `CSV has ${rowCount} rows, which exceeds the ${CSV_MAX_ROWS.toLocaleString()} row limit.` };
+  }
+  return text;
 }
 
 export async function catalogRoutes(app: FastifyInstance) {

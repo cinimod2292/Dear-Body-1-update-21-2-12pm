@@ -24,6 +24,7 @@ function brandedEmailShell(input: { preheader: string; title: string; body: stri
           <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:{{contentBg}};border-radius:16px;overflow:hidden;border:1px solid #f1f5f9;">
             <tr>
               <td style="padding:18px 24px;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});text-align:center;">
+                {{logoMarkup}}
                 <div style="font-size:20px;font-weight:800;letter-spacing:.3px;color:#ffffff;">{{brandName}}</div>
               </td>
             </tr>
@@ -37,7 +38,7 @@ function brandedEmailShell(input: { preheader: string; title: string; body: stri
             <tr>
               <td style="padding:22px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">
                 Need help? Email <a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a><br />
-                <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}
+                <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}{{footerLinksMarkup}}
               </td>
             </tr>
           </table>
@@ -131,7 +132,7 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       ctaLabel: "Track Package",
       ctaUrl: "{{trackingUrl}}",
     }),
-    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl"],
+    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "order_delivered",
@@ -236,6 +237,34 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       body: "Placed on {{orderDate}} with total {{orderTotal}}.",
     }),
     placeholderKeys: ["orderNumber", "orderDate", "orderTotal", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
+    key: "warehouse_collection_ready",
+    name: "Warehouse Collection Ready",
+    category: "ORDER",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is packed and ready for collection",
+      title: "Your order is ready",
+      body: "Hi {{firstName}},<br/><br/>Great news — order <strong>#{{orderNumber}}</strong> has been packed and is ready for collection from our warehouse.<br/><br/>Please bring your order number when collecting.",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
+    key: "order_ready_for_collection",
+    name: "Order Ready for Collection",
+    category: "SHIPPING",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is ready for collection",
+      title: "Ready for collection",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> is ready to collect from your selected PUDO locker.<br/><br/>Please follow the collection instructions sent by PUDO.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong>",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "pudo_tracking_update",

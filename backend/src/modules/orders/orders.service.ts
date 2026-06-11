@@ -18,6 +18,7 @@ import { env } from "../../config/env.js";
 import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
 
 const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),
@@ -315,6 +316,34 @@ async function sendOrderCreatedEmail(orderId: string) {
     orderTotal: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`,
   });
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+}
+
+async function sendWarehouseCollectionReadyEmail(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, shippingMethod: true },
+  });
+  if (!order?.customer?.email || !isWarehouseCollectionOrder(order)) return false;
+
+  const alreadySent = await prisma.orderEvent.findFirst({
+    where: { orderId, eventType: "COLLECTION_READY_EMAIL_SENT" },
+    select: { id: true },
+  });
+  if (alreadySent) return false;
+
+  const template = await resolveTemplateByKey("warehouse_collection_ready", {
+    firstName: order.customer.firstName ?? "there",
+    orderNumber: order.orderNumber,
+    orderUrl: `${process.env.STOREFRONT_URL ?? ""}/account/orders/${order.id}`,
+  });
+  await sendEmail({
+    to: order.customer.email,
+    subject: template.subject,
+    html: template.htmlBody,
+    meta: { templateKey: template.key, orderId: order.id, fulfillmentStatus: "PACKED" },
+  });
+  await recordOrderEvent(order.id, undefined, "COLLECTION_READY_EMAIL_SENT", undefined, "SENT", { templateKey: template.key });
+  return true;
 }
 
 async function sendAdminNewOrderEmail(orderId: string) {
@@ -764,10 +793,20 @@ export async function updatePaymentStatus(orderId: string, rawBody: unknown, act
 export async function updateFulfillmentStatus(orderId: string, rawBody: unknown, actorId?: string) {
   const body = orderStatusUpdateSchema.parse(rawBody);
   const order = await getOrder(orderId);
+  const collectionReadyEmailAlreadySent = order.events.some((event) => event.eventType === "COLLECTION_READY_EMAIL_SENT");
   const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
-  if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
+  if ((updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED")
+    && !isWarehouseCollectionOrder(order)) {
     await sendShippingEmail(orderId).catch(() => undefined);
+  }
+  if (shouldSendWarehouseCollectionReadyEmail({
+    previousFulfillmentStatus: order.fulfillmentStatus,
+    nextFulfillmentStatus: updated.fulfillmentStatus,
+    isWarehouseCollection: isWarehouseCollectionOrder(order),
+    alreadySent: collectionReadyEmailAlreadySent,
+  })) {
+    await sendWarehouseCollectionReadyEmail(orderId).catch(() => undefined);
   }
   return updated;
 }

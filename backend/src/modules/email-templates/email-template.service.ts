@@ -11,82 +11,33 @@ import {
   upsertTemplateSchema,
 } from "./email-template.schemas.js";
 import { DEFAULT_EMAIL_TEMPLATES } from "./default-templates.js";
-
-const DEFAULT_SAMPLE_DATA: Record<string, unknown> = {
-  firstName: "Customer",
-  lastName: "Smith",
-  customerName: "Customer Smith",
-  storeName: "Dear Body",
-  companyName: "Dear Body",
-  brandName: "Dear Body",
-  supportEmail: "hello@dearbody.com",
-  siteUrl: "https://example.com",
-  orderNumber: "10001234",
-  orderDate: "2026-01-01",
-  orderItems: "Hydrating Serum x1, Body Butter x2",
-  totalAmount: "$120.00",
-  orderTotal: "$120.00",
-  amount: "$120.00",
-  carrier: "UPS",
-  trackingNumber: "1Z12345E0205271688",
-  trackingUrl: "https://tracking.example.com/1Z12345E0205271688",
-  resetUrl: "https://example.com/reset?token=test",
-  verificationUrl: "https://example.com/verify?token=test",
-  eventType: "refunded",
-  name: "Jane Doe",
-  email: "jane@example.com",
-  message: "I need help with my order",
-  primaryColor: "#f472b6",
-  accentColor: "#fb923c",
-  buttonBg: "#111827",
-  buttonTextColor: "#ffffff",
-  headingColor: "#111827",
-  bodyTextColor: "#374151",
-  contentBg: "#ffffff",
-  outerBg: "#f8fafc",
-  footerBg: "#111827",
-  footerText: "#d1d5db",
-};
+import {
+  EmailTheme,
+  mergeEmailRenderData,
+  renderEmailHtml,
+  renderTemplateString,
+  retainsSystemDefaultStatus,
+} from "./email-template.render.js";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
 }
 
-function renderTemplateString(template: string, data: Record<string, unknown>) {
-  return template.replace(/{{\s*([\w.]+)\s*}}/g, (_match, key: string) => {
-    const value = data[key];
-    if (value === undefined || value === null) return "";
-    return String(value);
-  });
-}
-
-
-async function loadEmailTheme(): Promise<Record<string, string>> {
+async function loadEmailTheme(): Promise<EmailTheme> {
   const setting = await prisma.setting.findUnique({
     where: { scope_key: { scope: "email", key: "template.theme.v1" } },
   });
   if (!setting?.value || typeof setting.value !== "object") return {};
-  const v = setting.value as Record<string, unknown>;
-  const theme: Record<string, string> = {};
-  for (const [k, val] of Object.entries(v)) {
-    if (typeof val === "string") theme[k] = val;
-  }
-  return theme;
+  return setting.value as EmailTheme;
 }
 
 async function buildRenderData(sampleData: Record<string, unknown>): Promise<Record<string, unknown>> {
   const theme = await loadEmailTheme();
-  const merged: Record<string, unknown> = {
-    ...DEFAULT_SAMPLE_DATA,
-    ...theme,
-    ...(theme.brandName ? { storeName: theme.brandName, companyName: theme.brandName } : {}),
-    ...sampleData,
-  };
-  return merged;
+  return mergeEmailRenderData(theme, sampleData);
 }
 
-const SYSTEM_TEMPLATES_VERSION = "v3-force-theme-tokens";
+const SYSTEM_TEMPLATES_VERSION = "v5-warehouse-collection-ready";
 let systemTemplatesSynced = false;
 
 export async function initEmailTemplates(): Promise<void> {
@@ -211,6 +162,9 @@ export async function createOrUpdateEmailTemplate(rawBody: unknown) {
       textBody: body.textBody,
       placeholderKeys: body.placeholderKeys,
       isEnabled: body.isEnabled,
+      // An admin-authored upsert is a customization. Keeping this true would
+      // make the send resolver silently replace the saved HTML with source defaults.
+      isSystemDefault: false,
     },
     create: {
       key: body.key,
@@ -241,7 +195,9 @@ export async function patchEmailTemplate(id: string, rawBody: unknown) {
       ...(body.textBody !== undefined ? { textBody: body.textBody } : {}),
       ...(body.placeholderKeys !== undefined ? { placeholderKeys: body.placeholderKeys } : {}),
       ...(body.isEnabled !== undefined ? { isEnabled: body.isEnabled } : {}),
-      isSystemDefault: current.isSystemDefault,
+      // Once an administrator changes rendered content, production sends must
+      // use that database version rather than the bundled system fallback.
+      isSystemDefault: retainsSystemDefaultStatus(current.isSystemDefault, body),
     },
   });
 }
@@ -293,7 +249,7 @@ async function buildResolvedTemplate(template: EmailTemplate, sampleData: Record
     name: template.name,
     category: template.category,
     subject: renderTemplateString(template.subject, mergedData),
-    htmlBody: renderTemplateString(template.htmlBody, mergedData),
+    htmlBody: renderEmailHtml(template.htmlBody, mergedData),
     textBody: template.textBody ? renderTemplateString(template.textBody, mergedData) : template.textBody,
     placeholderKeys: asStringArray(template.placeholderKeys),
     isEnabled: template.isEnabled,
@@ -332,7 +288,7 @@ export async function resolveTemplateByKey(key: string, sampleData: Record<strin
     name: dbRecord?.name ?? sourceTemplate?.name ?? key,
     category: dbRecord?.category ?? sourceTemplate?.category ?? ("SYSTEM" as EmailTemplateCategory),
     subject: renderTemplateString(subject, mergedData),
-    htmlBody: renderTemplateString(html, mergedData),
+    htmlBody: renderEmailHtml(html, mergedData),
     textBody: textBody ? renderTemplateString(textBody, mergedData) : null,
     placeholderKeys,
     isEnabled: dbRecord?.isEnabled ?? true,
@@ -368,7 +324,7 @@ export async function sendTestEmailTemplate(id: string, rawBody: unknown) {
 
   const mergedData = await buildRenderData(body.sampleData);
   const htmlBody = body.htmlBody
-    ? renderTemplateString(body.htmlBody, mergedData)
+    ? renderEmailHtml(body.htmlBody, mergedData)
     : template.htmlBody;
   const subject = body.subject
     ? renderTemplateString(body.subject, mergedData)

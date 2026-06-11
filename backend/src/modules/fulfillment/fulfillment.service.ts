@@ -140,7 +140,7 @@ export async function listWarehouseOrders(rawQuery: unknown) {
         customer: { select: { id: true, firstName: true, lastName: true, email: true } },
         items: { select: { id: true, sku: true, productName: true, variantTitle: true, quantity: true } },
         shippingMethod: { select: { name: true, type: true } },
-        pickedBy: { select: { id: true, firstName: true, lastName: true } },
+        pickedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         packedBy: { select: { id: true, firstName: true, lastName: true } },
       },
     }),

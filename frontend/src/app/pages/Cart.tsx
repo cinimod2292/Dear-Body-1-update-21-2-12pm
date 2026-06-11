@@ -32,7 +32,7 @@ export default function Cart() {
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
   const summaryShippingDisplay = quote
-    ? (quote.freeShippingApplied ? "FREE" : (shipping > 0 ? formatRand(shipping) : "FREE"))
+    ? (quote.freeShippingApplied ? "FREE" : (shipping > 0 ? formatRand(shipping) : "TBC"))
     : "TBC";
   const canProceedToCheckout = cartCount > 0;
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Package, Truck, CheckCircle, Circle, AlertCircle, RotateCcw, Clock } from "lucide-react";
+import { ArrowLeft, Package, Truck, CheckCircle, Circle, AlertCircle, RotateCcw, Clock, MapPin } from "lucide-react";
 import { API_BASE } from "../admin/api/client";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
@@ -10,6 +10,7 @@ type PudoTracking = { waybillNumber: string; currentStatus: string; currentStatu
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
+  PICKING: "bg-violet-100 text-violet-700",
   PROCESSING: "bg-blue-100 text-blue-700",
   FULFILLED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
@@ -17,10 +18,13 @@ const STATUS_COLORS: Record<string, string> = {
   PAYMENT_FAILED: "bg-red-100 text-red-700",
   PAID: "bg-green-100 text-green-700",
   REFUNDED: "bg-purple-100 text-purple-700",
+  READY_FOR_COLLECTION: "bg-teal-100 text-teal-700",
+  REFUND_DUE: "bg-orange-100 text-orange-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pending",
+  PICKING: "Picking & Packing",
   PROCESSING: "Processing",
   FULFILLED: "Fulfilled",
   CANCELLED: "Cancelled",
@@ -28,6 +32,8 @@ const STATUS_LABELS: Record<string, string> = {
   PAYMENT_FAILED: "Payment Failed",
   PAID: "Paid",
   REFUNDED: "Refunded",
+  READY_FOR_COLLECTION: "Ready for Collection",
+  REFUND_DUE: "Refund Due",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -217,6 +223,42 @@ export default function CustomerOrderDetail() {
         </div>
       )}
 
+      {/* Collection info */}
+      {(order.shippingMethod?.type === "COLLECTION" || order.collectionAddress) && (
+        <div className="bg-white rounded-2xl border p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <MapPin size={18} className="text-pink-500" />
+            <h2 className="font-bold text-gray-900">Collection</h2>
+          </div>
+
+          {order.status === "READY_FOR_COLLECTION" ? (
+            <div className="flex items-center gap-2 mb-4 px-4 py-3 bg-teal-50 border border-teal-200 rounded-xl text-teal-800 text-sm font-semibold">
+              <CheckCircle size={16} className="text-teal-600 shrink-0" />
+              Your order is ready to collect — please bring your order confirmation.
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 mb-4">Your order will be ready for collection once it has been processed.</p>
+          )}
+
+          {order.collectionAddress && (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm space-y-0.5">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Collection address</p>
+              {order.collectionAddress.line1 && <p className="text-gray-700">{order.collectionAddress.line1}</p>}
+              {order.collectionAddress.line2 && <p className="text-gray-700">{order.collectionAddress.line2}</p>}
+              {order.collectionAddress.suburb && <p className="text-gray-700">{order.collectionAddress.suburb}</p>}
+              <p className="text-gray-700">
+                {[order.collectionAddress.city, order.collectionAddress.state, order.collectionAddress.postalCode].filter(Boolean).join(", ")}
+              </p>
+              {order.collectionAddress.country && <p className="text-gray-500 text-xs">{order.collectionAddress.country}</p>}
+            </div>
+          )}
+
+          {order.shippingMethod?.name && (
+            <p className="text-xs text-gray-400 mt-3">Method: {order.shippingMethod.name}</p>
+          )}
+        </div>
+      )}
+
       {/* Order items */}
       <div className="bg-white rounded-2xl border p-6">
         <div className="flex items-center gap-2 mb-5">
@@ -291,7 +333,11 @@ export default function CustomerOrderDetail() {
             <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
               <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Locker Collection</p>
               <p className="font-semibold text-indigo-900">{order.pudoLockerName || order.pudoLockerCode}</p>
-              {addr && <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>}
+              {order.pudoLockerAddress ? (
+                <p className="text-indigo-700 text-xs mt-0.5">{order.pudoLockerAddress}</p>
+              ) : addr ? (
+                <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>
+              ) : null}
             </div>
           ) : order.pudoDeliveryType === "door" ? (
             <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">

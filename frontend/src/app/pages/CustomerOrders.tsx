@@ -18,6 +18,7 @@ type Order = {
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
+  PICKING: "bg-violet-100 text-violet-700",
   PROCESSING: "bg-blue-100 text-blue-700",
   FULFILLED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
@@ -25,10 +26,13 @@ const STATUS_COLORS: Record<string, string> = {
   PAYMENT_FAILED: "bg-red-100 text-red-700",
   PAID: "bg-green-100 text-green-700",
   REFUNDED: "bg-purple-100 text-purple-700",
+  READY_FOR_COLLECTION: "bg-teal-100 text-teal-700",
+  REFUND_DUE: "bg-orange-100 text-orange-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pending",
+  PICKING: "Picking & Packing",
   PROCESSING: "Processing",
   FULFILLED: "Fulfilled",
   CANCELLED: "Cancelled",
@@ -36,6 +40,8 @@ const STATUS_LABELS: Record<string, string> = {
   PAYMENT_FAILED: "Payment Failed",
   PAID: "Paid",
   REFUNDED: "Refunded",
+  READY_FOR_COLLECTION: "Ready for Collection",
+  REFUND_DUE: "Refund Due",
 };
 
 function StatusBadge({ status }: { status: string }) {

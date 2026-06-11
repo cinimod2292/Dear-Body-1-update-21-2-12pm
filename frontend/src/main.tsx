@@ -30,6 +30,15 @@ window.addEventListener("error", (event) => {
   });
 });
 
+// When Vite can't fetch a pre-loaded chunk (stale tab after deploy), reload once.
+window.addEventListener("vite:preloadError", () => {
+  const alreadyRetried = sessionStorage.getItem("vite_chunk_reload_attempted") === "1";
+  if (!alreadyRetried) {
+    sessionStorage.setItem("vite_chunk_reload_attempted", "1");
+    window.location.reload();
+  }
+});
+
 window.addEventListener("unhandledrejection", (event) => {
   const reason = (event as PromiseRejectionEvent).reason as any;
   console.error("[global-unhandledrejection]", {

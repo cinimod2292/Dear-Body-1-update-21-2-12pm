@@ -41,16 +41,10 @@ function sanitizeStoredCart(raw: unknown): CartItem[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
-    if (!stored) {
-      console.info("[cart] load source=localStorage empty");
-      return [];
-    }
+    if (!stored) return [];
     try {
-      const parsed = sanitizeStoredCart(JSON.parse(stored));
-      console.info("[cart] load source=localStorage", { itemCount: parsed.length });
-      return parsed;
+      return sanitizeStoredCart(JSON.parse(stored));
     } catch {
-      console.info("[cart] load source=localStorage invalid_json");
       return [];
     }
   });
@@ -86,17 +80,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const clearCart = (reason = "unspecified") => {
-    console.info("[cart] clearCart invoked", { reason, previousItemCount: cartItems.length });
+  const clearCart = (_reason?: string) => {
     setCartItems([]);
     localStorage.removeItem(CART_STORAGE_KEY);
     for (const key of CART_SESSION_KEYS) sessionStorage.removeItem(key);
-    console.info("[cart] cart/session id invalidation complete", { sessionKeys: CART_SESSION_KEYS });
   };
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-    console.info("[cart] persistence write", { key: CART_STORAGE_KEY, itemCount: cartItems.length });
   }, [cartItems]);
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);

@@ -13,6 +13,22 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
+async function gracefulShutdown(signal: string) {
+  if (app) {
+    app.log.info(`[shutdown] ${signal} received — closing server`);
+    try {
+      await app.close();
+    } catch (err) {
+      app.log.error({ err }, "[shutdown] Error closing server");
+    }
+  }
+  await prisma.$disconnect().catch(() => undefined);
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
+
 let app: Awaited<ReturnType<typeof buildApp>> | null = null;
 
 try {

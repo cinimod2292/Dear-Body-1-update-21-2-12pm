@@ -274,37 +274,27 @@ export default function Checkout() {
   }, [returnOrderId, token, finalizeSuccessfulCheckout]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/store/shipping-methods`)
-      .then((r) => r.json())
-      .then((payload) => {
-        setShippingMethods((payload?.data || []) as StoreShippingMethod[]);
-        setShippingMethodsLoaded(true);
-      })
-      .catch(() => setShippingMethodsLoaded(true));
-  }, []);
+    Promise.all([
+      fetch(`${API_BASE}/store/shipping-methods`).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/store/payments/gateways`).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/store/pudo/config`).then((r) => r.json()).catch(() => null),
+    ]).then(([shippingPayload, gatewayPayload, pudoPayload]) => {
+      setShippingMethods((shippingPayload?.data || []) as StoreShippingMethod[]);
+      setShippingMethodsLoaded(true);
 
-  useEffect(() => {
-    fetch(`${API_BASE}/store/payments/gateways`)
-      .then((r) => r.json())
-      .then((payload) => {
-        const options = (payload?.data?.enabledGateways || []) as PaymentGatewayOption[];
-        setGatewayOptions(options);
-        if (!options.length) return;
-        const preferred = payload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
+      const options = (gatewayPayload?.data?.enabledGateways || []) as PaymentGatewayOption[];
+      setGatewayOptions(options);
+      if (options.length) {
+        const preferred = gatewayPayload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
         setSelectedGateway((current) => current || preferred || options[0].id);
-      })
-      .catch(() => undefined);
-  }, []);
+      }
 
-  useEffect(() => {
-    fetch(`${API_BASE}/store/pudo/config`)
-      .then((r) => r.json())
-      .then((payload) => {
-        setPudoEnabled(Boolean(payload?.data?.enabled));
-        setPudoAllowCustomerSelection(Boolean(payload?.data?.allowCustomerLockerSelection));
-        setPudoDoorDeliveryEnabled(Boolean(payload?.data?.doorDeliveryEnabled));
-      })
-      .catch(() => undefined);
+      if (pudoPayload) {
+        setPudoEnabled(Boolean(pudoPayload?.data?.enabled));
+        setPudoAllowCustomerSelection(Boolean(pudoPayload?.data?.allowCustomerLockerSelection));
+        setPudoDoorDeliveryEnabled(Boolean(pudoPayload?.data?.doorDeliveryEnabled));
+      }
+    });
   }, []);
 
   useEffect(() => {

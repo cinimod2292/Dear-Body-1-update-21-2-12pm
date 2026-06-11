@@ -187,21 +187,29 @@ export async function getDashboardKpis(rawQuery: unknown) {
 
 export async function getSalesReport(rawQuery: unknown) {
   const { from, to } = getDateRange(rawQuery);
-  const orders = await prisma.order.findMany({ where: { createdAt: { gte: from, lte: to } }, include: { items: true } });
+  const where = { createdAt: { gte: from, lte: to } };
 
-  const gross = orders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
-  const discounts = orders.reduce((sum, order) => sum + Number(order.discountAmount), 0);
-  const shipping = orders.reduce((sum, order) => sum + Number(order.shippingAmount), 0);
-  const taxes = orders.reduce((sum, order) => sum + Number(order.taxAmount), 0);
+  const [agg, count] = await Promise.all([
+    prisma.order.aggregate({
+      _sum: { totalAmount: true, discountAmount: true, shippingAmount: true, taxAmount: true },
+      where,
+    }),
+    prisma.order.count({ where }),
+  ]);
+
+  const gross = Number(agg._sum.totalAmount ?? 0);
+  const discounts = Number(agg._sum.discountAmount ?? 0);
+  const shipping = Number(agg._sum.shippingAmount ?? 0);
+  const taxes = Number(agg._sum.taxAmount ?? 0);
 
   return {
     dateRange: { from, to },
-    orders: orders.length,
+    orders: count,
     gross,
     discounts,
     shipping,
     taxes,
-    averageOrderValue: orders.length ? gross / orders.length : 0,
+    averageOrderValue: count ? gross / count : 0,
   };
 }
 

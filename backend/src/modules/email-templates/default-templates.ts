@@ -239,6 +239,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     placeholderKeys: ["orderNumber", "orderDate", "orderTotal", "companyName", "supportEmail", "siteUrl"],
   },
   {
+    key: "warehouse_collection_ready",
+    name: "Warehouse Collection Ready",
+    category: "ORDER",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is packed and ready for collection",
+      title: "Your order is ready",
+      body: "Hi {{firstName}},<br/><br/>Great news — order <strong>#{{orderNumber}}</strong> has been packed and is ready for collection from our warehouse.<br/><br/>Please bring your order number when collecting.",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
     key: "order_ready_for_collection",
     name: "Order Ready for Collection",
     category: "SHIPPING",

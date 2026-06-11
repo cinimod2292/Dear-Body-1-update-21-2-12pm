@@ -5,11 +5,23 @@ import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { formatRand } from "../../lib/currency";
 import { toast } from "sonner";
 
+type CollectionAddress = {
+  line1: string;
+  line2: string;
+  suburb: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
 type ShippingMethod = {
   id: string;
   name: string;
   price: number;
   description?: string | null;
+  type: "DELIVERY" | "COLLECTION";
+  collectionAddress?: CollectionAddress | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -62,6 +74,45 @@ const DEFAULT_PACKAGE_SIZES: PackageSizeConfig[] = [
   { code: "XL", label: "XL", dimensions: "60×41×69cm", maxWeight: 20, lockerPrice: 119, doorPrice: 229, lockerServiceCode: "D2L-EXPRESS", doorServiceCode: "D2D-EXPRESS" },
 ];
 
+const EMPTY_COLLECTION_ADDRESS: CollectionAddress = {
+  line1: "",
+  line2: "",
+  suburb: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "South Africa",
+};
+
+function CollectionAddressFields({ value, onChange }: { value: CollectionAddress; onChange: (value: CollectionAddress) => void }) {
+  const field = (key: keyof CollectionAddress, label: string, required = false) => (
+    <label className="text-xs text-gray-600">
+      <span className="block mb-1">{label}{required ? " *" : ""}</span>
+      <input
+        required={required}
+        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        value={value[key]}
+        onChange={(event) => onChange({ ...value, [key]: event.target.value })}
+      />
+    </label>
+  );
+
+  return (
+    <div className="md:col-span-full rounded-lg border border-pink-100 bg-pink-50/50 p-3">
+      <p className="text-sm font-semibold text-gray-800 mb-2">Collection address shown to customers</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        {field("line1", "Street address", true)}
+        {field("line2", "Unit / building")}
+        {field("suburb", "Suburb")}
+        {field("city", "City", true)}
+        {field("state", "Province")}
+        {field("postalCode", "Postal code", true)}
+        {field("country", "Country", true)}
+      </div>
+    </div>
+  );
+}
+
 const DEFAULT_ITEM_RULES: ItemRule[] = [
   { minItems: 1, maxItems: 3, packageCode: "XS" },
   { minItems: 4, maxItems: 6, packageCode: "S" },
@@ -80,6 +131,8 @@ export default function AdminShippingMethods() {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
+  const [methodType, setMethodType] = useState<"DELIVERY" | "COLLECTION">("DELIVERY");
+  const [collectionAddress, setCollectionAddress] = useState<CollectionAddress>(EMPTY_COLLECTION_ADDRESS);
 
   const [freeShippingEnabled, setFreeShippingEnabled] = useState(false);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState("0");
@@ -90,6 +143,8 @@ export default function AdminShippingMethods() {
   const [editPrice, setEditPrice] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editActive, setEditActive] = useState(true);
+  const [editMethodType, setEditMethodType] = useState<"DELIVERY" | "COLLECTION">("DELIVERY");
+  const [editCollectionAddress, setEditCollectionAddress] = useState<CollectionAddress>(EMPTY_COLLECTION_ADDRESS);
 
   const [pudoSettings, setPudoSettings] = useState<PudoSettings>({
     enabled: false,
@@ -187,9 +242,16 @@ export default function AdminShippingMethods() {
     try {
       await apiRequest("/admin/shipping-methods", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), price: Number(price), description: description || null, isActive: active }),
+        body: JSON.stringify({
+          name: name.trim(),
+          price: Number(price),
+          description: description || null,
+          isActive: active,
+          type: methodType,
+          collectionAddress: methodType === "COLLECTION" ? collectionAddress : null,
+        }),
       }, session.accessToken);
-      setName(""); setPrice(""); setDescription(""); setActive(true);
+      setName(""); setPrice(""); setDescription(""); setActive(true); setMethodType("DELIVERY"); setCollectionAddress(EMPTY_COLLECTION_ADDRESS);
       toast.success("Shipping method created");
       await load();
     } catch (err) {
@@ -203,6 +265,8 @@ export default function AdminShippingMethods() {
     setEditPrice(String(Number(method.price).toFixed(2)));
     setEditDescription(method.description || "");
     setEditActive(method.isActive);
+    setEditMethodType(method.type || "DELIVERY");
+    setEditCollectionAddress({ ...EMPTY_COLLECTION_ADDRESS, ...(method.collectionAddress || {}) });
   };
 
   const saveEdit = async (e: FormEvent) => {
@@ -211,7 +275,14 @@ export default function AdminShippingMethods() {
     try {
       await apiRequest(`/admin/shipping-methods/${editingId}`, {
         method: "PUT",
-        body: JSON.stringify({ name: editName.trim(), price: Number(editPrice), description: editDescription || null, isActive: editActive }),
+        body: JSON.stringify({
+          name: editName.trim(),
+          price: Number(editPrice),
+          description: editDescription || null,
+          isActive: editActive,
+          type: editMethodType,
+          collectionAddress: editMethodType === "COLLECTION" ? editCollectionAddress : null,
+        }),
       }, session.accessToken);
       setEditingId(null);
       toast.success("Shipping method updated");
@@ -237,7 +308,14 @@ export default function AdminShippingMethods() {
     try {
       await apiRequest(`/admin/shipping-methods/${method.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: method.name, price: Number(method.price), description: method.description || null, isActive: true }),
+        body: JSON.stringify({
+          name: method.name,
+          price: Number(method.price),
+          description: method.description || null,
+          isActive: true,
+          type: method.type,
+          collectionAddress: method.collectionAddress ?? null,
+        }),
       }, session.accessToken);
       toast.success("Shipping method enabled");
       await load();
@@ -549,14 +627,19 @@ export default function AdminShippingMethods() {
 
       {/* Manual Shipping Methods */}
       <section className="bg-white border border-gray-200 rounded-xl p-5">
-        <h3 className="font-bold mb-1">Manual Shipping Methods</h3>
-        <p className="text-sm text-gray-500 mb-3">Flat-rate methods shown at checkout when manual shipping is enabled above.</p>
+        <h3 className="font-bold mb-1">Shipping &amp; Collection Methods</h3>
+        <p className="text-sm text-gray-500 mb-3">Add flat-rate delivery methods or an address-free collection option.</p>
         <form onSubmit={createMethod} className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
           <input required className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
           <input required min={0} step="0.01" type="number" className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
           <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={methodType} onChange={(e) => setMethodType(e.target.value as "DELIVERY" | "COLLECTION")}>
+            <option value="DELIVERY">Delivery</option>
+            <option value="COLLECTION">Customer collection</option>
+          </select>
           <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />Active</label>
-          <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Create</button>
+          {methodType === "COLLECTION" ? <CollectionAddressFields value={collectionAddress} onChange={setCollectionAddress} /> : null}
+          <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm md:col-start-5">Create</button>
         </form>
 
         {methods.length === 0 ? <EmptyState label="No shipping methods yet." /> : methods.map((method) => (
@@ -566,15 +649,24 @@ export default function AdminShippingMethods() {
                 <input required className="rounded-lg border border-gray-200 px-3 py-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
                 <input required min={0} step="0.01" type="number" className="rounded-lg border border-gray-200 px-3 py-2" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
                 <input className="rounded-lg border border-gray-200 px-3 py-2" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+                <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={editMethodType} onChange={(e) => setEditMethodType(e.target.value as "DELIVERY" | "COLLECTION")}>
+                  <option value="DELIVERY">Delivery</option>
+                  <option value="COLLECTION">Customer collection</option>
+                </select>
                 <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />Active</label>
+                <span />
+                {editMethodType === "COLLECTION" ? <CollectionAddressFields value={editCollectionAddress} onChange={setEditCollectionAddress} /> : null}
                 <button className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm">Save</button>
                 <button type="button" onClick={() => setEditingId(null)} className="px-3 py-2 rounded-lg border border-gray-200 text-sm">Cancel</button>
               </form>
             ) : (
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold">{method.name}</p>
-                  <p className="text-xs text-gray-500">{formatRand(Number(method.price))} · {method.description || "No description"} · {method.isActive ? "Active" : "Disabled"}</p>
+                  <p className="font-semibold">{method.name} <span className="ml-2 text-[10px] uppercase tracking-wide rounded-full bg-gray-100 px-2 py-1 text-gray-500">{method.type === "COLLECTION" ? "Collection" : "Delivery"}</span></p>
+                  <p className="text-xs text-gray-500 mt-1">{formatRand(Number(method.price))} · {method.description || "No description"} · {method.isActive ? "Active" : "Disabled"}</p>
+                  {method.type === "COLLECTION" && method.collectionAddress ? (
+                    <p className="text-xs text-pink-700 mt-1">{[method.collectionAddress.line1, method.collectionAddress.line2, method.collectionAddress.suburb, method.collectionAddress.city, method.collectionAddress.state, method.collectionAddress.postalCode, method.collectionAddress.country].filter(Boolean).join(", ")}</p>
+                  ) : null}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => startEdit(method)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">Edit</button>

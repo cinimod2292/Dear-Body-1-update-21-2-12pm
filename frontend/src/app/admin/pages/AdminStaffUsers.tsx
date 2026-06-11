@@ -21,6 +21,8 @@ const ROLE_LABELS: Record<string, string> = {
   CONTENT_EDITOR: "Content Editor",
   SUPPORT_AGENT: "Support Agent",
   ANALYST: "Analyst",
+  WAREHOUSE_OPERATOR: "Warehouse Operator",
+  PICKER_PACKER: "Picker/Packer",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -137,6 +139,7 @@ export default function AdminStaffUsers() {
                       <option value="CONTENT_EDITOR">Content Editor</option>
                       <option value="SUPPORT_AGENT">Support Agent</option>
                       <option value="ANALYST">Analyst</option>
+                      <option value="PICKER_PACKER">Picker/Packer</option>
                     </select>
                     <select className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
                       <option value="ACTIVE">Active</option>
@@ -186,6 +189,7 @@ export default function AdminStaffUsers() {
                 <option value="CONTENT_EDITOR">Content Editor — Media and catalog</option>
                 <option value="SUPPORT_AGENT">Support Agent — CRM and orders</option>
                 <option value="ANALYST">Analyst — Reports only</option>
+                <option value="PICKER_PACKER">Picker/Packer — Warehouse only</option>
                 <option value="SUPER_ADMIN">Super Admin — Unrestricted</option>
               </select>
             </div>

@@ -7,6 +7,7 @@ interface NavItem {
   to: string;
   label: string;
   permission: string;
+  excludedRoles?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -15,6 +16,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/catalog-setup", label: "Catalog Setup", permission: "catalog:read" },
   { to: "/admin/customers", label: "Customers", permission: "crm:read" },
   { to: "/admin/orders", label: "Orders", permission: "orders:read" },
+  { to: "/admin/warehouse", label: "Warehouse", permission: "warehouse:read" },
+  { to: "/admin/fulfillment/collection-schedule", label: "Collection Schedule", permission: "warehouse:read", excludedRoles: ["PICKER_PACKER"] },
   { to: "/admin/operations", label: "Operations", permission: "dashboard:read" },
   { to: "/admin/shipping-methods", label: "Shipping", permission: "settings:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
@@ -25,7 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/settings", label: "Settings", permission: "settings:read" },
   { to: "/admin/pudo-shipments", label: "PUDO Shipments", permission: "orders:read" },
   { to: "/admin/pudo-rates", label: "PUDO Rates", permission: "settings:read" },
-  { to: "/admin/pudo-test", label: "PUDO Test", permission: "settings:read" },
+  { to: "/admin/pudo-test", label: "PUDO Diagnostics", permission: "settings:read" },
 ];
 
 function NavLinks({ items, currentPath, onNavigate }: { items: NavItem[]; currentPath: string; onNavigate?: () => void }) {
@@ -59,8 +62,11 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const navItems = useMemo(
-    () => NAV_ITEMS.filter((item) => hasPermission(session?.permissions ?? [], item.permission)),
-    [session?.permissions],
+    () => NAV_ITEMS.filter((item) =>
+      hasPermission(session?.permissions ?? [], item.permission)
+      && !item.excludedRoles?.includes(session?.role ?? ""),
+    ),
+    [session?.permissions, session?.role],
   );
 
   return (

@@ -205,7 +205,12 @@ export default function Home() {
     const isPreview = searchParams.get("preview") === "builder";
     if (isPreview) {
       const adminRaw = localStorage.getItem("dear-body-admin-session");
-      const token = adminRaw ? (JSON.parse(adminRaw) as { accessToken?: string }).accessToken : undefined;
+      let token: string | undefined;
+      try {
+        token = adminRaw ? (JSON.parse(adminRaw) as { accessToken?: string }).accessToken : undefined;
+      } catch {
+        token = undefined;
+      }
       if (!token) {
         setBuilderContent(null);
         setBuilderResolved(true);

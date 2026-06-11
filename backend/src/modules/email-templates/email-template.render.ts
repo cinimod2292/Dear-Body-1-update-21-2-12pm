@@ -107,9 +107,9 @@ function replaceStyleValue(tag: string, property: string, value: string): string
 
 const THEME_HEAD = `<head>
   <meta name="color-scheme" content="light only" />
-  <meta name="supported-color-schemes" content="light only" />
+  <meta name="supported-color-schemes" content="light" />
   <style>
-    :root { color-scheme: light only; supported-color-schemes: light only; }
+    :root { color-scheme: only light; supported-color-schemes: light; }
     .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; }
     .db-email-card { background-color: {{contentBg}} !important; }
     .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
@@ -155,19 +155,52 @@ function setAttribute(tag: string, name: string, value: string): string {
   return tag.replace(/>$/, ` ${name}="${value}">`);
 }
 
+function setStyleProperty(tag: string, property: string, value: string): string {
+  return tag.replace(/style="([^"]*)"/i, (_match, style: string) => {
+    const declarations = style.split(";").map((item) => item.trim()).filter(Boolean);
+    const propertyPattern = new RegExp(`^${property}\\s*:`, "i");
+    const next = declarations.filter((item) => !propertyPattern.test(item));
+    next.push(`${property}:${value}`);
+    return `style="${next.join(";")};"`;
+  });
+}
+
+function protectBackground(tag: string, color: string): string {
+  let protectedTag = setAttribute(tag, "bgcolor", color);
+  protectedTag = setStyleProperty(protectedTag, "background-color", `${color} !important`);
+  // A same-color gradient is treated as an image by several dark-mode clients
+  // and is therefore less likely to be automatically inverted.
+  return setStyleProperty(protectedTag, "background-image", `linear-gradient(${color},${color}) !important`);
+}
+
+function protectText(tag: string, color: string): string {
+  let protectedTag = setStyleProperty(tag, "color", `${color} !important`);
+  return setStyleProperty(protectedTag, "-webkit-text-fill-color", `${color} !important`);
+}
+
 function decorateGeneratedShell(html: string): string {
   let decorated = html;
   if (!/<head[\s>]/i.test(decorated)) {
     decorated = decorated.replace(/<html([^>]*)>/i, `<html$1>${THEME_HEAD}`);
   }
-  decorated = decorated.replace(/<body\b[^>]*>/i, (tag) => addClass(tag, "db-email-body"));
-  decorated = decorated.replace(/<table\b[^>]*style="[^"]*padding:24px 0[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-outer"), "bgcolor", "{{outerBg}}"));
-  decorated = decorated.replace(/<table\b[^>]*style="[^"]*max-width:620px[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-card"), "bgcolor", "{{contentBg}}"));
-  decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-header"), "bgcolor", "{{primaryColor}}"));
-  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:28px[^"]*"[^>]*>/i, (tag) => addClass(tag, "db-email-heading"));
-  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:16px[^"]*"[^>]*>/i, (tag) => addClass(tag, "db-email-content"));
-  decorated = decorated.replace(/<a\b[^>]*style="[^"]*display:inline-block[^"]*font-weight:700[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-button"), "bgcolor", "{{buttonBg}}"));
-  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:13px[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-footer"), "bgcolor", "{{footerBg}}"));
+  decorated = decorated.replace(/<body\b[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-body"), "{{outerBg}}"));
+  decorated = decorated.replace(/<table\b[^>]*style="[^"]*padding:24px 0[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-outer"), "{{outerBg}}"));
+  decorated = decorated.replace(/<table\b[^>]*style="[^"]*max-width:620px[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-card"), "{{contentBg}}"));
+  decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => {
+    let header = setAttribute(addClass(tag, "db-email-header"), "bgcolor", "{{primaryColor}}");
+    header = setStyleProperty(header, "background-color", "{{primaryColor}} !important");
+    return setStyleProperty(header, "background-image", "linear-gradient(90deg,{{primaryColor}},{{accentColor}}) !important");
+  });
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:28px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-heading"), "{{contentBg}}"), "{{headingColor}}"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:16px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-content"), "{{contentBg}}"), "{{bodyTextColor}}"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*padding:0 32px 20px 32px[^"]*"[^>]*>/i, (tag) => protectBackground(addClass(tag, "db-email-cta-row"), "{{contentBg}}"));
+  decorated = decorated.replace(/<a\b[^>]*style="[^"]*display:inline-block[^"]*font-weight:700[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-button"), "{{buttonBg}}"), "{{buttonTextColor}}"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:13px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-footer"), "{{footerBg}}"), "{{footerText}}"));
+  decorated = decorated.replace(/<a\b[^>]*href="(?:mailto:{{supportEmail}}|{{siteUrl}})"[^>]*>/gi, (tag) => protectText(tag, "{{footerText}}"));
+  decorated = decorated.replace(/<strong\b[^>]*>/gi, (tag) => {
+    const withStyle = /style="/i.test(tag) ? tag : tag.replace(/>$/, ' style="">');
+    return protectText(withStyle, "{{bodyTextColor}}");
+  });
   return decorated;
 }
 

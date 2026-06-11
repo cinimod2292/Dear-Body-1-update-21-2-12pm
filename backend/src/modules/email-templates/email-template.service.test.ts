@@ -147,8 +147,8 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /background:#f8fafc;/);
   assert.match(rendered, /background:#ffffff;/);
   assert.match(rendered, /background:linear-gradient\(90deg,#ee5ca8,#ff8552\)/);
-  assert.match(rendered, /font-size:28px[^\"]*color:#111827;/);
-  assert.match(rendered, /display:inline-block[^\"]*background:#111827;color:#ffffff;/);
+  assert.match(rendered, /font-size:28px[^\"]*color:#111827 !important;-webkit-text-fill-color:#111827 !important;/);
+  assert.match(rendered, /display:inline-block[^\"]*background-color:#111827 !important;background-image:linear-gradient\(#111827,#111827\) !important;color:#ffffff !important/);
   assert.match(rendered, /<meta name="color-scheme" content="light only" \/>/);
   assert.match(rendered, /class="db-email-outer"[^>]*bgcolor="#f8fafc"/);
   assert.match(rendered, /class="db-email-card"[^>]*bgcolor="#ffffff"/);
@@ -157,4 +157,10 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /class="db-email-footer"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /\[data-ogsc\] \.db-email-header/);
   assert.match(rendered, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(rendered, /:root \{ color-scheme: only light; supported-color-schemes: light; \}/);
+  assert.match(rendered, /class="db-email-heading"[^>]*bgcolor="#ffffff"/);
+  assert.match(rendered, /class="db-email-content"[^>]*bgcolor="#ffffff"/);
+  assert.match(rendered, /class="db-email-cta-row"[^>]*bgcolor="#ffffff"/);
+  assert.match(rendered, /background-image:linear-gradient\(#ffffff,#ffffff\) !important/);
+  assert.match(rendered, /<strong style="color:#374151 !important;-webkit-text-fill-color:#374151 !important;">Items:/);
 });

@@ -18,6 +18,7 @@ import { env } from "../../config/env.js";
 import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
+import { shouldSendOrderConfirmation } from "./order-email-policy.js";
 
 const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),
@@ -328,9 +329,9 @@ function generateOrderNumber() {
 }
 
 
-async function sendOrderCreatedEmail(orderId: string) {
+async function sendOrderConfirmationEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true, items: true } });
-  if (!order?.customer?.email) return;
+  if (!order?.customer?.email || !shouldSendOrderConfirmation(order.paymentStatus)) return;
   const orderItems = order.items.map((item) => `${item.productName} x${item.quantity}`).join(", ");
   const template = await resolveTemplateByKey("order_confirmation", {
     firstName: order.customer.firstName ?? "Customer",
@@ -354,11 +355,12 @@ async function sendAdminNewOrderEmail(orderId: string) {
   await sendEmail({ to: adminEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
-export async function sendOrderCreatedEmailSafe(orderId: string) {
-  await Promise.allSettled([
-    sendOrderCreatedEmail(orderId),
-    sendAdminNewOrderEmail(orderId),
-  ]);
+export async function sendOrderConfirmationEmailSafe(orderId: string) {
+  await sendOrderConfirmationEmail(orderId).catch((err) => console.warn("[email] order confirmation send failed", err));
+}
+
+async function sendAdminNewOrderEmailSafe(orderId: string) {
+  await sendAdminNewOrderEmail(orderId).catch((err) => console.warn("[email] admin new order send failed", err));
 }
 
 async function sendReadyForCollectionEmail(orderId: string) {
@@ -566,7 +568,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   await recordOrderEvent(order.id, undefined, "ORDER_PLACED", undefined, "AWAITING_PAYMENT", { source: "checkout" });
-  await sendOrderCreatedEmailSafe(order.id);
+  await sendAdminNewOrderEmailSafe(order.id);
 
   return prisma.order.findUnique({
     where: { id: order.id },

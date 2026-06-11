@@ -104,6 +104,73 @@ function replaceStyleValue(tag: string, property: string, value: string): string
  * Normalize the known admin/simple-editor shell at send time so those existing
  * templates immediately follow the current theme without destructive DB edits.
  */
+
+const THEME_HEAD = `<head>
+  <meta name="color-scheme" content="light only" />
+  <meta name="supported-color-schemes" content="light only" />
+  <style>
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+    .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; }
+    .db-email-card { background-color: {{contentBg}} !important; }
+    .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+    .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
+    .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
+    .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
+    .db-email-footer { background-color: {{footerBg}} !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    [data-ogsc] .db-email-body, [data-ogsc] .db-email-outer { background-color: {{outerBg}} !important; }
+    [data-ogsc] .db-email-card { background-color: {{contentBg}} !important; }
+    [data-ogsc] .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+    [data-ogsc] .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
+    [data-ogsc] .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
+    [data-ogsc] .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
+    [data-ogsc] .db-email-footer { background-color: {{footerBg}} !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    [data-ogsc] .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    @media (prefers-color-scheme: dark) {
+      .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; }
+      .db-email-card { background-color: {{contentBg}} !important; }
+      .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+      .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
+      .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
+      .db-email-button { background-color: {{buttonBg}} !important; color: {{buttonTextColor}} !important; -webkit-text-fill-color: {{buttonTextColor}} !important; }
+      .db-email-footer { background-color: {{footerBg}} !important; color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+      .db-email-footer a { color: {{footerText}} !important; -webkit-text-fill-color: {{footerText}} !important; }
+    }
+  </style>
+</head>`;
+
+function addClass(tag: string, className: string): string {
+  const classMatch = tag.match(/class="([^"]*)"/i);
+  if (classMatch) {
+    const classes = new Set(classMatch[1].split(/\s+/).filter(Boolean));
+    classes.add(className);
+    return tag.replace(classMatch[0], `class="${[...classes].join(" ")}"`);
+  }
+  return tag.replace(/>$/, ` class="${className}">`);
+}
+
+function setAttribute(tag: string, name: string, value: string): string {
+  const pattern = new RegExp(`\\s${name}="[^"]*"`, "i");
+  if (pattern.test(tag)) return tag.replace(pattern, ` ${name}="${value}"`);
+  return tag.replace(/>$/, ` ${name}="${value}">`);
+}
+
+function decorateGeneratedShell(html: string): string {
+  let decorated = html;
+  if (!/<head[\s>]/i.test(decorated)) {
+    decorated = decorated.replace(/<html([^>]*)>/i, `<html$1>${THEME_HEAD}`);
+  }
+  decorated = decorated.replace(/<body\b[^>]*>/i, (tag) => addClass(tag, "db-email-body"));
+  decorated = decorated.replace(/<table\b[^>]*style="[^"]*padding:24px 0[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-outer"), "bgcolor", "{{outerBg}}"));
+  decorated = decorated.replace(/<table\b[^>]*style="[^"]*max-width:620px[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-card"), "bgcolor", "{{contentBg}}"));
+  decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-header"), "bgcolor", "{{primaryColor}}"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:28px[^"]*"[^>]*>/i, (tag) => addClass(tag, "db-email-heading"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:16px[^"]*"[^>]*>/i, (tag) => addClass(tag, "db-email-content"));
+  decorated = decorated.replace(/<a\b[^>]*style="[^"]*display:inline-block[^"]*font-weight:700[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-button"), "bgcolor", "{{buttonBg}}"));
+  decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:13px[^"]*"[^>]*>/i, (tag) => setAttribute(addClass(tag, "db-email-footer"), "bgcolor", "{{footerBg}}"));
+  return decorated;
+}
+
 export function normalizeLegacyThemeHtml(html: string): string {
   const isGeneratedShell = /max-width:620px/i.test(html)
     && /background:linear-gradient\(90deg,/i.test(html);
@@ -140,7 +207,7 @@ export function normalizeLegacyThemeHtml(html: string): string {
     return `${opening}${content}{{footerLinksMarkup}}${closing}`;
   });
 
-  return normalized;
+  return decorateGeneratedShell(normalized);
 }
 
 export function renderEmailHtml(html: string, data: Record<string, unknown>): string {

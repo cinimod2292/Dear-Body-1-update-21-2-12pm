@@ -149,4 +149,12 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /background:linear-gradient\(90deg,#ee5ca8,#ff8552\)/);
   assert.match(rendered, /font-size:28px[^\"]*color:#111827;/);
   assert.match(rendered, /display:inline-block[^\"]*background:#111827;color:#ffffff;/);
+  assert.match(rendered, /<meta name="color-scheme" content="light only" \/>/);
+  assert.match(rendered, /class="db-email-outer"[^>]*bgcolor="#f8fafc"/);
+  assert.match(rendered, /class="db-email-card"[^>]*bgcolor="#ffffff"/);
+  assert.match(rendered, /class="db-email-header"[^>]*bgcolor="#ee5ca8"/);
+  assert.match(rendered, /class="db-email-button"[^>]*bgcolor="#111827"/);
+  assert.match(rendered, /class="db-email-footer"[^>]*bgcolor="#ffffff"/);
+  assert.match(rendered, /\[data-ogsc\] \.db-email-header/);
+  assert.match(rendered, /@media \(prefers-color-scheme: dark\)/);
 });

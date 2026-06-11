@@ -111,3 +111,42 @@ test("advanced custom HTML is not structurally rewritten", async () => {
   assert.match(rendered, /color:#654321/);
   assert.match(rendered, /Custom Ava/);
 });
+
+test("current tokenized templates render valid inline CSS without trailing braces", async () => {
+  const { DEFAULT_EMAIL_TEMPLATES } = await import("./default-templates.js");
+  const { renderEmailHtml } = await import("./email-template.render.js");
+  const template = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === "order_confirmation");
+  assert.ok(template);
+
+  const rendered = renderEmailHtml(template.htmlBody, {
+    firstName: "Dominic",
+    orderNumber: "60700174866",
+    orderDate: "11 June 2026",
+    orderItems: "Rocking Fantasy Deodorant Atomiseur 250ml x1",
+    orderTotal: "ZAR 299.00",
+    siteUrl: "https://mydearbody.co.za",
+    companyName: "Dear Body",
+    brandName: "Dear Body",
+    supportEmail: "sales@mydearbody.co.za",
+    logoMarkup: '<img src="https://cdn.example/logo.png" alt="Dear Body" />',
+    footerLinksMarkup: "",
+    outerBg: "#f8fafc",
+    contentBg: "#ffffff",
+    primaryColor: "#ee5ca8",
+    accentColor: "#ff8552",
+    headingColor: "#111827",
+    bodyTextColor: "#374151",
+    buttonBg: "#111827",
+    buttonTextColor: "#ffffff",
+    footerBg: "#ffffff",
+    footerText: "#374151",
+  });
+
+  assert.doesNotMatch(rendered, /#[0-9a-f]{6}}}/i);
+  assert.doesNotMatch(rendered, /{{|}}/);
+  assert.match(rendered, /background:#f8fafc;/);
+  assert.match(rendered, /background:#ffffff;/);
+  assert.match(rendered, /background:linear-gradient\(90deg,#ee5ca8,#ff8552\)/);
+  assert.match(rendered, /font-size:28px[^\"]*color:#111827;/);
+  assert.match(rendered, /display:inline-block[^\"]*background:#111827;color:#ffffff;/);
+});

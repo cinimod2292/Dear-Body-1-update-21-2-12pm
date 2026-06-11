@@ -92,8 +92,11 @@ export function renderTemplateString(template: string, data: Record<string, unkn
 }
 
 function replaceStyleValue(tag: string, property: string, value: string): string {
-  const pattern = new RegExp(`(${property}:)([^;"}]+)`, "i");
-  return tag.replace(pattern, `$1${value}`);
+  // Consume the complete declaration value, including `{{token}}` braces.
+  // Stopping at `}` leaves trailing braces behind and produces invalid CSS such
+  // as `background:#ffffff}}`, which causes email clients to discard styles.
+  const pattern = new RegExp(`(^|[;\\s\\"])((${property})\\s*:)[^;\\"]*`, "i");
+  return tag.replace(pattern, (_match, prefix: string, declaration: string) => `${prefix}${declaration}${value}`);
 }
 
 /**

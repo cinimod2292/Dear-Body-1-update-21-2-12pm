@@ -110,15 +110,15 @@ export default function AdminCollectionSchedule() {
 
       for (const w of sorted) {
         if (w.dayOfWeek !== dow) continue;
-        const [eh, em] = w.endTime.split(":").map(Number);
-        const windowEnd = new Date(candidate);
-        windowEnd.setHours(eh, em, 0, 0);
-        const cutoff = new Date(windowEnd.getTime() - cutoffMs);
-        if (now >= cutoff) continue;
-
         const [sh, sm] = w.startTime.split(":").map(Number);
         const windowStart = new Date(candidate);
         windowStart.setHours(sh, sm, 0, 0);
+        const cutoff = new Date(windowStart.getTime() - cutoffMs);
+        if (now >= cutoff) continue;
+
+        const [eh, em] = w.endTime.split(":").map(Number);
+        const windowEnd = new Date(candidate);
+        windowEnd.setHours(eh, em, 0, 0);
 
         setPreview({
           windowLabel: `${DAY_NAMES[w.dayOfWeek]} ${w.startTime}–${w.endTime}`,
@@ -160,7 +160,7 @@ export default function AdminCollectionSchedule() {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h2 className="font-semibold text-gray-900 mb-3">Cutoff Setting</h2>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600 w-64">Minutes before window end to stop accepting orders:</label>
+          <label className="text-sm text-gray-600 w-64">Minutes before window start to stop accepting orders:</label>
           <input
             type="number"
             min={0}
@@ -172,7 +172,7 @@ export default function AdminCollectionSchedule() {
           <span className="text-sm text-gray-400">minutes</span>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          E.g., if a window is 09:00–11:00 and cutoff is 60 min, orders placed after 10:00 go to the next window.
+          E.g., if a window is 09:00–11:00 and cutoff is 60 min, orders placed after 08:00 go to the next window.
         </p>
       </div>
 
@@ -271,7 +271,7 @@ export default function AdminCollectionSchedule() {
         <h3 className="font-semibold text-blue-900 mb-2 text-sm">How It Works</h3>
         <ul className="space-y-1 text-sm text-blue-800">
           <li>• When an order is paid, the system finds the next available collection window</li>
-          <li>• The SLA deadline is set to {schedule.cutoffMinutesBefore} minutes before window end</li>
+          <li>• The SLA deadline is set to {schedule.cutoffMinutesBefore} minutes before window start</li>
           <li>• Warehouse staff see a countdown timer for each order</li>
           <li>• Orders approaching the deadline are highlighted in amber/red</li>
           <li>• Staff can manually recalculate if collection is missed</li>

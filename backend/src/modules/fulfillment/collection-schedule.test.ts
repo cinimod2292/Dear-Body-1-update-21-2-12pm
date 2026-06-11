@@ -34,7 +34,7 @@ describe("calculateNextCollectionDate", () => {
   });
 
   it("returns the current day's window when before cutoff", () => {
-    // Wednesday 10:00 SAST — cutoff is 15:00 (16:00 - 60min)
+    // Wednesday 10:00 SAST — cutoff is 13:00 (14:00 start - 60min), window is still available
     const from = jhbDate(2026, 6, 10, 10, 0); // Wednesday
     const result = calculateNextCollectionDate(baseSchedule, from);
     assert.ok(result, "Expected a result");
@@ -42,7 +42,7 @@ describe("calculateNextCollectionDate", () => {
   });
 
   it("skips current day when past cutoff and returns next scheduled day", () => {
-    // Wednesday 15:30 SAST — cutoff at 15:00 so Wednesday window is missed
+    // Wednesday 15:30 SAST — cutoff at 13:00 (14:00 start - 60min), window is missed
     const from = jhbDate(2026, 6, 10, 15, 30); // Wednesday
     const result = calculateNextCollectionDate(baseSchedule, from);
     assert.ok(result, "Expected a result");
@@ -51,11 +51,11 @@ describe("calculateNextCollectionDate", () => {
   });
 
   it("skips exact cutoff time and goes to next window", () => {
-    // Wednesday 15:00 exactly (exactly at cutoff)
-    const from = jhbDate(2026, 6, 10, 15, 0); // Wednesday
+    // Wednesday 13:00 SAST — exactly at the cutoff (14:00 start - 60min = 13:00)
+    const from = jhbDate(2026, 6, 10, 13, 0); // Wednesday
     const result = calculateNextCollectionDate(baseSchedule, from);
     assert.ok(result, "Expected a result");
-    // Past cutoff, should go to Friday
+    // Exactly at cutoff (>= check), should go to Friday
     assert.equal(result.windowLabel, "Fri 08:00–10:00");
   });
 
@@ -95,7 +95,7 @@ describe("calculateNextCollectionDate", () => {
   });
 
   it("wraps to next week when all windows this week are past cutoff", () => {
-    // Friday 09:30 — Friday cutoff is 09:00, so this window is missed
+    // Friday 09:30 — cutoff is 07:00 (08:00 start - 60min), window is missed
     const from = jhbDate(2026, 6, 12, 9, 30); // Friday
     const result = calculateNextCollectionDate(baseSchedule, from);
     assert.ok(result, "Expected a result");
@@ -166,7 +166,7 @@ describe("Edge cases for collection schedule", () => {
         { dayOfWeek: 1, startTime: "14:00", endTime: "16:00" },
       ],
     };
-    // Monday 12:00 — first window cutoff (10:00) passed, second window still open
+    // Monday 12:00 — first window cutoff (08:00 = 09:00 start - 60min) passed, second window cutoff (13:00 = 14:00 start - 60min) still open
     const from = jhbDate(2026, 6, 8, 12, 0); // Monday
     const result = calculateNextCollectionDate(multiWindowSchedule, from);
     assert.ok(result, "Expected a result");

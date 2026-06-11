@@ -341,7 +341,7 @@ export async function updatePickItem(orderId: string, pickTaskItemId: string, ra
 }
 
 export async function completePicking(orderId: string, rawBody: unknown, actorId: string) {
-  const body = completePickingSchema.parse(rawBody);
+  const body = completePickingSchema.parse(rawBody ?? {});
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: { include: { pickTaskItems: true } } },
@@ -401,7 +401,7 @@ export async function startPacking(orderId: string, actorId: string) {
 }
 
 export async function completePacking(orderId: string, rawBody: unknown, actorId: string) {
-  const body = completePackingSchema.parse(rawBody);
+  const body = completePackingSchema.parse(rawBody ?? {});
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: { id: true, warehouseStatus: true, warehouseNotes: true },

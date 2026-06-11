@@ -20,6 +20,7 @@ import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
+import { summarizeInventoryRestore } from "./order-danger-zone.js";
 
 const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),

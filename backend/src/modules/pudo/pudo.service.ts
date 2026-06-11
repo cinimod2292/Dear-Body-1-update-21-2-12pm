@@ -5,6 +5,7 @@ import { env } from "../../config/env.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { emailTemplateKeyForPudoStatus, normalizePudoTrackingStatus } from "./pudo-email.js";
+import { deleteAllShipmentsSchema } from "./pudo-danger-zone.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
 const PUDO_API_SANDBOX = "https://api-sandbox.pudo.co.za";
@@ -564,6 +565,36 @@ export async function getPudoDoorRates(
     ],
   };
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
+}
+
+export async function deleteAllShipments(rawBody: unknown) {
+  deleteAllShipmentsSchema.parse(rawBody);
+
+  const shipmentWhere = {
+    OR: [
+      { trackingNumber: { not: null } },
+      { courier: { not: null } },
+      { pudoTrackingStatus: { not: null } },
+      { pudoDeliveryType: { not: null } },
+    ],
+  };
+
+  const result = await prisma.order.updateMany({
+    where: shipmentWhere,
+    data: {
+      trackingNumber: null,
+      courier: null,
+      pudoTrackingStatus: null,
+      pudoDeliveryType: null,
+      pudoLockerCode: null,
+      pudoLockerName: null,
+      pudoLockerAddress: null,
+      shippedAt: null,
+      deliveredAt: null,
+    },
+  });
+
+  return { deletedShipments: result.count };
 }
 
 export async function listPudoShipments() {

@@ -797,7 +797,7 @@ export async function updateOrderStatus(orderId: string, rawBody: unknown, actor
   const updated = await prisma.order.update({ where: { id: orderId }, data: { status: body.value as any } });
   await recordOrderEvent(orderId, actorId, "ORDER_STATUS_UPDATED", order.status, updated.status, { reason: body.reason });
   if (updated.status === "READY_FOR_COLLECTION") {
-    await sendReadyForCollectionEmail(orderId).catch(() => undefined);
+    await sendReadyForCollectionEmail(orderId).catch((err) => console.warn("[email] send failed", err));
   }
   return updated;
 }
@@ -825,7 +825,7 @@ export async function updateFulfillmentStatus(orderId: string, rawBody: unknown,
   const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
   if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
-    await sendShippingEmail(orderId).catch(() => undefined);
+    await sendShippingEmail(orderId).catch((err) => console.warn("[email] send failed", err));
   }
   return updated;
 }
@@ -896,7 +896,7 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
       amount: `${currency} ${body.amount.toFixed(2)}`,
     }).then((template) =>
       sendEmail({ to: refundCustomerEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } })
-    ).catch(() => undefined);
+    ).catch((err) => console.warn("[email] send failed", err));
   }
 
   return refund;

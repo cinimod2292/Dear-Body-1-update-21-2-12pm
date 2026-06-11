@@ -476,7 +476,7 @@ async function applyPaymentStatus(orderId: string, transactionId: string, status
   });
   const becamePaid = status === "PAID" && currentOrder.paymentStatus !== "PAID";
   if (becamePaid) {
-    await sendPaymentSuccessEmail(orderId).catch(() => undefined);
+    await sendPaymentSuccessEmail(orderId).catch((err) => console.warn("[email] send failed", err));
     autoCreatePudoShipment(orderId).catch((err) => {
       console.error("[payments] autoCreatePudoShipment error for order", orderId, err);
     });

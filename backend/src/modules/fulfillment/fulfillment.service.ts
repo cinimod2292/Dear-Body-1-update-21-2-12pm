@@ -254,7 +254,7 @@ export async function initWarehouseOnPayment(orderId: string): Promise<void> {
   });
 
   // Notify warehouse staff
-  await notifyWarehouseNewOrder(orderId).catch(() => undefined);
+  await notifyWarehouseNewOrder(orderId).catch((err) => console.warn("[email] send failed", err));
 }
 
 // ─── Pick workflow ────────────────────────────────────────────────────────────
@@ -375,7 +375,7 @@ export async function completePicking(orderId: string, rawBody: unknown, actorId
   });
 
   if (hasIssues) {
-    await notifyAdminStockIssue(orderId).catch(() => undefined);
+    await notifyAdminStockIssue(orderId).catch((err) => console.warn("[email] send failed", err));
   }
 
   return getWarehouseOrder(orderId);
@@ -694,7 +694,7 @@ async function notifyWarehouseNewOrder(orderId: string) {
 <p>Please log in to the warehouse dashboard to begin picking.</p>`;
 
   for (const email of emails) {
-    await sendEmail({ to: email, subject, html, meta: { orderId, templateKey: "warehouse_new_order" } }).catch(() => undefined);
+    await sendEmail({ to: email, subject, html, meta: { orderId, templateKey: "warehouse_new_order" } }).catch((err) => console.warn("[email] send failed", err));
   }
 }
 
@@ -727,7 +727,7 @@ async function notifyAdminStockIssue(orderId: string) {
 <p>Please review and take action.</p>`;
 
   for (const staff of adminEmails) {
-    await sendEmail({ to: staff.email, subject, html, meta: { orderId, templateKey: "warehouse_stock_issue" } }).catch(() => undefined);
+    await sendEmail({ to: staff.email, subject, html, meta: { orderId, templateKey: "warehouse_stock_issue" } }).catch((err) => console.warn("[email] send failed", err));
   }
 }
 
@@ -751,6 +751,6 @@ export async function notifySlaWarning(orderId: string) {
 <strong>Deadline:</strong> ${order.slaDeadline.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" })}</p>`;
 
   for (const email of emails) {
-    await sendEmail({ to: email, subject, html, meta: { orderId, templateKey: "warehouse_sla_warning" } }).catch(() => undefined);
+    await sendEmail({ to: email, subject, html, meta: { orderId, templateKey: "warehouse_sla_warning" } }).catch((err) => console.warn("[email] send failed", err));
   }
 }

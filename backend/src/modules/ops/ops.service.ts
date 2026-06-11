@@ -421,7 +421,7 @@ export async function createNewsletterSubscriber(rawBody: unknown) {
     siteUrl: env.STOREFRONT_URL ?? "",
   }).then((template) =>
     sendEmail({ to: body.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key } })
-  ).catch(() => undefined);
+  ).catch((err) => console.warn("[ops] Newsletter confirmation email failed", err));
 
   return subscriber;
 }

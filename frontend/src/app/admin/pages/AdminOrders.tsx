@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Trash2, X } from "lucide-react";
-import { toast } from "sonner";
 import { Link } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -32,10 +30,6 @@ export default function AdminOrders() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [paymentStatus, setPaymentStatus] = useState("ALL");
-  const [dangerOpen, setDangerOpen] = useState(false);
-  const [confirmation, setConfirmation] = useState("");
-  const [deleting, setDeleting] = useState(false);
-
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "20", sortBy: "placedAt", sortDir: "desc" });
     if (query) sp.set("q", query);
@@ -60,29 +54,6 @@ export default function AdminOrders() {
   };
 
   useEffect(() => { load(); }, [session?.accessToken, params]);
-
-  const deleteAllOrders = async () => {
-    if (!session?.accessToken || confirmation !== "DELETE ALL ORDERS") return;
-    try {
-      setDeleting(true);
-      const response = await apiRequest<{ data: { deletedOrders: number; restoredUnits: number; affectedVariants: number } }>(
-        "/admin/orders",
-        { method: "DELETE", body: JSON.stringify({ confirmation }) },
-        session.accessToken,
-      );
-      toast.success(
-        `Deleted ${response.data.deletedOrders} orders and restored ${response.data.restoredUnits} stock units.`,
-      );
-      setDangerOpen(false);
-      setConfirmation("");
-      setPage(1);
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete orders");
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   if (loading) return <LoadingState label="Loading orders..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;

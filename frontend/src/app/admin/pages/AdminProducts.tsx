@@ -454,7 +454,10 @@ export default function AdminProducts() {
       )}
 
       {payload.items.length === 0 ? (
-        <EmptyState label="No products found for current filters." />
+        <EmptyState
+          label={query || status !== "ALL" ? "No products match the current filters." : "No products yet. Create your first product to get started."}
+          cta={!query && status === "ALL" ? { label: "Create Product", to: "/admin/products/new" } : undefined}
+        />
       ) : (
         <AdminTable
           rows={payload.items}

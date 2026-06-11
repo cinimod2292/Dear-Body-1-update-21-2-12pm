@@ -262,8 +262,7 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
   const url = `${base}/api/v1${path}`;
   const apiKey = getEffectiveApiKey(settings);
 
-  console.log(`[PUDO] → ${method} ${url} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
-  if (body) console.log(`[PUDO] request body:`, JSON.stringify(body));
+  console.info(`[PUDO] → ${method} ${url} | sandbox=${settings.sandbox} | bodyKeys=${body ? Object.keys(body).join(",") : "none"}`);
 
   let res: Response;
   try {
@@ -284,7 +283,7 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     throw new AppError(502, `PUDO network error: ${msg}`, "PUDO_NETWORK_ERROR");
   }
 
-  console.log(`[PUDO] ← ${res.status} ${res.statusText}`);
+  console.info(`[PUDO] ← ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
     let rawBody = "";
@@ -310,14 +309,14 @@ async function pudoFetch<T>(method: string, path: string, settings: PudoSettings
     throw new AppError(502, `PUDO response parse error: ${msg}`, "PUDO_PARSE_ERROR");
   }
 
-  console.log(`[PUDO] response preview:`, JSON.stringify(parsed).slice(0, 300));
+  console.info(`[PUDO] response preview:`, JSON.stringify(parsed).slice(0, 300));
   return parsed;
 }
 
 export async function getPudoLockers(search?: string): Promise<PudoLocker[]> {
   const settings = await getPudoSettings();
   const effectiveKey = getEffectiveApiKey(settings);
-  console.log(`[PUDO] getPudoLockers | enabled=${settings.enabled} sandbox=${settings.sandbox} apiKeyLen=${effectiveKey.length}`);
+  console.info(`[PUDO] getPudoLockers | enabled=${settings.enabled} sandbox=${settings.sandbox} apiKeyLen=${effectiveKey.length}`);
   if (!settings.enabled || !effectiveKey) {
     throw new AppError(400, "PUDO integration is not enabled or configured", "PUDO_NOT_CONFIGURED");
   }
@@ -477,7 +476,7 @@ export async function downloadPudoWaybill(shipmentId: number): Promise<{ body: B
   }
   const base = settings.sandbox ? PUDO_API_SANDBOX : PUDO_API_PROD;
   const url = `${base}/api/v1/generate/waybill/${shipmentId}`;
-  console.log(`[PUDO] → GET waybill ${url}`);
+  console.info(`[PUDO] → GET waybill ${url}`);
   let res: Response;
   try {
     res = await fetch(url, {

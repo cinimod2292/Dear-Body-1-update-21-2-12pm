@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
+import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
 import { registerErrorHandler } from "./lib/errors.js";
 import { prisma } from "./lib/prisma.js";
@@ -42,10 +43,12 @@ export async function buildApp() {
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (/^https?:\/\/localhost(?::\d+)?$/i.test(origin)) return cb(null, true);
-      if (/\.vercel\.app$/i.test(origin)) return cb(null, true);
-      if (/\.onrender\.com$/i.test(origin)) return cb(null, true);
+      if (!origin) return cb(null, env.NODE_ENV !== "production");
+      if (env.NODE_ENV !== "production") {
+        if (/^https?:\/\/localhost(?::\d+)?$/i.test(origin)) return cb(null, true);
+        if (/\.vercel\.app$/i.test(origin)) return cb(null, true);
+        if (/\.onrender\.com$/i.test(origin)) return cb(null, true);
+      }
       const allowed = env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
       if (allowed.includes(origin)) return cb(null, true);
       return cb(null, false);
@@ -53,6 +56,16 @@ export async function buildApp() {
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     preflight: true,
+  });
+
+  await app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: (_request, context) => ({
+      error: {
+        code: "RATE_LIMITED",
+        message: `Too many requests. Please wait ${Math.ceil(context.ttl / 1000)} seconds and try again.`,
+      },
+    }),
   });
 
   if (env.MAINTENANCE_MODE) {
@@ -242,7 +255,7 @@ export async function buildApp() {
         select: { id: true },
       });
       for (const { id } of urgentOrders) {
-        notifySlaWarning(id).catch(() => undefined);
+        notifySlaWarning(id).catch((err) => console.warn("[email] send failed", err));
       }
     } catch (err) {
       app.log.warn({ err }, "SLA warning check failed");

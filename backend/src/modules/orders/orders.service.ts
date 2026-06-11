@@ -361,7 +361,7 @@ async function sendWarehouseCollectionReadyEmail(orderId: string) {
   const template = await resolveTemplateByKey("warehouse_collection_ready", {
     firstName: order.customer.firstName ?? "there",
     orderNumber: order.orderNumber,
-    orderUrl: `${process.env.STOREFRONT_URL ?? ""}/account/orders/${order.id}`,
+    orderUrl: `${env.STOREFRONT_URL ?? ""}/account/orders/${order.id}`,
   });
   await sendEmail({
     to: order.customer.email,

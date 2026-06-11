@@ -792,7 +792,7 @@ export default function Checkout() {
                     { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },
                     { key: "lastName", label: "Last Name", placeholder: "Doe", type: "text" },
                     { key: "email", label: "Email Address", placeholder: "jane@example.com", type: "email", full: true },
-                    { key: "phone", label: "Phone Number", placeholder: "+1 (555) 000-0000", type: "tel" },
+                    { key: "phone", label: "Phone Number", placeholder: "+27 82 000 0000", type: "tel" },
                   ].map(field => (
                     <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
                       <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>

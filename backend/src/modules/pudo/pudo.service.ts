@@ -1,6 +1,7 @@
 import { Agent } from "undici";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import { env } from "../../config/env.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { calculateNextCollectionDate, getCollectionSchedule } from "../fulfillment/collection-schedule.service.js";
@@ -835,7 +836,7 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
     return { synced: 0, errors: 0 };
   }
 
-  const siteUrl = process.env.STOREFRONT_URL ?? "";
+  const siteUrl = env.STOREFRONT_URL ?? "";
 
   const pudoOrders = await prisma.order.findMany({
     where: {
@@ -1260,7 +1261,7 @@ export async function processPudoTrackingWebhook(payload: unknown): Promise<void
 
   // Send email whenever PUDO reports a new status (webhook fires once per status)
   if (order.pudoTrackingStatus !== rawStatus) {
-    const siteUrl = process.env.STOREFRONT_URL ?? "";
+    const siteUrl = env.STOREFRONT_URL ?? "";
     void sendPudoTrackingUpdateEmail(order, rawStatus, waybillNumber, siteUrl);
   }
 }

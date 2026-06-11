@@ -92,6 +92,7 @@ export default function AdminOrderDetail() {
   const [note, setNote] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
   const [verificationReference, setVerificationReference] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -251,8 +252,30 @@ export default function AdminOrderDetail() {
   const updatePayment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/payment-status`, { value: paymentValue }); } catch (err) { toast.error(err instanceof Error ? err.message : "Payment update failed"); } };
   const updateFulfillment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/fulfillment-status`, { value: fulfillmentValue, trackingNumber: trackingNumber || undefined, courier: courier || undefined, shippedAt: fulfillmentValue === "FULFILLED" || fulfillmentValue === "PARTIALLY_FULFILLED" ? new Date().toISOString() : undefined, deliveredAt: fulfillmentValue === "FULFILLED" ? new Date().toISOString() : undefined }); } catch (err) { toast.error(err instanceof Error ? err.message : "Fulfillment update failed"); } };
   const addNote = async (e: FormEvent) => { e.preventDefault(); if (!note) return; try { await post(`/admin/orders/${orderId}/notes`, { note, isInternal: true }); setNote(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Note failed"); } };
-  const cancelOrder = async (e: FormEvent) => { e.preventDefault(); if (!cancelReason) return; try { await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason }); setCancelReason(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Cancel failed"); } };
-  const createRefund = async (e: FormEvent) => { e.preventDefault(); const amount = Number(refundAmount); if (!amount) return; try { await post(`/admin/orders/${orderId}/refunds`, { amount, reason: "Manual refund" }); } catch (err) { toast.error(err instanceof Error ? err.message : "Refund failed"); } };
+  const cancelOrder = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!cancelReason) return;
+    if (!window.confirm(`Cancel this order? Reason: "${cancelReason}"\n\nThis cannot be undone.`)) return;
+    try {
+      await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason });
+      setCancelReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+  const createRefund = async (e: FormEvent) => {
+    e.preventDefault();
+    const amount = Number(refundAmount);
+    if (!amount) return;
+    const reason = refundReason.trim() || "Manual refund";
+    if (!window.confirm(`Issue a refund of ${formatRand(amount)}?\nReason: "${reason}"\n\nThis action cannot be undone.`)) return;
+    try {
+      await post(`/admin/orders/${orderId}/refunds`, { amount, reason });
+      setRefundReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Refund failed");
+    }
+  };
 
   const initiateGatewayPayment = async () => {
     if (!session?.accessToken || !orderId) return;
@@ -429,7 +452,13 @@ export default function AdminOrderDetail() {
 
           <form onSubmit={addNote} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Internal note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Add Note</button></form>
 
-          <form onSubmit={createRefund} className="flex gap-2"><input type="number" step="0.01" className="flex-1 rounded-lg border border-gray-200 px-3 py-2" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Refund</button></form>
+          <form onSubmit={createRefund} className="space-y-2">
+            <div className="flex gap-2">
+              <input type="number" step="0.01" className="w-32 rounded-lg border border-gray-200 px-3 py-2" placeholder="Amount" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
+              <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Reason (required)" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} required />
+              <button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm whitespace-nowrap">Issue Refund</button>
+            </div>
+          </form>
 
           <form onSubmit={cancelOrder} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancellation reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /><button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm">Cancel Order</button></form>
         </section>

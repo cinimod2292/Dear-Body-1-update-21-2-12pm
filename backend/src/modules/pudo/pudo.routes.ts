@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import {
   autoCreatePudoShipment,
   createPudoShipment,
+  deleteAllShipments,
   diagnosePudoApi,
   downloadPudoWaybill,
   getPudoDoorRates,
@@ -106,6 +107,12 @@ export async function pudoRoutes(app: FastifyInstance) {
     "/admin/pudo/shipments",
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] },
     async (_request, reply) => reply.send({ data: await listPudoShipments() }),
+  );
+
+  app.delete(
+    "/admin/pudo/shipments",
+    { preHandler: [app.verifyAdmin, app.requirePermission("orders:delete-all")] },
+    async (request, reply) => reply.send({ data: await deleteAllShipments(request.body) }),
   );
 
   app.get(

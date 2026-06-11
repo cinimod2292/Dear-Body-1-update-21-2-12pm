@@ -5,6 +5,7 @@ import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { Switch } from "../../components/ui/switch";
 import { clearCmsBootstrapCache } from "../../lib/cms";
+import { AlertTriangle, PackageX, Trash2, X } from "lucide-react";
 
 interface PaymentEvent {
   id: string;
@@ -175,6 +176,9 @@ export default function AdminSettings() {
   const [sendgridTestTo, setSendgridTestTo] = useState("");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [comingSoon, setComingSoon] = useState(false);
+  const [dangerAction, setDangerAction] = useState<"orders" | "shipments" | null>(null);
+  const [dangerConfirmation, setDangerConfirmation] = useState("");
+  const [dangerDeleting, setDangerDeleting] = useState(false);
 
   const buildStoragePayload = () => ({
     provider: storageConfig.provider,
@@ -504,6 +508,43 @@ export default function AdminSettings() {
     }
   };
 
+  const closeDangerDialog = () => {
+    if (dangerDeleting) return;
+    setDangerAction(null);
+    setDangerConfirmation("");
+  };
+
+  const runDangerAction = async () => {
+    if (!session?.accessToken || !dangerAction) return;
+    const expectedConfirmation = dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS";
+    if (dangerConfirmation !== expectedConfirmation) return;
+
+    try {
+      setDangerDeleting(true);
+      if (dangerAction === "orders") {
+        const response = await apiRequest<{ data: { deletedOrders: number; restoredUnits: number } }>(
+          "/admin/orders",
+          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation }) },
+          session.accessToken,
+        );
+        toast.success(`Deleted ${response.data.deletedOrders} orders and restored ${response.data.restoredUnits} stock units.`);
+      } else {
+        const response = await apiRequest<{ data: { deletedShipments: number } }>(
+          "/admin/pudo/shipments",
+          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation }) },
+          session.accessToken,
+        );
+        toast.success(`Deleted shipment data from ${response.data.deletedShipments} orders.`);
+      }
+      setDangerAction(null);
+      setDangerConfirmation("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Danger zone action failed");
+    } finally {
+      setDangerDeleting(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading settings..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
@@ -516,6 +557,7 @@ export default function AdminSettings() {
     ["sendgrid", "SendGrid Email"],
     ["abandoned-cart", "Abandoned Cart"],
     ["xero", "Xero"],
+    ...(session?.role === "SUPER_ADMIN" ? [["danger", "Danger Zone"]] as const : []),
   ] as const;
 
   return (
@@ -842,6 +884,49 @@ export default function AdminSettings() {
         </form>
       )}
 
+      {activeTab === "danger" && session?.role === "SUPER_ADMIN" && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-black text-red-950">Danger Zone</h2>
+            <p className="mt-1 text-sm text-red-800">These actions permanently remove operational data and cannot be undone.</p>
+          </div>
+
+          <div className="divide-y divide-red-100 overflow-hidden rounded-xl border border-red-200 bg-white">
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <Trash2 size={19} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-950">Delete all orders and reinstate stock</h3>
+                  <p className="mt-1 max-w-xl text-sm text-gray-600">Permanently deletes every order, restores all ordered quantities to inventory, and releases checked-out cart reservations.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDangerAction("orders")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">
+                <Trash2 size={16} aria-hidden="true" />
+                Delete all orders
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <PackageX size={19} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-950">Delete all shipments</h3>
+                  <p className="mt-1 max-w-xl text-sm text-gray-600">Removes locally stored shipment, waybill, courier, and tracking data from all orders. It does not cancel shipments already submitted to a courier.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDangerAction("shipments")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">
+                <PackageX size={16} aria-hidden="true" />
+                Delete all shipments
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {activeTab === "xero" && (
         <div className="space-y-6">
           <form onSubmit={saveXero} className="space-y-4">
@@ -891,6 +976,46 @@ export default function AdminSettings() {
               ))}
             </div>
           </section>
+        </div>
+      )}
+
+      {dangerAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="danger-dialog-title">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <AlertTriangle size={22} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 id="danger-dialog-title" className="text-lg font-black text-gray-950">
+                    {dangerAction === "orders" ? "Delete all orders and reinstate stock?" : "Delete all shipments?"}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {dangerAction === "orders"
+                      ? "Every order will be permanently removed and its item quantities added back to inventory."
+                      : "All locally stored shipment and tracking data will be removed. Existing courier shipments will not be cancelled."}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={closeDangerDialog} disabled={dangerDeleting} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50" aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <label className="mt-6 block text-sm font-semibold text-gray-800" htmlFor="danger-confirmation">
+              Type <span className="select-all font-mono text-red-700">{dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS"}</span> to confirm
+            </label>
+            <input id="danger-confirmation" autoFocus autoComplete="off" value={dangerConfirmation} onChange={(event) => setDangerConfirmation(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={dangerDeleting} onClick={closeDangerDialog} className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={dangerDeleting || dangerConfirmation !== (dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS")} onClick={runDangerAction} className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">
+                {dangerAction === "orders" ? <Trash2 size={16} aria-hidden="true" /> : <PackageX size={16} aria-hidden="true" />}
+                {dangerDeleting ? "Deleting..." : dangerAction === "orders" ? "Delete all orders" : "Delete all shipments"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

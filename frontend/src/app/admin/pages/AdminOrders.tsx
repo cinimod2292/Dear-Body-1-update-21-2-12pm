@@ -94,6 +94,7 @@ export default function AdminOrders() {
       )}
 
       <AdminPagination page={page} totalPages={totalPages} onChange={setPage} />
+
     </div>
   );
 }

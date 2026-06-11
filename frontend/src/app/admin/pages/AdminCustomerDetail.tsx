@@ -164,6 +164,7 @@ export default function AdminCustomerDetail() {
 
   const deleteAddressFn = async (id: string) => {
     if (!session?.accessToken) return;
+    if (!window.confirm("Delete this address? This cannot be undone.")) return;
     try {
       await apiRequest(`/admin/addresses/${id}`, { method: "DELETE" }, session.accessToken);
       toast.success("Address removed");

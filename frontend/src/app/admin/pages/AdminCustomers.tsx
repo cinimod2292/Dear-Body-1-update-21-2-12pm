@@ -6,6 +6,7 @@ import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { formatRand } from "../../lib/currency";
+import { formatAdminDate } from "../../lib/datetime";
 import { toast } from "sonner";
 
 interface CustomerListItem {
@@ -139,7 +140,7 @@ export default function AdminCustomers() {
         </select>
       </div>
 
-      {customers.length === 0 ? <EmptyState label="No customers found." /> : (
+      {customers.length === 0 ? <EmptyState label={query || status !== "ALL" || tagId ? "No customers match the current filters." : "No customers yet."} /> : (
         <AdminTable
           rows={customers}
           columns={[
@@ -147,7 +148,7 @@ export default function AdminCustomers() {
             { key: "status", header: "Status", render: (c) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{c.status}</span> },
             { key: "consent", header: "Marketing", render: (c) => <span className="text-xs">Email: {c.marketingEmailConsent ? "Yes" : "No"} · SMS: {c.marketingSmsConsent ? "Yes" : "No"}</span> },
             { key: "ltv", header: "LTV / AOV", render: (c) => <span className="text-xs">{formatRand(c.lifetimeValue)} / {formatRand(c.averageOrderValue)}</span> },
-            { key: "lastOrder", header: "Last Order", render: (c) => <span className="text-xs">{c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString() : "—"}</span> },
+            { key: "lastOrder", header: "Last Order", render: (c) => <span className="text-xs">{c.lastOrderAt ? formatAdminDate(c.lastOrderAt) : "—"}</span> },
             { key: "risk", header: "Risk Signals", render: (c) => <span className="text-xs">{(c.abandonedCarts?.length ?? 0) > 0 ? "Abandoned cart" : "—"}</span> },
             { key: "actions", header: "", render: (c) => <Link to={`/admin/customers/${c.id}`} className="text-xs text-blue-600 hover:underline">Open CRM</Link> },
           ]}

@@ -78,7 +78,7 @@ export function mergeEmailRenderData(
       ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName ?? "Store logo")}" style="display:block;max-width:180px;max-height:72px;width:auto;height:auto;margin:0 auto 10px auto;" />`
       : "",
     footerLinksMarkup: links.length
-      ? `<br />${links.map((link) => `<a href="${escapeHtml(link.url.trim())}" style="color:${escapeHtml(footerText)};text-decoration:underline;">${escapeHtml(link.label.trim())}</a>`).join(" · ")}`
+      ? `<br />${links.map((link) => `<a href="${escapeHtml(link.url.trim())}" style="color:${escapeHtml(footerText)};text-decoration:underline;">${lockedText(escapeHtml(link.label.trim()), escapeHtml(footerText))}</a>`).join(" · ")}`
       : "",
   };
 }
@@ -209,7 +209,13 @@ function decorateGeneratedShell(html: string): string {
   decorated = lockClassContent(decorated, "td", "db-email-heading", "{{headingColor}}", "inline-block");
   decorated = lockClassContent(decorated, "td", "db-email-content", "{{bodyTextColor}}", "inline-block");
   decorated = lockClassContent(decorated, "a", "db-email-button", "{{buttonTextColor}}", "inline-block");
-  decorated = decorated.replace(/(<a\b[^>]*href="(?:mailto:{{supportEmail}}|{{siteUrl}})"[^>]*>)([\s\S]*?)(<\/a>)/gi, (_section, opening: string, content: string, closing: string) => `${opening}${lockedText(content, "{{footerText}}")}${closing}`);
+  decorated = decorated.replace(/(<td\b(?=[^>]*class="[^"]*\bdb-email-footer\b)[^>]*>)([\s\S]*?)(<\/td>)/i, (_section, opening: string, content: string, closing: string) => {
+    const protectedLinks = content.replace(/(<a\b[^>]*>)([\s\S]*?)(<\/a>)/gi, (_link, linkOpening: string, label: string, linkClosing: string) => {
+      if (label.includes('class="db-email-text-lock"')) return `${linkOpening}${label}${linkClosing}`;
+      return `${linkOpening}${lockedText(label, "{{footerText}}")}${linkClosing}`;
+    });
+    return `${opening}${protectedLinks}${closing}`;
+  });
   return decorated;
 }
 

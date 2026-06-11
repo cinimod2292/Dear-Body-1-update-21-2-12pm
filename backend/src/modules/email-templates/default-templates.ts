@@ -132,7 +132,7 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       ctaLabel: "Track Package",
       ctaUrl: "{{trackingUrl}}",
     }),
-    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl"],
+    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "order_delivered",

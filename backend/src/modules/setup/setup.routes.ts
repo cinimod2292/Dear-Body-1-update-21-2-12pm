@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { FastifyInstance } from "fastify";
 import { env } from "../../config/env.js";
 import { runInitialSetup, SetupExecutionError } from "./setup.service.js";
@@ -8,8 +9,16 @@ const SETUP_TOKEN_HEADER = "x-setup-token";
 
 let setupCompleted = false;
 
+function safeTokenEqual(provided: string, expected: string): boolean {
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 export async function setupRoutes(app: FastifyInstance) {
-  app.post(SETUP_ROUTE_PATH, async (request, reply) => {
+  app.post(SETUP_ROUTE_PATH, { config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async (request, reply) => {
     if (!env.SETUP_TOKEN) {
       return reply.status(503).send({
         success: false,
@@ -20,7 +29,8 @@ export async function setupRoutes(app: FastifyInstance) {
     const rawToken = request.headers[SETUP_TOKEN_HEADER];
     const providedToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
 
-    if (providedToken !== env.SETUP_TOKEN) {
+    if (!providedToken || !safeTokenEqual(providedToken, env.SETUP_TOKEN)) {
+      request.log.warn({ ip: request.ip }, "Setup token validation failed");
       return reply.status(401).send({
         success: false,
         error: "Invalid setup token",

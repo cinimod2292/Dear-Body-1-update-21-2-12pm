@@ -77,6 +77,10 @@ type QuoteTotals = {
 };
 type PaymentGatewayOption = { id: "stitch" | "payfast"; label: string };
 
+function formatLockerAddress(locker: { address?: string; city?: string; postalCode?: string }): string {
+  return [locker.address, locker.city, locker.postalCode].map((p) => (p || "").trim()).filter(Boolean).join(", ");
+}
+
 function normalizeCountry(value: string | null | undefined): string {
   if (!value) return "";
   const raw = value.trim();
@@ -234,7 +238,7 @@ export default function Checkout() {
       setSelectedPudoLocker({
         lockerCode: o.pudoLockerCode || "",
         name: o.pudoLockerName || o.pudoLockerCode || "",
-        address: "",
+        address: o.pudoLockerAddress || "",
         city: "",
       });
     } else if (o.pudoDeliveryType === "door") {
@@ -270,37 +274,27 @@ export default function Checkout() {
   }, [returnOrderId, token, finalizeSuccessfulCheckout]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/store/shipping-methods`)
-      .then((r) => r.json())
-      .then((payload) => {
-        setShippingMethods((payload?.data || []) as StoreShippingMethod[]);
-        setShippingMethodsLoaded(true);
-      })
-      .catch(() => setShippingMethodsLoaded(true));
-  }, []);
+    Promise.all([
+      fetch(`${API_BASE}/store/shipping-methods`).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/store/payments/gateways`).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/store/pudo/config`).then((r) => r.json()).catch(() => null),
+    ]).then(([shippingPayload, gatewayPayload, pudoPayload]) => {
+      setShippingMethods((shippingPayload?.data || []) as StoreShippingMethod[]);
+      setShippingMethodsLoaded(true);
 
-  useEffect(() => {
-    fetch(`${API_BASE}/store/payments/gateways`)
-      .then((r) => r.json())
-      .then((payload) => {
-        const options = (payload?.data?.enabledGateways || []) as PaymentGatewayOption[];
-        setGatewayOptions(options);
-        if (!options.length) return;
-        const preferred = payload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
+      const options = (gatewayPayload?.data?.enabledGateways || []) as PaymentGatewayOption[];
+      setGatewayOptions(options);
+      if (options.length) {
+        const preferred = gatewayPayload?.data?.preferredGateway as "stitch" | "payfast" | undefined;
         setSelectedGateway((current) => current || preferred || options[0].id);
-      })
-      .catch(() => undefined);
-  }, []);
+      }
 
-  useEffect(() => {
-    fetch(`${API_BASE}/store/pudo/config`)
-      .then((r) => r.json())
-      .then((payload) => {
-        setPudoEnabled(Boolean(payload?.data?.enabled));
-        setPudoAllowCustomerSelection(Boolean(payload?.data?.allowCustomerLockerSelection));
-        setPudoDoorDeliveryEnabled(Boolean(payload?.data?.doorDeliveryEnabled));
-      })
-      .catch(() => undefined);
+      if (pudoPayload) {
+        setPudoEnabled(Boolean(pudoPayload?.data?.enabled));
+        setPudoAllowCustomerSelection(Boolean(pudoPayload?.data?.allowCustomerLockerSelection));
+        setPudoDoorDeliveryEnabled(Boolean(pudoPayload?.data?.doorDeliveryEnabled));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -560,6 +554,7 @@ export default function Checkout() {
           },
           pudoLockerCode: isPudoLocker ? selectedPudoLocker!.lockerCode : undefined,
           pudoLockerName: isPudoLocker ? selectedPudoLocker!.name : undefined,
+          pudoLockerAddress: isPudoLocker ? (formatLockerAddress(selectedPudoLocker!) || undefined) : undefined,
           pudoDeliveryType: isPudo ? (isPudoLocker ? "locker" : "door") : undefined,
           pudoShippingAmount: isPudo && pudoPrice !== null ? pudoPrice : undefined,
           payment: {
@@ -792,7 +787,7 @@ export default function Checkout() {
                     { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },
                     { key: "lastName", label: "Last Name", placeholder: "Doe", type: "text" },
                     { key: "email", label: "Email Address", placeholder: "jane@example.com", type: "email", full: true },
-                    { key: "phone", label: "Phone Number", placeholder: "+1 (555) 000-0000", type: "tel" },
+                    { key: "phone", label: "Phone Number", placeholder: "+27 82 000 0000", type: "tel" },
                   ].map(field => (
                     <div key={field.key} className={field.full ? "sm:col-span-2" : ""}>
                       <label className="block text-sm font-bold text-gray-700 mb-1.5">{field.label}</label>

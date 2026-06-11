@@ -344,7 +344,7 @@ async function sendOrderCreatedEmail(orderId: string) {
 
 async function sendAdminNewOrderEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
-  const adminEmail = process.env.ADMIN_EMAIL ?? env.EMAIL_FROM;
+  const adminEmail = env.ADMIN_EMAIL ?? env.EMAIL_FROM;
   if (!adminEmail || !order) return;
   const template = await resolveTemplateByKey("admin_new_order_notification", {
     orderNumber: order.orderNumber,
@@ -364,9 +364,7 @@ export async function sendOrderCreatedEmailSafe(orderId: string) {
 async function sendReadyForCollectionEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email) return;
-  const collectionDetails = order.shippingAddress
-    ? `Please bring your order confirmation when collecting.`
-    : `Please bring your order confirmation when collecting.`;
+  const collectionDetails = `Please bring your order confirmation when collecting.`;
   const template = await resolveTemplateByKey("ready_for_collection", {
     orderNumber: order.orderNumber,
     collectionDetails,
@@ -502,6 +500,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         collectionAddress: collectionAddress ?? undefined,
         pudoLockerCode: body.pudoLockerCode ?? null,
         pudoLockerName: body.pudoLockerName ?? null,
+        pudoLockerAddress: body.pudoLockerAddress ?? null,
         pudoDeliveryType: body.pudoDeliveryType ?? null,
         subtotalAmount: cart.subtotalAmount,
         discountAmount: cart.discountAmount,
@@ -757,6 +756,7 @@ export async function getStoreOrderById(orderId: string) {
     courier: order.courier,
     pudoLockerCode: order.pudoLockerCode,
     pudoLockerName: order.pudoLockerName,
+    pudoLockerAddress: order.pudoLockerAddress,
     pudoDeliveryType: order.pudoDeliveryType,
     shippedAt: order.shippedAt,
     deliveredAt: order.deliveredAt,
@@ -799,7 +799,7 @@ export async function updateOrderStatus(orderId: string, rawBody: unknown, actor
   const updated = await prisma.order.update({ where: { id: orderId }, data: { status: body.value as any } });
   await recordOrderEvent(orderId, actorId, "ORDER_STATUS_UPDATED", order.status, updated.status, { reason: body.reason });
   if (updated.status === "READY_FOR_COLLECTION") {
-    await sendReadyForCollectionEmail(orderId).catch(() => undefined);
+    await sendReadyForCollectionEmail(orderId).catch((err) => console.warn("[email] send failed", err));
   }
   return updated;
 }
@@ -827,7 +827,7 @@ export async function updateFulfillmentStatus(orderId: string, rawBody: unknown,
   const updated = await prisma.order.update({ where: { id: orderId }, data: { fulfillmentStatus: body.value as any, trackingNumber: body.trackingNumber, courier: body.courier, shippedAt: body.shippedAt, deliveredAt: body.deliveredAt } });
   await recordOrderEvent(orderId, actorId, "FULFILLMENT_STATUS_UPDATED", order.fulfillmentStatus, updated.fulfillmentStatus, { reason: body.reason });
   if (updated.fulfillmentStatus === "FULFILLED" || updated.fulfillmentStatus === "PARTIALLY_FULFILLED") {
-    await sendShippingEmail(orderId).catch(() => undefined);
+    await sendShippingEmail(orderId).catch((err) => console.warn("[email] send failed", err));
   }
   return updated;
 }
@@ -898,7 +898,7 @@ export async function createRefund(orderId: string, rawBody: unknown, actorId?: 
       amount: `${currency} ${body.amount.toFixed(2)}`,
     }).then((template) =>
       sendEmail({ to: refundCustomerEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } })
-    ).catch(() => undefined);
+    ).catch((err) => console.warn("[email] send failed", err));
   }
 
   return refund;

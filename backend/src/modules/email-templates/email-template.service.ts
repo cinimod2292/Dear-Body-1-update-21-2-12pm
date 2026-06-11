@@ -11,32 +11,25 @@ import {
   upsertTemplateSchema,
 } from "./email-template.schemas.js";
 import { DEFAULT_EMAIL_TEMPLATES } from "./default-templates.js";
-import { mergeEmailRenderData, retainsSystemDefaultStatus } from "./email-template.render.js";
+import {
+  EmailTheme,
+  mergeEmailRenderData,
+  renderEmailHtml,
+  renderTemplateString,
+  retainsSystemDefaultStatus,
+} from "./email-template.render.js";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
 }
 
-function renderTemplateString(template: string, data: Record<string, unknown>) {
-  return template.replace(/{{\s*([\w.]+)\s*}}/g, (_match, key: string) => {
-    const value = data[key];
-    if (value === undefined || value === null) return "";
-    return String(value);
-  });
-}
-
-async function loadEmailTheme(): Promise<Record<string, string>> {
+async function loadEmailTheme(): Promise<EmailTheme> {
   const setting = await prisma.setting.findUnique({
     where: { scope_key: { scope: "email", key: "template.theme.v1" } },
   });
   if (!setting?.value || typeof setting.value !== "object") return {};
-  const v = setting.value as Record<string, unknown>;
-  const theme: Record<string, string> = {};
-  for (const [k, val] of Object.entries(v)) {
-    if (typeof val === "string") theme[k] = val;
-  }
-  return theme;
+  return setting.value as EmailTheme;
 }
 
 async function buildRenderData(sampleData: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -256,7 +249,7 @@ async function buildResolvedTemplate(template: EmailTemplate, sampleData: Record
     name: template.name,
     category: template.category,
     subject: renderTemplateString(template.subject, mergedData),
-    htmlBody: renderTemplateString(template.htmlBody, mergedData),
+    htmlBody: renderEmailHtml(template.htmlBody, mergedData),
     textBody: template.textBody ? renderTemplateString(template.textBody, mergedData) : template.textBody,
     placeholderKeys: asStringArray(template.placeholderKeys),
     isEnabled: template.isEnabled,
@@ -295,7 +288,7 @@ export async function resolveTemplateByKey(key: string, sampleData: Record<strin
     name: dbRecord?.name ?? sourceTemplate?.name ?? key,
     category: dbRecord?.category ?? sourceTemplate?.category ?? ("SYSTEM" as EmailTemplateCategory),
     subject: renderTemplateString(subject, mergedData),
-    htmlBody: renderTemplateString(html, mergedData),
+    htmlBody: renderEmailHtml(html, mergedData),
     textBody: textBody ? renderTemplateString(textBody, mergedData) : null,
     placeholderKeys,
     isEnabled: dbRecord?.isEnabled ?? true,
@@ -331,7 +324,7 @@ export async function sendTestEmailTemplate(id: string, rawBody: unknown) {
 
   const mergedData = await buildRenderData(body.sampleData);
   const htmlBody = body.htmlBody
-    ? renderTemplateString(body.htmlBody, mergedData)
+    ? renderEmailHtml(body.htmlBody, mergedData)
     : template.htmlBody;
   const subject = body.subject
     ? renderTemplateString(body.subject, mergedData)

@@ -6,6 +6,7 @@ import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { formatRand } from "../../lib/currency";
+import { formatAdminDatetime } from "../../lib/datetime";
 
 interface OrderRow {
   id: string;
@@ -81,7 +82,7 @@ export default function AdminOrders() {
         <AdminTable
           rows={orders}
           columns={[
-            { key: "num", header: "Order", render: (o) => <div><p className="font-semibold">#{o.orderNumber}</p><p className="text-xs text-gray-500">{new Date(o.placedAt).toLocaleString()}</p></div> },
+            { key: "num", header: "Order", render: (o) => <div><p className="font-semibold">#{o.orderNumber}</p><p className="text-xs text-gray-500">{formatAdminDatetime(o.placedAt)}</p></div> },
             { key: "cust", header: "Customer", render: (o) => <span className="text-xs">{o.customer?.email || "Guest"}</span> },
             { key: "status", header: "Status", render: (o) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{o.status}</span> },
             { key: "payment", header: "Payment", render: (o) => <span className="text-xs">{o.paymentStatus}</span> },

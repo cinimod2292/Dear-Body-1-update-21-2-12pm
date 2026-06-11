@@ -333,7 +333,11 @@ export default function CustomerOrderDetail() {
             <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
               <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Locker Collection</p>
               <p className="font-semibold text-indigo-900">{order.pudoLockerName || order.pudoLockerCode}</p>
-              {addr && <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>}
+              {order.pudoLockerAddress ? (
+                <p className="text-indigo-700 text-xs mt-0.5">{order.pudoLockerAddress}</p>
+              ) : addr ? (
+                <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>
+              ) : null}
             </div>
           ) : order.pudoDeliveryType === "door" ? (
             <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">

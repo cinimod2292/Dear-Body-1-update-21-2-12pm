@@ -24,6 +24,7 @@ function brandedEmailShell(input: { preheader: string; title: string; body: stri
           <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:{{contentBg}};border-radius:16px;overflow:hidden;border:1px solid #f1f5f9;">
             <tr>
               <td style="padding:18px 24px;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});text-align:center;">
+                {{logoMarkup}}
                 <div style="font-size:20px;font-weight:800;letter-spacing:.3px;color:#ffffff;">{{brandName}}</div>
               </td>
             </tr>
@@ -37,7 +38,7 @@ function brandedEmailShell(input: { preheader: string; title: string; body: stri
             <tr>
               <td style="padding:22px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">
                 Need help? Email <a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a><br />
-                <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}
+                <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a> · © {{companyName}}{{footerLinksMarkup}}
               </td>
             </tr>
           </table>

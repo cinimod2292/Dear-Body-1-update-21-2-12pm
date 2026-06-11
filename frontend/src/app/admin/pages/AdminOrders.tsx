@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { Link } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -30,6 +32,9 @@ export default function AdminOrders() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [paymentStatus, setPaymentStatus] = useState("ALL");
+  const [dangerOpen, setDangerOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const params = useMemo(() => {
     const sp = new URLSearchParams({ page: String(page), perPage: "20", sortBy: "placedAt", sortDir: "desc" });
@@ -55,6 +60,29 @@ export default function AdminOrders() {
   };
 
   useEffect(() => { load(); }, [session?.accessToken, params]);
+
+  const deleteAllOrders = async () => {
+    if (!session?.accessToken || confirmation !== "DELETE ALL ORDERS") return;
+    try {
+      setDeleting(true);
+      const response = await apiRequest<{ data: { deletedOrders: number; restoredUnits: number; affectedVariants: number } }>(
+        "/admin/orders",
+        { method: "DELETE", body: JSON.stringify({ confirmation }) },
+        session.accessToken,
+      );
+      toast.success(
+        `Deleted ${response.data.deletedOrders} orders and restored ${response.data.restoredUnits} stock units.`,
+      );
+      setDangerOpen(false);
+      setConfirmation("");
+      setPage(1);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete orders");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <LoadingState label="Loading orders..." />;
   if (error) return <ErrorState message={error} onRetry={load} />;
@@ -94,6 +122,83 @@ export default function AdminOrders() {
       )}
 
       <AdminPagination page={page} totalPages={totalPages} onChange={setPage} />
+
+      {session?.role === "SUPER_ADMIN" && (
+        <section className="rounded-xl border border-red-200 bg-red-50/60 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                <AlertTriangle size={20} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="font-bold text-red-950">Danger zone</h3>
+                <p className="mt-1 max-w-2xl text-sm text-red-800">
+                  Permanently delete every order and add all ordered item quantities back into inventory. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDangerOpen(true)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              Delete all orders
+            </button>
+          </div>
+        </section>
+      )}
+
+      {dangerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-all-orders-title">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <AlertTriangle size={22} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 id="delete-all-orders-title" className="text-lg font-black text-gray-950">Delete all orders?</h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    All order records will be permanently removed. Ordered quantities will be restored to stock and checked-out cart reservations will be released.
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => { setDangerOpen(false); setConfirmation(""); }} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <label className="mt-6 block text-sm font-semibold text-gray-800" htmlFor="delete-orders-confirmation">
+              Type <span className="select-all font-mono text-red-700">DELETE ALL ORDERS</span> to confirm
+            </label>
+            <input
+              id="delete-orders-confirmation"
+              autoFocus
+              autoComplete="off"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              placeholder="DELETE ALL ORDERS"
+            />
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={deleting} onClick={() => { setDangerOpen(false); setConfirmation(""); }} className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmation !== "DELETE ALL ORDERS" || deleting}
+                onClick={deleteAllOrders}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                {deleting ? "Deleting and restoring stock..." : "Permanently delete all orders"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

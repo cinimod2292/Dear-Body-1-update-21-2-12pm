@@ -21,6 +21,7 @@ import { resolveTemplateByKey } from "../email-templates/email-template.service.
 import { sendEmail } from "../notifications/notification.service.js";
 import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
 import { summarizeInventoryRestore } from "./order-danger-zone.js";
+import { shouldSendOrderConfirmation } from "./order-email-policy.js";
 
 const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),

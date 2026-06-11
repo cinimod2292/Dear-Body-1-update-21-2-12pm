@@ -714,6 +714,7 @@ model Order {
   courier          String?
   pudoLockerCode      String?
   pudoLockerName      String?
+  pudoLockerAddress   String?
   pudoDeliveryType    String?
   pudoTrackingStatus  String?
   shippedAt           DateTime?

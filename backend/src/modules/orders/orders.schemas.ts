@@ -54,6 +54,7 @@ export const checkoutSchema = z.object({
   notes: z.string().optional(),
   pudoLockerCode: z.string().optional(),
   pudoLockerName: z.string().optional(),
+  pudoLockerAddress: z.string().optional(),
   pudoDeliveryType: z.enum(["locker", "door"]).optional(),
   pudoShippingAmount: z.coerce.number().nonnegative().optional(),
 });

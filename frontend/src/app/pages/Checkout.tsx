@@ -64,6 +64,10 @@ type QuoteTotals = {
 };
 type PaymentGatewayOption = { id: "stitch" | "payfast"; label: string };
 
+function formatLockerAddress(locker: { address?: string; city?: string; postalCode?: string }): string {
+  return [locker.address, locker.city, locker.postalCode].map((p) => (p || "").trim()).filter(Boolean).join(", ");
+}
+
 function normalizeCountry(value: string | null | undefined): string {
   if (!value) return "";
   const raw = value.trim();
@@ -203,7 +207,7 @@ export default function Checkout() {
       setSelectedPudoLocker({
         lockerCode: o.pudoLockerCode || "",
         name: o.pudoLockerName || o.pudoLockerCode || "",
-        address: "",
+        address: o.pudoLockerAddress || "",
         city: "",
       });
     } else if (o.pudoDeliveryType === "door") {
@@ -514,6 +518,7 @@ export default function Checkout() {
           },
           pudoLockerCode: isPudoLocker ? selectedPudoLocker!.lockerCode : undefined,
           pudoLockerName: isPudoLocker ? selectedPudoLocker!.name : undefined,
+          pudoLockerAddress: isPudoLocker ? (formatLockerAddress(selectedPudoLocker!) || undefined) : undefined,
           pudoDeliveryType: isPudo ? (isPudoLocker ? "locker" : "door") : undefined,
           pudoShippingAmount: isPudo && pudoPrice !== null ? pudoPrice : undefined,
           payment: {

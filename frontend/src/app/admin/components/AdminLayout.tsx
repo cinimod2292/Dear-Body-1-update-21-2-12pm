@@ -7,6 +7,7 @@ interface NavItem {
   to: string;
   label: string;
   permission: string;
+  excludedRoles?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -16,7 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/customers", label: "Customers", permission: "crm:read" },
   { to: "/admin/orders", label: "Orders", permission: "orders:read" },
   { to: "/admin/warehouse", label: "Warehouse", permission: "warehouse:read" },
-  { to: "/admin/fulfillment/collection-schedule", label: "Collection Schedule", permission: "warehouse:read" },
+  { to: "/admin/fulfillment/collection-schedule", label: "Collection Schedule", permission: "warehouse:read", excludedRoles: ["PICKER_PACKER"] },
   { to: "/admin/operations", label: "Operations", permission: "dashboard:read" },
   { to: "/admin/shipping-methods", label: "Shipping", permission: "settings:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
@@ -61,8 +62,11 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const navItems = useMemo(
-    () => NAV_ITEMS.filter((item) => hasPermission(session?.permissions ?? [], item.permission)),
-    [session?.permissions],
+    () => NAV_ITEMS.filter((item) =>
+      hasPermission(session?.permissions ?? [], item.permission)
+      && !item.excludedRoles?.includes(session?.role ?? ""),
+    ),
+    [session?.permissions, session?.role],
   );
 
   return (

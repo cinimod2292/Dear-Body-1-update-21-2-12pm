@@ -921,8 +921,12 @@ export async function getCustomerOrder(customerId: string, orderId: string) {
       shippingAddress: true,
       billingAddress: true,
       payments: { orderBy: { createdAt: "desc" } },
+      shippingMethod: { select: { id: true, name: true, type: true, collectionAddress: true } },
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
-  return order;
+  return {
+    ...order,
+    collectionAddress: asCollectionAddress(order.collectionAddress ?? order.shippingMethod?.collectionAddress),
+  };
 }

@@ -10,6 +10,7 @@ type PudoTracking = { waybillNumber: string; currentStatus: string; currentStatu
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
+  PICKING: "bg-violet-100 text-violet-700",
   PROCESSING: "bg-blue-100 text-blue-700",
   FULFILLED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
@@ -23,6 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pending",
+  PICKING: "Picking & Packing",
   PROCESSING: "Processing",
   FULFILLED: "Fulfilled",
   CANCELLED: "Cancelled",

@@ -69,7 +69,7 @@ export default function AdminOrders() {
         <input className="md:col-span-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search order # or customer email" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
         <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="ALL">All order statuses</option>
-          <option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="READY_FOR_COLLECTION">Ready for Collection</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option>
+          <option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PICKING">Picking &amp; Packing</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="READY_FOR_COLLECTION">Ready for Collection</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option>
         </select>
         <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={paymentStatus} onChange={(e) => { setPaymentStatus(e.target.value); setPage(1); }}>
           <option value="ALL">All payment statuses</option>

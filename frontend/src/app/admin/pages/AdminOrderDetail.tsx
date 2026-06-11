@@ -44,6 +44,14 @@ interface OrderDetail {
   status: string;
   paymentStatus: string;
   fulfillmentStatus: string;
+  warehouseStatus?: string | null;
+  stockIssueStatus?: string | null;
+  collectionDate?: string | null;
+  collectionWindowStart?: string | null;
+  collectionWindowEnd?: string | null;
+  slaDeadline?: string | null;
+  pickedAt?: string | null;
+  packedAt?: string | null;
   trackingNumber?: string | null;
   courier?: string | null;
   pudoLockerCode?: string | null;
@@ -84,6 +92,7 @@ export default function AdminOrderDetail() {
   const [note, setNote] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
   const [verificationReference, setVerificationReference] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -243,8 +252,30 @@ export default function AdminOrderDetail() {
   const updatePayment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/payment-status`, { value: paymentValue }); } catch (err) { toast.error(err instanceof Error ? err.message : "Payment update failed"); } };
   const updateFulfillment = async (e: FormEvent) => { e.preventDefault(); try { await post(`/admin/orders/${orderId}/fulfillment-status`, { value: fulfillmentValue, trackingNumber: trackingNumber || undefined, courier: courier || undefined, shippedAt: fulfillmentValue === "FULFILLED" || fulfillmentValue === "PARTIALLY_FULFILLED" ? new Date().toISOString() : undefined, deliveredAt: fulfillmentValue === "FULFILLED" ? new Date().toISOString() : undefined }); } catch (err) { toast.error(err instanceof Error ? err.message : "Fulfillment update failed"); } };
   const addNote = async (e: FormEvent) => { e.preventDefault(); if (!note) return; try { await post(`/admin/orders/${orderId}/notes`, { note, isInternal: true }); setNote(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Note failed"); } };
-  const cancelOrder = async (e: FormEvent) => { e.preventDefault(); if (!cancelReason) return; try { await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason }); setCancelReason(""); } catch (err) { toast.error(err instanceof Error ? err.message : "Cancel failed"); } };
-  const createRefund = async (e: FormEvent) => { e.preventDefault(); const amount = Number(refundAmount); if (!amount) return; try { await post(`/admin/orders/${orderId}/refunds`, { amount, reason: "Manual refund" }); } catch (err) { toast.error(err instanceof Error ? err.message : "Refund failed"); } };
+  const cancelOrder = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!cancelReason) return;
+    if (!window.confirm(`Cancel this order? Reason: "${cancelReason}"\n\nThis cannot be undone.`)) return;
+    try {
+      await post(`/admin/orders/${orderId}/cancel`, { reason: cancelReason });
+      setCancelReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+  const createRefund = async (e: FormEvent) => {
+    e.preventDefault();
+    const amount = Number(refundAmount);
+    if (!amount) return;
+    const reason = refundReason.trim() || "Manual refund";
+    if (!window.confirm(`Issue a refund of ${formatRand(amount)}?\nReason: "${reason}"\n\nThis action cannot be undone.`)) return;
+    try {
+      await post(`/admin/orders/${orderId}/refunds`, { amount, reason });
+      setRefundReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Refund failed");
+    }
+  };
 
   const initiateGatewayPayment = async () => {
     if (!session?.accessToken || !orderId) return;
@@ -320,6 +351,31 @@ export default function AdminOrderDetail() {
         <div><p className="text-xs text-gray-400">Fulfillment</p><p className="font-semibold">{order.fulfillmentStatus}</p></div>
         <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">{formatRand(order.totalAmount)}</p></div>
         <div><p className="text-xs text-gray-400">Placed</p><p className="font-semibold">{new Date(order.placedAt).toLocaleString()}</p></div>
+        {order.warehouseStatus && (
+          <div className="md:col-span-2 bg-blue-50 rounded-lg px-3 py-2">
+            <p className="text-xs text-blue-500 font-semibold">Warehouse Status</p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              <span className="font-bold text-blue-900">{order.warehouseStatus.replace(/_/g, " ")}</span>
+              {order.stockIssueStatus && order.stockIssueStatus !== "NONE" && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-semibold">
+                  {order.stockIssueStatus.replace(/_/g, " ")}
+                </span>
+              )}
+              <Link
+                to={`/admin/warehouse/orders/${order.id}`}
+                className="text-xs text-blue-600 underline hover:text-blue-800 ml-auto"
+              >
+                Open in Warehouse →
+              </Link>
+            </div>
+            {order.collectionWindowStart && (
+              <p className="text-xs text-blue-700 mt-1">
+                Collection: {new Date(order.collectionWindowStart).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {order.collectionWindowEnd && ` – ${new Date(order.collectionWindowEnd).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit" })}`}
+              </p>
+            )}
+          </div>
+        )}
         {order.pudoLockerCode && (
           <div className="md:col-span-2 bg-indigo-50 rounded-lg px-3 py-2">
             <p className="text-xs text-indigo-500 font-semibold">Customer chose PUDO locker</p>
@@ -390,13 +446,19 @@ export default function AdminOrderDetail() {
 
         <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
           <h3 className="font-bold">Manual Actions</h3>
-          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
-          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option value="PENDING">Pending</option><option value="AUTHORIZED">Authorized</option><option value="PAID">Paid</option><option value="PARTIALLY_REFUNDED">Partially Refunded</option><option value="REFUNDED">Refunded</option><option value="FAILED">Failed</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
+          <form onSubmit={updateStatus} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={statusValue} onChange={(e) => setStatusValue(e.target.value)}><option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="READY_FOR_COLLECTION">Ready for Collection</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Status</button></form>
+          <form onSubmit={updatePayment} className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={paymentValue} onChange={(e) => setPaymentValue(e.target.value)}><option value="PENDING">Pending</option><option value="AUTHORIZED">Authorized</option><option value="PAID">Paid</option><option value="PARTIALLY_REFUNDED">Partially Refunded</option><option value="REFUNDED">Refunded</option><option value="FAILED">Failed</option><option value="CANCELLED">Cancelled</option><option value="REFUND_DUE">Refund Due</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Payment</button></form>
           <form onSubmit={updateFulfillment} className="space-y-2"><div className="flex gap-2"><select className="flex-1 rounded-lg border border-gray-200 px-2 py-2" value={fulfillmentValue} onChange={(e) => setFulfillmentValue(e.target.value)}><option>UNFULFILLED</option><option>PARTIALLY_FULFILLED</option><option>FULFILLED</option><option>RETURNED</option><option>CANCELLED</option></select><button className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Update Fulfillment</button></div><div className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Courier" value={courier} onChange={(e) => setCourier(e.target.value)} /><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Tracking number" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} /></div></form>
 
           <form onSubmit={addNote} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Internal note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Add Note</button></form>
 
-          <form onSubmit={createRefund} className="flex gap-2"><input type="number" step="0.01" className="flex-1 rounded-lg border border-gray-200 px-3 py-2" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} /><button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">Refund</button></form>
+          <form onSubmit={createRefund} className="space-y-2">
+            <div className="flex gap-2">
+              <input type="number" step="0.01" className="w-32 rounded-lg border border-gray-200 px-3 py-2" placeholder="Amount" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
+              <input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Reason (required)" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} required />
+              <button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm whitespace-nowrap">Issue Refund</button>
+            </div>
+          </form>
 
           <form onSubmit={cancelOrder} className="flex gap-2"><input className="flex-1 rounded-lg border border-gray-200 px-3 py-2" placeholder="Cancellation reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /><button className="px-3 py-2 border border-red-200 text-red-700 rounded-lg text-sm">Cancel Order</button></form>
         </section>

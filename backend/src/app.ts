@@ -26,6 +26,8 @@ import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { pudoRoutes } from "./modules/pudo/pudo.routes.js";
 import { syncPudoRates, syncPudoTrackingStatuses } from "./modules/pudo/pudo.service.js";
+import { fulfillmentRoutes } from "./modules/fulfillment/fulfillment.routes.js";
+import { notifySlaWarning } from "./modules/fulfillment/fulfillment.service.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
@@ -34,8 +36,8 @@ import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV === "production"
-      ? { transport: { target: "pino-pretty" } }
-      : true,
+      ? { level: "info" }
+      : { transport: { target: "pino-pretty" } },
   });
 
   await app.register(cors, {
@@ -60,7 +62,10 @@ export async function buildApp() {
       if (
         url === "/ping" ||
         url === `${env.API_PREFIX}/health` ||
-        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`)
+        url.startsWith(`${env.API_PREFIX}/store/cms/bootstrap`) ||
+        url.startsWith(`${env.API_PREFIX}/payments/payfast/webhook`) ||
+        url.startsWith(`${env.API_PREFIX}/payments/stitch/webhook`) ||
+        url.startsWith(`${env.API_PREFIX}/webhooks`)
       ) return;
       reply.status(503).send({
         error: {
@@ -182,16 +187,6 @@ export async function buildApp() {
 
   app.get("/ping", async (_request, reply) => reply.status(200).send({ ok: true }));
 
-  app.get("/__debug/routes", async () => {
-    const expectedAdminLoginPath = `${env.API_PREFIX}/auth/admin/login`;
-
-    return {
-      apiPrefix: env.API_PREFIX,
-      expectedAdminLoginPath,
-      routes: app.printRoutes(),
-    };
-  });
-
   app.register(async (api) => {
     await api.register(setupRoutes);
     await api.register(healthRoutes);
@@ -211,6 +206,7 @@ export async function buildApp() {
     await api.register(cmsRoutes);
     await api.register(opsRoutes);
     await api.register(pudoRoutes);
+    await api.register(fulfillmentRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
   }, { prefix: env.API_PREFIX });
@@ -231,6 +227,28 @@ export async function buildApp() {
     });
   }, 30 * 60_000);
   pudoTrackingInterval.unref();
+
+  // SLA warning check every 15 minutes
+  const slaCheckInterval = setInterval(async () => {
+    try {
+      const { prisma: db } = await import("./lib/prisma.js");
+      const now = new Date();
+      const warningCutoff = new Date(now.getTime() + 90 * 60 * 1000); // warn at 90 min before deadline
+      const urgentOrders = await db.order.findMany({
+        where: {
+          warehouseStatus: { notIn: ["AWAITING_COLLECTION", "EXCEPTION"] as any },
+          slaDeadline: { lte: warningCutoff, gte: now },
+        },
+        select: { id: true },
+      });
+      for (const { id } of urgentOrders) {
+        notifySlaWarning(id).catch(() => undefined);
+      }
+    } catch (err) {
+      app.log.warn({ err }, "SLA warning check failed");
+    }
+  }, 15 * 60_000);
+  slaCheckInterval.unref();
 
   // Daily 4am UTC rate sync (= 6am SAST)
   function scheduleNextRateSync() {

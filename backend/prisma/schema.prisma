@@ -13,6 +13,7 @@ enum StaffRole {
   CONTENT_EDITOR
   SUPPORT_AGENT
   ANALYST
+  WAREHOUSE_OPERATOR
 }
 
 enum StaffStatus {
@@ -106,6 +107,7 @@ enum OrderStatus {
   PROCESSING
   SHIPPED
   DELIVERED
+  READY_FOR_COLLECTION
   CANCELLED
   PAYMENT_FAILED
 }
@@ -115,6 +117,8 @@ enum PaymentStatus {
   AWAITING_PAYMENT
   PAID
   FAILED
+  CANCELLED
+  REFUND_DUE
 }
 
 enum FulfillmentStatus {
@@ -123,6 +127,29 @@ enum FulfillmentStatus {
   FULFILLED
   RETURNED
   CANCELLED
+}
+
+enum WarehouseStatus {
+  PENDING_PICK
+  PICKING
+  PICKED
+  PACKING
+  PACKED
+  AWAITING_COLLECTION
+  EXCEPTION
+}
+
+enum StockIssueStatus {
+  NONE
+  PARTIAL_STOCK
+  OUT_OF_STOCK
+  DAMAGED
+}
+
+enum PickItemStatus {
+  PENDING
+  PICKED
+  ISSUE
 }
 
 enum RefundStatus {
@@ -177,6 +204,8 @@ model StaffUser {
   orderEvents    OrderEvent[]
   refunds        Refund[]
   cancellations  OrderCancellation[]
+  ordersPickedBy Order[]            @relation("OrderPickedBy")
+  ordersPackedBy Order[]            @relation("OrderPackedBy")
 }
 
 model RefreshToken {
@@ -615,6 +644,8 @@ model ShippingMethod {
   stateCode      String?
   minDeliveryDays Int?
   maxDeliveryDays Int?
+  type           String   @default("DELIVERY")
+  collectionAddress Json?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -724,6 +755,7 @@ model Order {
   shippingMethodId String?
   shippingAddressId String?
   billingAddressId  String?
+  collectionAddress Json?
   subtotalAmount   Decimal           @db.Decimal(12, 2)
   discountAmount   Decimal           @default(0) @db.Decimal(12, 2)
   taxAmount        Decimal           @default(0) @db.Decimal(12, 2)
@@ -732,6 +764,18 @@ model Order {
   placedAt         DateTime          @default(now())
   cancelledAt      DateTime?
   refundedAt       DateTime?
+  warehouseStatus  WarehouseStatus?
+  stockIssueStatus StockIssueStatus   @default(NONE)
+  pickedById       String?
+  packedById       String?
+  pickedAt         DateTime?
+  packedAt         DateTime?
+  pickingStartedAt DateTime?
+  collectionDate   DateTime?
+  collectionWindowStart DateTime?
+  collectionWindowEnd   DateTime?
+  slaDeadline      DateTime?
+  warehouseNotes   String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   cart             Cart?             @relation(fields: [cartId], references: [id], onDelete: SetNull)
@@ -740,6 +784,8 @@ model Order {
   shippingMethod   ShippingMethod?   @relation(fields: [shippingMethodId], references: [id], onDelete: SetNull)
   shippingAddress  Address?          @relation("OrderShippingAddress", fields: [shippingAddressId], references: [id], onDelete: SetNull)
   billingAddress   Address?          @relation("OrderBillingAddress", fields: [billingAddressId], references: [id], onDelete: SetNull)
+  pickedBy         StaffUser?        @relation("OrderPickedBy", fields: [pickedById], references: [id], onDelete: SetNull)
+  packedBy         StaffUser?        @relation("OrderPackedBy", fields: [packedById], references: [id], onDelete: SetNull)
   items            OrderItem[]
   notes            OrderNote[]
   events           OrderEvent[]
@@ -747,9 +793,11 @@ model Order {
   paymentEvents    PaymentEventLog[]
   refunds          Refund[]
   cancellation     OrderCancellation?
+  pickTaskItems    PickTaskItem[]
 
   @@index([customerId, placedAt])
   @@index([status, paymentStatus, fulfillmentStatus])
+  @@index([warehouseStatus])
 }
 
 model OrderItem {
@@ -766,7 +814,25 @@ model OrderItem {
   lineTotal        Decimal   @db.Decimal(12, 2)
   metadata         Json?
   order            Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pickTaskItems    PickTaskItem[]
 
+  @@index([orderId])
+}
+
+model PickTaskItem {
+  id           String           @id @default(cuid())
+  orderId      String
+  orderItemId  String
+  status       PickItemStatus   @default(PENDING)
+  issueType    StockIssueStatus @default(NONE)
+  issueNotes   String?
+  pickedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  order        Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem    OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, orderItemId])
   @@index([orderId])
 }
 

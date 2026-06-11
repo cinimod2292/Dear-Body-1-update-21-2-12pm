@@ -29,6 +29,23 @@ async function getShippingRules() {
   return shippingRulesSchema.parse(existing?.value ?? {});
 }
 
+type CollectionAddress = {
+  line1: string;
+  line2?: string | null;
+  suburb?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode: string;
+  country: string;
+};
+
+function asCollectionAddress(value: unknown): CollectionAddress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const address = value as Record<string, unknown>;
+  if (typeof address.line1 !== "string" || typeof address.city !== "string" || typeof address.postalCode !== "string" || typeof address.country !== "string") return null;
+  return address as CollectionAddress;
+}
+
 function isShippingMethodApplicable(method: { isActive: boolean }) {
   return method.isActive;
 }
@@ -97,7 +114,11 @@ async function recalcCart(cartId: string) {
     shippingMethod: cart.shippingMethod
       ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
       : null,
-    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+    destination: cart.shippingMethod?.type === "COLLECTION"
+      ? asCollectionAddress(cart.shippingMethod.collectionAddress)
+      : cart.shippingAddress
+        ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state }
+        : null,
   });
   if (cart.shippingMethodId && !pricing.shippingMethodValid) {
     console.info("[shipping] invalid shipping method cleared from cart", { cartId, shippingMethodId: cart.shippingMethodId });
@@ -189,7 +210,7 @@ export async function listStoreShippingMethods() {
   return prisma.shippingMethod.findMany({
     where: { isActive: true },
     orderBy: { price: "asc" },
-    select: { id: true, name: true, price: true, description: true },
+    select: { id: true, name: true, price: true, description: true, type: true, collectionAddress: true },
   });
 }
 
@@ -212,7 +233,11 @@ export async function quoteCart(rawBody: unknown) {
   const pricing = await calculatePricing({
     items: resolvedItems,
     shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price) } : null,
-    destination: body.shippingAddress ? { country: body.shippingAddress.country, state: body.shippingAddress.state } : null,
+    destination: shippingMethod?.type === "COLLECTION"
+      ? asCollectionAddress(shippingMethod.collectionAddress)
+      : body.shippingAddress
+        ? { country: body.shippingAddress.country, state: body.shippingAddress.state }
+        : null,
   });
   const methods = await listStoreShippingMethodsForDestination(body.shippingAddress?.country, body.shippingAddress?.state);
   return {
@@ -319,7 +344,7 @@ async function sendOrderCreatedEmail(orderId: string) {
 
 async function sendAdminNewOrderEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
-  const adminEmail = process.env.ADMIN_EMAIL ?? env.EMAIL_FROM;
+  const adminEmail = env.ADMIN_EMAIL ?? env.EMAIL_FROM;
   if (!adminEmail || !order) return;
   const template = await resolveTemplateByKey("admin_new_order_notification", {
     orderNumber: order.orderNumber,
@@ -334,6 +359,17 @@ export async function sendOrderCreatedEmailSafe(orderId: string) {
     sendOrderCreatedEmail(orderId),
     sendAdminNewOrderEmail(orderId),
   ]);
+}
+
+async function sendReadyForCollectionEmail(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
+  if (!order?.customer?.email) return;
+  const collectionDetails = `Please bring your order confirmation when collecting.`;
+  const template = await resolveTemplateByKey("ready_for_collection", {
+    orderNumber: order.orderNumber,
+    collectionDetails,
+  });
+  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
 async function sendShippingEmail(orderId: string) {
@@ -363,11 +399,20 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   if (existingCart.status !== "ACTIVE") throw new AppError(400, "Cart is not active", "CART_NOT_ACTIVE");
   if (existingCart.items.length === 0) throw new AppError(400, "Cart is empty", "CART_EMPTY");
 
+  const selectedShippingMethod = body.shippingMethodId
+    ? await prisma.shippingMethod.findFirst({ where: { id: body.shippingMethodId, isActive: true } })
+    : null;
+  const isCollection = selectedShippingMethod?.type === "COLLECTION";
+  const collectionAddress = isCollection ? asCollectionAddress(selectedShippingMethod.collectionAddress) : null;
+  if (isCollection && !collectionAddress) {
+    throw new AppError(400, "This collection method does not have a valid collection address", "COLLECTION_ADDRESS_REQUIRED");
+  }
+
   const isLockerDelivery = body.pudoDeliveryType === "locker";
-  if (!isLockerDelivery && !body.shippingAddress) {
+  if (!isLockerDelivery && !isCollection && !body.shippingAddress) {
     throw new AppError(400, "Shipping address is required", "SHIPPING_ADDRESS_REQUIRED");
   }
-  const shippingAddress = body.shippingAddress
+  const shippingAddress = !isCollection && body.shippingAddress
     ? await prisma.address.create({ data: body.shippingAddress })
     : null;
   const billingAddress = body.billingAddress
@@ -381,7 +426,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   await prisma.cart.update({
     where: { id: cartId },
     data: {
-      ...(shippingAddress ? { shippingAddressId: shippingAddress.id } : {}),
+      shippingAddressId: isCollection ? null : shippingAddress?.id ?? existingCart.shippingAddressId,
       shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
     },
   });
@@ -394,7 +439,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
     shippingMethod: cart.shippingMethod
       ? { id: cart.shippingMethod.id, isActive: cart.shippingMethod.isActive, price: Number(cart.shippingMethod.price) }
       : null,
-    destination: cart.shippingAddress ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state } : null,
+    destination: isCollection
+      ? collectionAddress
+      : cart.shippingAddress
+        ? { country: cart.shippingAddress.country, state: cart.shippingAddress.state }
+        : null,
   });
   const isPudoShipping = typeof body.pudoShippingAmount === "number";
   if (!checkoutPricing.freeShippingApplied && !cart.shippingMethodId && !isPudoShipping) {
@@ -448,6 +497,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         shippingMethodId: cart.shippingMethodId,
         shippingAddressId: shippingAddress?.id ?? null,
         billingAddressId: billingAddress?.id ?? null,
+        collectionAddress: collectionAddress ?? undefined,
         pudoLockerCode: body.pudoLockerCode ?? null,
         pudoLockerName: body.pudoLockerName ?? null,
         pudoDeliveryType: body.pudoDeliveryType ?? null,
@@ -683,6 +733,7 @@ export async function getStoreOrderById(orderId: string) {
       items: true,
       payments: { orderBy: { createdAt: "desc" } },
       shippingAddress: true,
+      shippingMethod: true,
     },
   });
   if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
@@ -710,6 +761,10 @@ export async function getStoreOrderById(orderId: string) {
     currency: order.currency,
     totalAmount: order.totalAmount,
     createdAt: order.createdAt,
+    shippingMethod: order.shippingMethod
+      ? { id: order.shippingMethod.id, name: order.shippingMethod.name, type: order.shippingMethod.type }
+      : null,
+    collectionAddress: asCollectionAddress(order.collectionAddress),
     shippingAddress: order.shippingAddress
       ? {
           firstName: order.shippingAddress.firstName,
@@ -741,6 +796,9 @@ export async function updateOrderStatus(orderId: string, rawBody: unknown, actor
   const order = await getOrder(orderId);
   const updated = await prisma.order.update({ where: { id: orderId }, data: { status: body.value as any } });
   await recordOrderEvent(orderId, actorId, "ORDER_STATUS_UPDATED", order.status, updated.status, { reason: body.reason });
+  if (updated.status === "READY_FOR_COLLECTION") {
+    await sendReadyForCollectionEmail(orderId).catch(() => undefined);
+  }
   return updated;
 }
 
@@ -785,8 +843,9 @@ export async function cancelOrder(orderId: string, rawBody: unknown, actorId?: s
   const order = await getOrder(orderId);
   if (order.status === "CANCELLED") throw new AppError(400, "Order already cancelled", "ORDER_ALREADY_CANCELLED");
 
+  const cancelPaymentStatus = order.paymentStatus === "PAID" ? "REFUND_DUE" : "CANCELLED";
   const updated = await prisma.$transaction(async (tx) => {
-    const next = await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", fulfillmentStatus: "CANCELLED", cancelledAt: new Date() } });
+    const next = await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", fulfillmentStatus: "CANCELLED", paymentStatus: cancelPaymentStatus as any, cancelledAt: new Date() } });
     await tx.orderCancellation.upsert({ where: { orderId }, update: { reason: body.reason, cancelledById: actorId }, create: { orderId, reason: body.reason, cancelledById: actorId } });
     return next;
   });

@@ -1,5 +1,5 @@
-import { lazy } from "react";
 import { createBrowserRouter, redirect } from "react-router";
+import { lazyWithRetry as lazy } from "./lib/lazy-with-retry";
 
 const Root = lazy(() => import("./components/Root").then((mod) => ({ default: mod.Root })));
 const Home = lazy(() => import("./pages/Home"));
@@ -45,6 +45,9 @@ const AdminStaffUsers = lazy(() => import("./admin/pages/AdminStaffUsers"));
 const AdminPudoTest = lazy(() => import("./admin/pages/AdminPudoTest"));
 const AdminPudoShipments = lazy(() => import("./admin/pages/AdminPudoShipments"));
 const AdminPudoRates = lazy(() => import("./admin/pages/AdminPudoRates"));
+const AdminWarehouseDashboard = lazy(() => import("./admin/pages/AdminWarehouseDashboard"));
+const AdminPickOrder = lazy(() => import("./admin/pages/AdminPickOrder"));
+const AdminCollectionSchedule = lazy(() => import("./admin/pages/AdminCollectionSchedule"));
 
 export const router = createBrowserRouter([
   {
@@ -137,6 +140,9 @@ export const router = createBrowserRouter([
           { path: "pudo-test", Component: AdminPudoTest },
           { path: "pudo-shipments", Component: AdminPudoShipments },
           { path: "pudo-rates", Component: AdminPudoRates },
+          { path: "warehouse", Component: AdminWarehouseDashboard },
+          { path: "warehouse/orders/:orderId", Component: AdminPickOrder },
+          { path: "fulfillment/collection-schedule", Component: AdminCollectionSchedule },
         ],
       },
     ],

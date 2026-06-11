@@ -229,10 +229,10 @@ export async function registerCustomer(input: { email: string; password: string;
 
   resolveTemplateByKey("welcome_email", {
     firstName: customer.firstName ?? "there",
-    siteUrl: process.env.STOREFRONT_URL ?? "",
+    siteUrl: env.STOREFRONT_URL ?? "",
   }).then((template) =>
     sendEmail({ to: customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, customerId: customer.id } })
-  ).catch(() => undefined);
+  ).catch((err) => app.log.warn({ err, customerId: customer.id }, "Welcome email failed to send"));
 
   return tokens;
 }

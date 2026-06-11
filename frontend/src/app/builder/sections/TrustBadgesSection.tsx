@@ -1,5 +1,4 @@
-import type { ComponentType } from "react";
-import { Award, CreditCard, Lock, Package, RefreshCcw, ShieldCheck, Star, Zap } from "lucide-react";
+import { Award, CreditCard, Lock, Package, RefreshCcw, ShieldCheck, Star, Zap, type LucideIcon } from "lucide-react";
 
 export type TrustBadgeIconName =
   | "lock"
@@ -29,7 +28,7 @@ const TRUST_ICON_MAP = {
   award: Award,
   star: Star,
   shield: ShieldCheck,
-} satisfies Record<TrustBadgeIconName, ComponentType<{ size?: number; className?: string }>>;
+} satisfies Record<TrustBadgeIconName, LucideIcon>;
 
 export function TrustBadgesSection(props: TrustBadgesProps) {
   const items = Array.isArray(props.items) ? props.items : [];

@@ -6,6 +6,7 @@ import { AdminPagination } from "../components/AdminPagination";
 import { AdminTable } from "../components/AdminTable";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { formatRand } from "../../lib/currency";
+import { formatAdminDatetime } from "../../lib/datetime";
 
 interface OrderRow {
   id: string;
@@ -69,11 +70,11 @@ export default function AdminOrders() {
         <input className="md:col-span-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Search order # or customer email" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
         <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="ALL">All order statuses</option>
-          <option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option>
+          <option value="PLACED">Placed</option><option value="CONFIRMED">Confirmed</option><option value="PROCESSING">Processing</option><option value="SHIPPED">Shipped</option><option value="DELIVERED">Delivered</option><option value="READY_FOR_COLLECTION">Ready for Collection</option><option value="CANCELLED">Cancelled</option><option value="REFUNDED">Refunded</option>
         </select>
         <select className="rounded-lg border border-gray-200 px-3 py-2 text-sm" value={paymentStatus} onChange={(e) => { setPaymentStatus(e.target.value); setPage(1); }}>
           <option value="ALL">All payment statuses</option>
-          <option value="PENDING">Pending</option><option value="AUTHORIZED">Authorized</option><option value="PAID">Paid</option><option value="PARTIALLY_REFUNDED">Partially refunded</option><option value="REFUNDED">Refunded</option><option value="FAILED">Failed</option>
+          <option value="PENDING">Pending</option><option value="AUTHORIZED">Authorized</option><option value="PAID">Paid</option><option value="PARTIALLY_REFUNDED">Partially refunded</option><option value="REFUNDED">Refunded</option><option value="FAILED">Failed</option><option value="CANCELLED">Cancelled</option><option value="REFUND_DUE">Refund Due</option>
         </select>
       </div>
 
@@ -81,7 +82,7 @@ export default function AdminOrders() {
         <AdminTable
           rows={orders}
           columns={[
-            { key: "num", header: "Order", render: (o) => <div><p className="font-semibold">#{o.orderNumber}</p><p className="text-xs text-gray-500">{new Date(o.placedAt).toLocaleString()}</p></div> },
+            { key: "num", header: "Order", render: (o) => <div><p className="font-semibold">#{o.orderNumber}</p><p className="text-xs text-gray-500">{formatAdminDatetime(o.placedAt)}</p></div> },
             { key: "cust", header: "Customer", render: (o) => <span className="text-xs">{o.customer?.email || "Guest"}</span> },
             { key: "status", header: "Status", render: (o) => <span className="text-xs px-2 py-1 rounded-full bg-gray-100">{o.status}</span> },
             { key: "payment", header: "Payment", render: (o) => <span className="text-xs">{o.paymentStatus}</span> },

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { apiRequest } from "../api/client";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
+import { formatAdminDatetime } from "../../lib/datetime";
 import { formatRand } from "../../lib/currency";
 
 interface RecentOrder {
@@ -125,7 +126,7 @@ export default function AdminDashboard() {
               <div key={order.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50">
                 <div>
                   <Link to={`/admin/orders/${order.id}`} className="font-semibold text-sm hover:text-pink-600">#{order.orderNumber}</Link>
-                  <p className="text-xs text-gray-500">{order.customer?.email || "Guest"} · {new Date(order.placedAt).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">{order.customer?.email || "Guest"} · {formatAdminDatetime(order.placedAt)}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[order.status] ?? "bg-gray-100 text-gray-700"}`}>{order.status}</span>

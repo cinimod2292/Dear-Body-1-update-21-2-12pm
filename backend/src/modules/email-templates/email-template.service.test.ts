@@ -59,7 +59,7 @@ test("theme rendering includes configured logo and footer links", () => {
 
   assert.match(String(rendered.logoMarkup), /src="https:\/\/cdn\.example\/logo\.png\?size=1&amp;dark=true"/);
   assert.match(String(rendered.logoMarkup), /alt="Portal &amp; Co"/);
-  assert.match(String(rendered.footerLinksMarkup), />Instagram<\/a>/);
+  assert.match(String(rendered.footerLinksMarkup), />Instagram<\/span><\/a>/);
   assert.doesNotMatch(String(rendered.footerLinksMarkup), /ignored/);
 });
 
@@ -162,5 +162,146 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /class="db-email-content"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /class="db-email-cta-row"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /background-image:linear-gradient\(#ffffff,#ffffff\) !important/);
-  assert.match(rendered, /<strong style="color:#374151 !important;-webkit-text-fill-color:#374151 !important;">Items:/);
+  assert.match(rendered, /class="db-email-content"[^>]*><span class="db-email-text-lock"[^>]*background-image:linear-gradient\(#374151,#374151\)[^>]*>Hi Dominic/);
+  assert.match(rendered, /class="db-email-button"[^>]*><span class="db-email-text-lock"[^>]*background-image:linear-gradient\(#ffffff,#ffffff\)[^>]*>View Order<\/span>/);
+  assert.match(rendered, /mailto:sales@mydearbody\.co\.za[^>]*><span class="db-email-text-lock"[^>]*>sales@mydearbody\.co\.za<\/span>/);
+});
+
+test("tracking update text uses gradient-locked theme colors", async () => {
+  const { DEFAULT_EMAIL_TEMPLATES } = await import("./default-templates.js");
+  const { renderEmailHtml } = await import("./email-template.render.js");
+  const template = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === "pudo_tracking_update");
+  assert.ok(template);
+
+  const rendered = renderEmailHtml(template.htmlBody, {
+    firstName: "Dominic",
+    orderNumber: "73724619669",
+    trackingStatusLabel: "Collected from sender",
+    waybillNumber: "DLD-CMEXNT",
+    orderUrl: "https://mydearbody.co.za/account/orders/order-id",
+    siteUrl: "https://mydearbody.co.za",
+    companyName: "Dear Body",
+    brandName: "Dear Body",
+    supportEmail: "sales@mydearbody.co.za",
+    logoMarkup: '<img src="https://cdn.example/logo.png" alt="Dear Body" />',
+    footerLinksMarkup: "",
+    outerBg: "#f8fafc",
+    contentBg: "#ffffff",
+    primaryColor: "#ee5ca8",
+    accentColor: "#ff8552",
+    headingColor: "#111827",
+    bodyTextColor: "#374151",
+    buttonBg: "#111827",
+    buttonTextColor: "#ffffff",
+    footerBg: "#111827",
+    footerText: "#d1d5db",
+  });
+
+  assert.match(rendered, /background-image:linear-gradient\(#111827,#111827\)[^>]*>Collected from sender<\/span>/);
+  assert.match(rendered, /background-image:linear-gradient\(#374151,#374151\)[^>]*>Hi Dominic,[\s\S]*Waybill:/);
+  assert.match(rendered, /background-image:linear-gradient\(#ffffff,#ffffff\)[^>]*>View Order<\/span>/);
+  assert.doesNotMatch(rendered, /{{|}}/);
+});
+
+
+test("all bundled email templates pass the rendering audit", async (t) => {
+  const { DEFAULT_EMAIL_TEMPLATES } = await import("./default-templates.js");
+  const { mergeEmailRenderData, renderEmailHtml, renderTemplateString } = await import("./email-template.render.js");
+  const themeOnlyTokens = new Set([
+    "primaryColor", "accentColor", "buttonBg", "buttonTextColor", "headingColor",
+    "bodyTextColor", "contentBg", "outerBg", "footerBg", "footerText",
+    "brandName", "logoMarkup", "footerLinksMarkup",
+  ]);
+  const expectedProductionTemplates = new Set([
+    "welcome_email",
+    "password_reset",
+    "order_confirmation",
+    "admin_new_order_notification",
+    "shipping_confirmation",
+    "refund_cancellation",
+    "payment_confirmation",
+    "abandoned_cart_reminder",
+    "newsletter_signup_confirmation",
+    "contact_form_notification",
+    "pudo_tracking_update",
+    "order_ready_for_collection",
+    "warehouse_collection_ready",
+  ]);
+  const sampleData = {
+    firstName: "Dominic",
+    lastName: "Portelli",
+    customerName: "Dominic Portelli",
+    name: "Dominic Portelli",
+    email: "dominic@example.com",
+    message: "Please help with my order.",
+    orderNumber: "70060565172",
+    orderDate: "11 June 2026",
+    orderItems: "Rocking Fantasy Deodorant Atomiseur 250ml x1",
+    orderTotal: "ZAR 299.00",
+    amount: "ZAR 299.00",
+    eventType: "refunded",
+    carrier: "PUDO",
+    trackingNumber: "DLD-CMEXNT",
+    trackingUrl: "https://tracking.example.com/DLD-CMEXNT",
+    trackingStatusLabel: "Collected from sender",
+    waybillNumber: "DLD-CMEXNT",
+    orderUrl: "https://mydearbody.co.za/account/orders/order-id",
+    checkoutUrl: "https://mydearbody.co.za/checkout",
+    resetUrl: "https://mydearbody.co.za/account/reset-password?token=test",
+    verificationUrl: "https://mydearbody.co.za/account/verify?token=test",
+  };
+  const renderData = mergeEmailRenderData({
+    brandName: "Dear Body",
+    logoUrl: "https://cdn.example.com/dear-body-logo.png",
+    primaryColor: "#ee5ca8",
+    accentColor: "#ff8552",
+    buttonBg: "#111827",
+    buttonTextColor: "#ffffff",
+    headingColor: "#111827",
+    bodyTextColor: "#374151",
+    contentBg: "#ffffff",
+    outerBg: "#f8fafc",
+    footerBg: "#111827",
+    footerText: "#d1d5db",
+    supportEmail: "sales@mydearbody.co.za",
+    siteUrl: "https://mydearbody.co.za",
+    links: [{ label: "Instagram", url: "https://instagram.com/mydearbody" }],
+  }, sampleData);
+
+  assert.equal(new Set(DEFAULT_EMAIL_TEMPLATES.map((template) => template.key)).size, DEFAULT_EMAIL_TEMPLATES.length);
+  for (const key of expectedProductionTemplates) {
+    assert.ok(DEFAULT_EMAIL_TEMPLATES.some((template) => template.key === key), `Missing production template: ${key}`);
+  }
+
+  for (const template of DEFAULT_EMAIL_TEMPLATES) {
+    await t.test(template.key, () => {
+      const source = `${template.subject}\n${template.htmlBody}`;
+      const sourceTokens = [...source.matchAll(/{{\s*([\w.]+)\s*}}/g)].map((match) => match[1]);
+      const undeclaredTokens = [...new Set(sourceTokens.filter((token) => !themeOnlyTokens.has(token) && !template.placeholderKeys.includes(token)))];
+      const unusedPlaceholders = template.placeholderKeys.filter((placeholder) => !sourceTokens.includes(placeholder));
+      assert.deepEqual(undeclaredTokens, [], `Undeclared placeholders in ${template.key}`);
+      assert.deepEqual(unusedPlaceholders, [], `Unused placeholders in ${template.key}`);
+
+      const subject = renderTemplateString(template.subject, renderData);
+      const html = renderEmailHtml(template.htmlBody, renderData);
+      assert.ok(subject.trim(), `${template.key} rendered an empty subject`);
+      assert.doesNotMatch(subject, /{{|}}/, `${template.key} subject has unresolved tokens`);
+      assert.doesNotMatch(html, /{{|}}/, `${template.key} HTML has unresolved tokens`);
+      assert.doesNotMatch(html, /#[0-9a-f]{6}}}/i, `${template.key} HTML has malformed color tokens`);
+      assert.doesNotMatch(html, /href="\s*"/i, `${template.key} rendered an empty link`);
+      assert.match(html, /<head>[\s\S]*color-scheme: only light/, `${template.key} lacks dark-mode metadata`);
+      assert.match(html, /class="db-email-card"[^>]*bgcolor="#ffffff"/, `${template.key} lacks card protection`);
+      assert.match(html, /class="db-email-header"[^>]*bgcolor="#ee5ca8"/, `${template.key} lacks header protection`);
+      assert.match(html, /class="db-email-heading"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks heading text protection`);
+      assert.match(html, /class="db-email-content"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks body text protection`);
+      assert.match(html, /class="db-email-footer"[^>]*bgcolor="#111827"/, `${template.key} lacks footer protection`);
+      assert.match(html, /dear-body-logo\.png/, `${template.key} omitted the theme logo`);
+      assert.match(html, /instagram\.com\/mydearbody/, `${template.key} omitted theme footer links`);
+      assert.match(html, /instagram\.com\/mydearbody[^>]*><span class=\"db-email-text-lock\"/, `${template.key} lacks footer-link text protection`);
+
+      if (/display:inline-block/.test(template.htmlBody)) {
+        assert.match(html, /class="db-email-button"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks CTA text protection`);
+      }
+    });
+  }
 });

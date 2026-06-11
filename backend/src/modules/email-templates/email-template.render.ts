@@ -78,7 +78,7 @@ export function mergeEmailRenderData(
       ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName ?? "Store logo")}" style="display:block;max-width:180px;max-height:72px;width:auto;height:auto;margin:0 auto 10px auto;" />`
       : "",
     footerLinksMarkup: links.length
-      ? `<br />${links.map((link) => `<a href="${escapeHtml(link.url.trim())}" style="color:${escapeHtml(footerText)};text-decoration:underline;">${escapeHtml(link.label.trim())}</a>`).join(" · ")}`
+      ? `<br />${links.map((link) => `<a href="${escapeHtml(link.url.trim())}" style="color:${escapeHtml(footerText)};text-decoration:underline;">${lockedText(escapeHtml(link.label.trim()), escapeHtml(footerText))}</a>`).join(" · ")}`
       : "",
   };
 }
@@ -178,6 +178,15 @@ function protectText(tag: string, color: string): string {
   return setStyleProperty(protectedTag, "-webkit-text-fill-color", `${color} !important`);
 }
 
+function lockedText(content: string, color: string, display: "inline" | "inline-block" = "inline"): string {
+  return `<span class="db-email-text-lock" style="display:${display};color:${color} !important;background-color:${color} !important;background-image:linear-gradient(${color},${color}) !important;background-clip:text !important;-webkit-background-clip:text !important;-webkit-text-fill-color:transparent !important;">${content}</span>`;
+}
+
+function lockClassContent(html: string, tagName: "td" | "a", className: string, color: string, display: "inline" | "inline-block" = "inline"): string {
+  const pattern = new RegExp(`(<${tagName}\\b(?=[^>]*class="[^"]*\\b${className}\\b)[^>]*>)([\\s\\S]*?)(<\\/${tagName}>)`, "i");
+  return html.replace(pattern, (_section, opening: string, content: string, closing: string) => `${opening}${lockedText(content, color, display)}${closing}`);
+}
+
 function decorateGeneratedShell(html: string): string {
   let decorated = html;
   if (!/<head[\s>]/i.test(decorated)) {
@@ -197,9 +206,15 @@ function decorateGeneratedShell(html: string): string {
   decorated = decorated.replace(/<a\b[^>]*style="[^"]*display:inline-block[^"]*font-weight:700[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-button"), "{{buttonBg}}"), "{{buttonTextColor}}"));
   decorated = decorated.replace(/<td\b[^>]*style="[^"]*font-size:13px[^"]*"[^>]*>/i, (tag) => protectText(protectBackground(addClass(tag, "db-email-footer"), "{{footerBg}}"), "{{footerText}}"));
   decorated = decorated.replace(/<a\b[^>]*href="(?:mailto:{{supportEmail}}|{{siteUrl}})"[^>]*>/gi, (tag) => protectText(tag, "{{footerText}}"));
-  decorated = decorated.replace(/<strong\b[^>]*>/gi, (tag) => {
-    const withStyle = /style="/i.test(tag) ? tag : tag.replace(/>$/, ' style="">');
-    return protectText(withStyle, "{{bodyTextColor}}");
+  decorated = lockClassContent(decorated, "td", "db-email-heading", "{{headingColor}}", "inline-block");
+  decorated = lockClassContent(decorated, "td", "db-email-content", "{{bodyTextColor}}", "inline-block");
+  decorated = lockClassContent(decorated, "a", "db-email-button", "{{buttonTextColor}}", "inline-block");
+  decorated = decorated.replace(/(<td\b(?=[^>]*class="[^"]*\bdb-email-footer\b)[^>]*>)([\s\S]*?)(<\/td>)/i, (_section, opening: string, content: string, closing: string) => {
+    const protectedLinks = content.replace(/(<a\b[^>]*>)([\s\S]*?)(<\/a>)/gi, (_link, linkOpening: string, label: string, linkClosing: string) => {
+      if (label.includes('class="db-email-text-lock"')) return `${linkOpening}${label}${linkClosing}`;
+      return `${linkOpening}${lockedText(label, "{{footerText}}")}${linkClosing}`;
+    });
+    return `${opening}${protectedLinks}${closing}`;
   });
   return decorated;
 }

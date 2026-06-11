@@ -132,7 +132,7 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       ctaLabel: "Track Package",
       ctaUrl: "{{trackingUrl}}",
     }),
-    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl"],
+    placeholderKeys: ["orderNumber", "trackingNumber", "trackingUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "ready_for_collection",
@@ -251,6 +251,34 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       body: "Placed on {{orderDate}} with total {{orderTotal}}.",
     }),
     placeholderKeys: ["orderNumber", "orderDate", "orderTotal", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
+    key: "warehouse_collection_ready",
+    name: "Warehouse Collection Ready",
+    category: "ORDER",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is packed and ready for collection",
+      title: "Your order is ready",
+      body: "Hi {{firstName}},<br/><br/>Great news — order <strong>#{{orderNumber}}</strong> has been packed and is ready for collection from our warehouse.<br/><br/>Please bring your order number when collecting.",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
+    key: "order_ready_for_collection",
+    name: "Order Ready for Collection",
+    category: "SHIPPING",
+    subject: "Order #{{orderNumber}} is ready for collection",
+    htmlBody: brandedEmailShell({
+      preheader: "Your order is ready for collection",
+      title: "Ready for collection",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> is ready to collect from your selected PUDO locker.<br/><br/>Please follow the collection instructions sent by PUDO.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong>",
+      ctaLabel: "View Order",
+      ctaUrl: "{{orderUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "pudo_tracking_update",

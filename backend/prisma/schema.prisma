@@ -119,6 +119,7 @@ enum PaymentStatus {
 
 enum FulfillmentStatus {
   UNFULFILLED
+  PACKED
   PARTIALLY_FULFILLED
   FULFILLED
   RETURNED

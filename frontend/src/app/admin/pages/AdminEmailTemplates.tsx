@@ -140,7 +140,7 @@ function buildSimpleHtml(fields: SimpleTemplateFields) {
     ? `<tr><td style="padding:8px 32px 18px 32px;"><a href="${fields.ctaUrl}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:{{buttonBg}};color:{{buttonTextColor}};text-decoration:none;font-weight:700;font-family:Arial,sans-serif;">${fields.ctaText}</a></td></tr>`
     : "";
   const footer = fields.showFooter
-    ? `<tr><td style="padding:20px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">${fields.footerNote || "Need help? Contact us anytime."}<br/><a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a> · <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a></td></tr>`
+    ? `<tr><td style="padding:20px 32px;background:{{footerBg}};color:{{footerText}};font-size:13px;line-height:1.6;">${fields.footerNote || "Need help? Contact us anytime."}<br/><a href="mailto:{{supportEmail}}" style="color:{{footerText}};text-decoration:underline;">{{supportEmail}}</a> · <a href="{{siteUrl}}" style="color:{{footerText}};text-decoration:none;">{{siteUrl}}</a>{{footerLinksMarkup}}</td></tr>`
     : "";
 
   return `<!doctype html>
@@ -151,7 +151,7 @@ function buildSimpleHtml(fields: SimpleTemplateFields) {
       <tr>
         <td align="center">
           <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:620px;background:{{contentBg}};border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
-            <tr><td style="padding:18px 24px;text-align:center;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});color:#fff;font-size:20px;font-weight:800;">{{brandName}}</td></tr>
+            <tr><td style="padding:18px 24px;text-align:center;background:linear-gradient(90deg,{{primaryColor}},{{accentColor}});color:#fff;font-size:20px;font-weight:800;">{{logoMarkup}}{{brandName}}</td></tr>
             <tr><td style="padding:26px 32px 8px 32px;color:{{headingColor}};font-size:28px;font-weight:800;line-height:1.2;">${fields.heading}</td></tr>
             <tr><td style="padding:8px 32px 10px 32px;color:{{bodyTextColor}};font-size:16px;line-height:1.65;">${fields.intro}</td></tr>
             ${cta}
@@ -182,6 +182,12 @@ function resolveTokensForPreview(html: string, theme: ThemeSettings): string {
     storeName: theme.brandName,
     supportEmail: theme.supportEmail,
     siteUrl: theme.siteUrl,
+    logoMarkup: theme.logoUrl
+      ? `<img src="${theme.logoUrl}" alt="${theme.brandName}" style="display:block;max-width:180px;max-height:72px;width:auto;height:auto;margin:0 auto 10px auto;" />`
+      : "",
+    footerLinksMarkup: theme.links.some((link) => link.label.trim() && link.url.trim())
+      ? `<br />${theme.links.filter((link) => link.label.trim() && link.url.trim()).map((link) => `<a href="${link.url}" style="color:${theme.footerText};text-decoration:underline;">${link.label}</a>`).join(" · ")}`
+      : "",
   };
   return html.replace(/{{\s*([\w.]+)\s*}}/g, (_match, key) => map[key] ?? `{{${key}}}`);
 }

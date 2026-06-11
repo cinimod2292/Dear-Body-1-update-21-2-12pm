@@ -798,6 +798,7 @@ model Order {
   @@index([customerId, placedAt])
   @@index([status, paymentStatus, fulfillmentStatus])
   @@index([warehouseStatus])
+  @@index([createdAt])
 }
 
 model OrderItem {

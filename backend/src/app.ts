@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import fs from "node:fs/promises";
 import path from "node:path";
 import cors from "@fastify/cors";
+import compress from "@fastify/compress";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
@@ -57,6 +58,8 @@ export async function buildApp() {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     preflight: true,
   });
+
+  await app.register(compress, { global: true });
 
   await app.register(rateLimit, {
     global: false,

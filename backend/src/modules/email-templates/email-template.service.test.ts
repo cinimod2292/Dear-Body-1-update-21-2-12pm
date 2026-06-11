@@ -59,7 +59,7 @@ test("theme rendering includes configured logo and footer links", () => {
 
   assert.match(String(rendered.logoMarkup), /src="https:\/\/cdn\.example\/logo\.png\?size=1&amp;dark=true"/);
   assert.match(String(rendered.logoMarkup), /alt="Portal &amp; Co"/);
-  assert.match(String(rendered.footerLinksMarkup), />Instagram<\/span><\/a>/);
+  assert.match(String(rendered.footerLinksMarkup), />Instagram<\/a>/);
   assert.doesNotMatch(String(rendered.footerLinksMarkup), /ignored/);
 });
 
@@ -148,7 +148,7 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /background:#ffffff;/);
   assert.match(rendered, /background:linear-gradient\(90deg,#ee5ca8,#ff8552\)/);
   assert.match(rendered, /font-size:28px[^\"]*color:#111827 !important;-webkit-text-fill-color:#111827 !important;/);
-  assert.match(rendered, /display:inline-block[^\"]*background-color:#111827 !important;background-image:linear-gradient\(#111827,#111827\) !important;color:#ffffff !important/);
+  assert.match(rendered, /<a\b(?=[^>]*class="db-email-button")(?=[^>]*background-color:#111827 !important)(?=[^>]*color:#ffffff !important)[^>]*>/);
   assert.match(rendered, /<meta name="color-scheme" content="light only" \/>/);
   assert.match(rendered, /class="db-email-outer"[^>]*bgcolor="#f8fafc"/);
   assert.match(rendered, /class="db-email-card"[^>]*bgcolor="#ffffff"/);
@@ -156,18 +156,25 @@ test("current tokenized templates render valid inline CSS without trailing brace
   assert.match(rendered, /class="db-email-button"[^>]*bgcolor="#111827"/);
   assert.match(rendered, /class="db-email-footer"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /\[data-ogsc\] \.db-email-header/);
+  assert.match(rendered, /\[data-ogsb\] \.db-email-header/);
+  assert.match(rendered, /forced-color-adjust:none/);
+  assert.doesNotMatch(rendered, /-webkit-text-fill-color:transparent/);
+  assert.doesNotMatch(rendered, /background-clip:text/);
+  assert.doesNotMatch(rendered, /mso-style-textfill-type:gradient/);
+  assert.match(rendered, /mso-background-alt:#ffffff/);
+  assert.match(rendered, /mso-shading:#ffffff/);
   assert.match(rendered, /@media \(prefers-color-scheme: dark\)/);
   assert.match(rendered, /:root \{ color-scheme: only light; supported-color-schemes: light; \}/);
   assert.match(rendered, /class="db-email-heading"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /class="db-email-content"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /class="db-email-cta-row"[^>]*bgcolor="#ffffff"/);
   assert.match(rendered, /background-image:linear-gradient\(#ffffff,#ffffff\) !important/);
-  assert.match(rendered, /class="db-email-content"[^>]*><span class="db-email-text-lock"[^>]*background-image:linear-gradient\(#374151,#374151\)[^>]*>Hi Dominic/);
-  assert.match(rendered, /class="db-email-button"[^>]*><span class="db-email-text-lock"[^>]*background-image:linear-gradient\(#ffffff,#ffffff\)[^>]*>View Order<\/span>/);
-  assert.match(rendered, /mailto:sales@mydearbody\.co\.za[^>]*><span class="db-email-text-lock"[^>]*>sales@mydearbody\.co\.za<\/span>/);
+  assert.match(rendered, /<td\b(?=[^>]*class="db-email-content")(?=[^>]*color:#374151 !important)[^>]*>Hi Dominic/);
+  assert.match(rendered, /<a\b(?=[^>]*class="db-email-button")(?=[^>]*color:#ffffff !important)[^>]*>View Order<\/a>/);
+  assert.match(rendered, /mailto:sales@mydearbody\.co\.za[^>]*color:#374151 !important[^>]*>sales@mydearbody\.co\.za<\/a>/);
 });
 
-test("tracking update text uses gradient-locked theme colors", async () => {
+test("tracking update text uses explicit theme colors without transparent fills", async () => {
   const { DEFAULT_EMAIL_TEMPLATES } = await import("./default-templates.js");
   const { renderEmailHtml } = await import("./email-template.render.js");
   const template = DEFAULT_EMAIL_TEMPLATES.find((item) => item.key === "pudo_tracking_update");
@@ -197,9 +204,10 @@ test("tracking update text uses gradient-locked theme colors", async () => {
     footerText: "#d1d5db",
   });
 
-  assert.match(rendered, /background-image:linear-gradient\(#111827,#111827\)[^>]*>Collected from sender<\/span>/);
-  assert.match(rendered, /background-image:linear-gradient\(#374151,#374151\)[^>]*>Hi Dominic,[\s\S]*Waybill:/);
-  assert.match(rendered, /background-image:linear-gradient\(#ffffff,#ffffff\)[^>]*>View Order<\/span>/);
+  assert.match(rendered, /<td\b(?=[^>]*class="db-email-heading")(?=[^>]*color:#111827 !important)[^>]*>Collected from sender<\/td>/);
+  assert.match(rendered, /<td\b(?=[^>]*class="db-email-content")(?=[^>]*color:#374151 !important)[^>]*>Hi Dominic,[\s\S]*Waybill:/);
+  assert.match(rendered, /<a\b(?=[^>]*class="db-email-button")(?=[^>]*color:#ffffff !important)[^>]*>View Order<\/a>/);
+  assert.doesNotMatch(rendered, /-webkit-text-fill-color:transparent|background-clip:text|mso-style-textfill-type:gradient/);
   assert.doesNotMatch(rendered, /{{|}}/);
 });
 
@@ -290,17 +298,20 @@ test("all bundled email templates pass the rendering audit", async (t) => {
       assert.doesNotMatch(html, /#[0-9a-f]{6}}}/i, `${template.key} HTML has malformed color tokens`);
       assert.doesNotMatch(html, /href="\s*"/i, `${template.key} rendered an empty link`);
       assert.match(html, /<head>[\s\S]*color-scheme: only light/, `${template.key} lacks dark-mode metadata`);
+      assert.match(html, /\[data-ogsb\] \.db-email-card/, `${template.key} lacks Outlook background overrides`);
+      assert.doesNotMatch(html, /-webkit-text-fill-color:transparent|background-clip:text|mso-style-textfill-type:gradient/, `${template.key} uses text effects that Outlook recolors`);
       assert.match(html, /class="db-email-card"[^>]*bgcolor="#ffffff"/, `${template.key} lacks card protection`);
+      assert.match(html, /<table\b(?=[^>]*class="db-email-card")(?=[^>]*mso-background-alt:#ffffff)[^>]*>/, `${template.key} lacks classic Outlook card shading`);
       assert.match(html, /class="db-email-header"[^>]*bgcolor="#ee5ca8"/, `${template.key} lacks header protection`);
-      assert.match(html, /class="db-email-heading"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks heading text protection`);
-      assert.match(html, /class="db-email-content"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks body text protection`);
+      assert.match(html, /<td\b(?=[^>]*class="db-email-heading")(?=[^>]*color:#111827 !important)[^>]*>/, `${template.key} lacks heading text color`);
+      assert.match(html, /<td\b(?=[^>]*class="db-email-content")(?=[^>]*color:#374151 !important)[^>]*>/, `${template.key} lacks body text color`);
       assert.match(html, /class="db-email-footer"[^>]*bgcolor="#111827"/, `${template.key} lacks footer protection`);
       assert.match(html, /dear-body-logo\.png/, `${template.key} omitted the theme logo`);
       assert.match(html, /instagram\.com\/mydearbody/, `${template.key} omitted theme footer links`);
-      assert.match(html, /instagram\.com\/mydearbody[^>]*><span class=\"db-email-text-lock\"/, `${template.key} lacks footer-link text protection`);
+      assert.match(html, /instagram\.com\/mydearbody[^>]*color:#d1d5db !important/, `${template.key} lacks footer-link text color`);
 
       if (/display:inline-block/.test(template.htmlBody)) {
-        assert.match(html, /class="db-email-button"[^>]*><span class="db-email-text-lock"/, `${template.key} lacks CTA text protection`);
+        assert.match(html, /<a\b(?=[^>]*class="db-email-button")(?=[^>]*color:#ffffff !important)[^>]*>/, `${template.key} lacks CTA text color`);
       }
     });
   }

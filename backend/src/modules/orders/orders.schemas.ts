@@ -92,3 +92,7 @@ export const refundSchema = z.object({
   amount: z.coerce.number().positive(),
   reason: z.string().optional(),
 });
+
+export const deleteAllOrdersSchema = z.object({
+  confirmation: z.literal("DELETE ALL ORDERS"),
+});

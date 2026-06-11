@@ -7,6 +7,7 @@ import {
   checkoutCart,
   createCart,
   createRefund,
+  deleteAllOrdersAndRestoreStock,
   getCart,
   getCustomerOrder,
   getOrder,
@@ -133,6 +134,9 @@ export async function ordersRoutes(app: FastifyInstance) {
 
   app.get("/admin/orders", { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] }, async (request, reply) => {
     return reply.send({ data: await listOrders(request.query) });
+  });
+  app.delete("/admin/orders", { preHandler: [app.verifyAdmin, app.requirePermission("orders:delete-all")] }, async (request, reply) => {
+    return reply.send({ data: await deleteAllOrdersAndRestoreStock(request.body, request.user.sub) });
   });
   app.get("/admin/orders/:orderId", { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };

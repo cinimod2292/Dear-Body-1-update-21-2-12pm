@@ -6,6 +6,7 @@ import {
   cartQuoteSchema,
   cartItemUpdateSchema,
   checkoutSchema,
+  deleteAllOrdersSchema,
   orderCancelSchema,
   orderListQuerySchema,
   orderNoteSchema,
@@ -19,6 +20,7 @@ import { z } from "zod";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
+import { summarizeInventoryRestore } from "./order-danger-zone.js";
 
 const shippingRulesSchema = z.object({
   freeShippingEnabled: z.boolean().default(false),
@@ -613,6 +615,83 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       shippingMethod: true,
     },
   });
+}
+
+export async function deleteAllOrdersAndRestoreStock(rawBody: unknown, actorId: string) {
+  deleteAllOrdersSchema.parse(rawBody);
+
+  return prisma.$transaction(async (tx) => {
+    const orders = await tx.order.findMany({
+      select: {
+        id: true,
+        orderNumber: true,
+        cartId: true,
+        items: { select: { variantId: true, quantity: true } },
+        cart: { select: { items: { select: { variantId: true, quantity: true } } } },
+      },
+    });
+
+    if (orders.length === 0) {
+      return { deletedOrders: 0, restoredUnits: 0, affectedVariants: 0 };
+    }
+
+    const stockToRestore = summarizeInventoryRestore(orders.flatMap((order) => order.items));
+    const reservationsToRelease = summarizeInventoryRestore(
+      orders.flatMap((order) => order.cart?.items ?? []),
+    );
+    const restockableVariants = await tx.productVariant.findMany({
+      where: { id: { in: [...stockToRestore.keys()] } },
+      select: { id: true },
+    });
+    const restockableVariantIds = new Set(restockableVariants.map((variant) => variant.id));
+    for (const variantId of stockToRestore.keys()) {
+      if (!restockableVariantIds.has(variantId)) stockToRestore.delete(variantId);
+    }
+
+    for (const [variantId, quantity] of stockToRestore) {
+      const current = await tx.inventoryLevel.findUnique({ where: { variantId } });
+      const quantityBefore = current?.quantityOnHand ?? 0;
+      const reservedBefore = current?.reservedQuantity ?? 0;
+      const quantityAfter = quantityBefore + quantity;
+      const reservedQuantity = Math.max(0, reservedBefore - (reservationsToRelease.get(variantId) ?? 0));
+
+      await tx.inventoryLevel.upsert({
+        where: { variantId },
+        create: { variantId, quantityOnHand: quantityAfter, reservedQuantity },
+        update: { quantityOnHand: quantityAfter, reservedQuantity },
+      });
+      await tx.stockMovement.create({
+        data: {
+          variantId,
+          movementType: "RETURN_RESTOCK",
+          quantityDelta: quantity,
+          quantityBefore,
+          quantityAfter,
+          reason: `Danger zone: restored stock while deleting all orders (${orders.length} orders)`,
+          referenceType: "bulk_order_delete",
+          createdById: actorId,
+        },
+      });
+    }
+
+    const orderNumbers = orders.map((order) => order.orderNumber);
+    const cartIds = orders.flatMap((order) => order.cartId ? [order.cartId] : []);
+
+    await tx.customerOrder.deleteMany({ where: { orderNumber: { in: orderNumbers } } });
+    const deleted = await tx.order.deleteMany({ where: { id: { in: orders.map((order) => order.id) } } });
+    if (cartIds.length > 0) {
+      await tx.cart.updateMany({
+        where: { id: { in: cartIds } },
+        data: { status: "ABANDONED", clearedAt: new Date() },
+      });
+    }
+
+    return {
+      deletedOrders: deleted.count,
+      restoredUnits: [...stockToRestore.values()].reduce((total, quantity) => total + quantity, 0),
+      affectedVariants: stockToRestore.size,
+    };
+  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
 }
 
 export async function listOrders(rawQuery: unknown) {

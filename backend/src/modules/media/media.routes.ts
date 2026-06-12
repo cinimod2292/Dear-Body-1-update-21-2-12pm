@@ -6,7 +6,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaByIdsSchema, mediaListQuerySchema, regenerateVariantsBatchSchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig } from "./upload.service.js";
+import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig, sanitizeStorageKey, writeStorageObjectBuffer } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { generateMediaVariantsForAsset } from "./media-variants.js";
 import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
@@ -409,6 +409,22 @@ export async function mediaRoutes(app: FastifyInstance) {
         variantsPending: variantStatus.variantsPending,
         variantErrors: variantStatus.variantErrors,
       });
+    },
+  );
+
+  app.put(
+    "/admin/media/uploads/proxy",
+    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    async (request, reply) => {
+      const { storageKey: rawKey } = request.query as { storageKey?: string };
+      if (!rawKey) throw new AppError(400, "Missing storageKey query parameter", "MISSING_STORAGE_KEY");
+      const storageKey = sanitizeStorageKey(rawKey);
+      const contentType = String(request.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
+      const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(String(request.body ?? ""));
+      const cfg = await resolveUploadConfig();
+      request.log.info({ storageKey, contentType, byteSize: bodyBuffer.length, provider: cfg.provider }, "Proxying upload to storage");
+      await writeStorageObjectBuffer(storageKey, bodyBuffer, contentType, cfg);
+      return reply.send({ ok: true });
     },
   );
 

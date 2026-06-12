@@ -271,7 +271,10 @@ export function normalizeLegacyThemeHtml(html: string): string {
     return next;
   });
   normalized = normalized.replace(/<a\b[^>]*href="(?:mailto:{{supportEmail}}|{{siteUrl}})"[^>]*>/gi, (tag) => replaceStyleValue(tag, "color", "{{footerText}}"));
-  normalized = normalized.replace(/(<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>)(?!\s*{{logoMarkup}})/i, "$1{{logoMarkup}}");
+  // Insert {{logoMarkup}} into the header td if it isn't already there.
+  // The optional \s*(?:<img...>)? group also consumes any baked-in logo <img>
+  // from DB-stored templates so we don't end up with two logos.
+  normalized = normalized.replace(/(<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>)\s*(?:<img\b[^>]*\/?>)?(?!\s*{{logoMarkup}})/i, "$1{{logoMarkup}}");
   normalized = normalized.replace(/(<td\b[^>]*style="[^"]*font-size:13px[^"]*"[^>]*>)([\s\S]*?)(<\/td>)/gi, (section, opening, content, closing) => {
     if (content.includes("{{footerLinksMarkup}}")) return section;
     return `${opening}${content}{{footerLinksMarkup}}${closing}`;

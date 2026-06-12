@@ -198,12 +198,17 @@ function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description
         </div>
       )}
 
-      {/* Cutoff — only relevant in fixed mode */}
-      {schedule.mode !== "dynamic" && (
+      {/* Picker buffer / cutoff — applies in both modes */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h2 className="font-semibold text-gray-900 mb-3">Cutoff Setting</h2>
+        <h2 className="font-semibold text-gray-900 mb-3">
+          {schedule.mode === "dynamic" ? "Picker Buffer" : "Cutoff Setting"}
+        </h2>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600 w-64">Minutes before window start to stop assigning orders:</label>
+          <label className="text-sm text-gray-600 w-64">
+            {schedule.mode === "dynamic"
+              ? "Minutes before estimated collection time staff must finish packing:"
+              : "Minutes before window start to stop assigning orders:"}
+          </label>
           <input
             type="number" min={0} max={480}
             value={schedule.cutoffMinutesBefore}
@@ -213,10 +218,11 @@ function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description
           <span className="text-sm text-gray-400">minutes</span>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          E.g., cutoff of 60 min with a 09:00 window means orders placed after 08:00 roll to the next window.
+          {schedule.mode === "dynamic"
+            ? `Staff must have the order ready ${schedule.cutoffMinutesBefore} min before the customer arrives. This sets the SLA countdown on the warehouse dashboard.`
+            : "E.g., cutoff of 60 min with a 09:00 window means orders placed after 08:00 roll to the next window."}
         </p>
       </div>
-      )}
 
       {/* Windows */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

@@ -93,6 +93,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     placeholderKeys: ["firstName", "orderNumber", "orderDate", "orderItems", "orderTotal", "siteUrl", "companyName", "supportEmail"],
   },
   {
+    key: "collection_order_confirmation",
+    name: "Collection Order Confirmation",
+    category: "ORDER",
+    subject: "Order #{{orderNumber}} confirmed — estimated collection {{estimatedCollectionTime}}",
+    htmlBody: brandedEmailShell({
+      preheader: "Your collection order is confirmed",
+      title: "Collection order confirmed 🎉",
+      body: "Hi {{firstName}}, we received your order placed on {{orderDate}}.<br/><br/><strong>Items:</strong> {{orderItems}}<br/><strong>Total:</strong> {{orderTotal}}<br/><br/><strong>Estimated collection time:</strong> {{estimatedCollectionTime}}<br/><br/>We'll notify you as soon as your order is packed and ready. Please bring your order number when collecting.",
+      ctaLabel: "View Order",
+      ctaUrl: "{{siteUrl}}/account",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "orderDate", "orderItems", "orderTotal", "estimatedCollectionTime", "siteUrl", "companyName", "supportEmail"],
+  },
+  {
     key: "payment_confirmation",
     name: "Payment Confirmation",
     category: "PAYMENT",

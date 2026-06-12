@@ -665,11 +665,26 @@ async function sendPudoShippingEmail(orderId: string, waybillNumber: string) {
 
   const trackingUrl = `https://pudo.co.za/track/${encodeURIComponent(waybillNumber)}`;
 
+  const isLocker = (order as any).pudoDeliveryType === "locker";
+  const lockerGuideSection = isLocker ? `<br/><br/>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border-collapse:collapse;">
+  <tr><td colspan="2" style="padding-bottom:10px;font-size:15px;font-weight:700;color:#1e293b;">How to collect from your PUDO Locker</td></tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 12px 0;font-size:20px;line-height:1;">🚚</td>
+    <td style="padding-bottom:12px;font-size:14px;line-height:1.5;color:#334155;"><strong>05 — We deliver to your locker</strong><br/>Our drivers will deliver your parcel to your chosen PUDO Locker or Kiosk. You'll be notified as soon as it arrives.</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 12px 0;font-size:20px;line-height:1;">🔢</td>
+    <td style="padding-bottom:12px;font-size:14px;line-height:1.5;color:#334155;"><strong>06 — Collect with your PIN</strong><br/>You'll receive a PIN code via WhatsApp or email. Simply punch it in at the Locker, grab your goodies, and you're sorted!</td>
+  </tr>
+</table>` : "";
+
   const template = await resolveTemplateByKey("pudo_shipment_created", {
     firstName: order.customer.firstName ?? "there",
     orderNumber: order.orderNumber,
     waybillNumber,
     trackingUrl,
+    lockerGuideSection,
   });
 
   await sendEmail({

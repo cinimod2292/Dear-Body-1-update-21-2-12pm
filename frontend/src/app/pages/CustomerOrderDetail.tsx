@@ -330,15 +330,39 @@ export default function CustomerOrderDetail() {
 
           {/* PUDO locker destination */}
           {order.pudoDeliveryType === "locker" && order.pudoLockerCode ? (
-            <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
-              <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Locker Collection</p>
-              <p className="font-semibold text-indigo-900">{order.pudoLockerName || order.pudoLockerCode}</p>
-              {order.pudoLockerAddress ? (
-                <p className="text-indigo-700 text-xs mt-0.5">{order.pudoLockerAddress}</p>
-              ) : addr ? (
-                <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>
-              ) : null}
-            </div>
+            <>
+              <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
+                <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Locker Collection</p>
+                <p className="font-semibold text-indigo-900">{order.pudoLockerName || order.pudoLockerCode}</p>
+                {order.pudoLockerAddress ? (
+                  <p className="text-indigo-700 text-xs mt-0.5">{order.pudoLockerAddress}</p>
+                ) : addr ? (
+                  <p className="text-indigo-700 text-xs mt-0.5">{addr.line1}, {addr.city}</p>
+                ) : null}
+              </div>
+              <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm">
+                <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold mb-3">How to collect from your locker</p>
+                <div className="space-y-2.5">
+                  {[
+                    { step: "01", icon: "📱", title: "Register & top up", desc: "Register on the PUDO app and top up your account." },
+                    { step: "02", icon: "📦", title: "Choose your door size", desc: "Small parcel, small price. Larger doors available too." },
+                    { step: "03", icon: "📋", title: "Enter recipient details", desc: "Your name, contact details, and destination — write them on the parcel too." },
+                    { step: "04", icon: "🔢", title: "Scan your PIN or QR code", desc: "At the locker, scan your PIN or QR code to open your door. Pop in your parcel and close within 36 seconds." },
+                    { step: "05", icon: "🚚", title: "We deliver to your locker", desc: "Drivers deliver your parcel to your chosen locker or kiosk. You'll be notified when it arrives." },
+                    { step: "06", icon: "🎉", title: "Collect with your PIN", desc: "Punch in the PIN received on WhatsApp or email, grab your goodies — sorted!" },
+                  ].map(({ step, icon, title, desc }) => (
+                    <div key={step} className="flex gap-2.5 items-start">
+                      <span className="text-base leading-none mt-0.5">{icon}</span>
+                      <div>
+                        <span className="text-xs font-bold text-blue-700 mr-1">{step}</span>
+                        <span className="font-semibold text-blue-900 text-xs">{title}</span>
+                        <p className="text-blue-700 text-xs mt-0.5">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           ) : order.pudoDeliveryType === "door" ? (
             <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
               <p className="text-xs text-indigo-500 uppercase tracking-wide font-semibold mb-1">PUDO Door-to-Door Delivery</p>

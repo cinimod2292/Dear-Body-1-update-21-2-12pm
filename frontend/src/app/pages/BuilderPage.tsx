@@ -144,11 +144,7 @@ export default function BuilderPage() {
   }
 
   if (builderContent) {
-    return (
-      <div className="min-h-screen">
-        <BuilderPageRenderer content={builderContent} products={[]} />
-      </div>
-    );
+    return <BuilderPageRenderer content={builderContent} products={[]} />;
   }
 
   if (CMS_FALLBACK_PATHS.has(location.pathname)) {

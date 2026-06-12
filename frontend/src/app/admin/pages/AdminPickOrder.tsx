@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiRequest } from "../api/client";
+import { API_BASE } from "../../lib/api";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
@@ -285,7 +286,7 @@ export default function AdminPickOrder() {
   };
 
   const openPackingSlip = () => {
-    window.open(`/api/admin/warehouse/orders/${orderId}/packing-slip`, "_blank");
+    window.open(`${API_BASE}/admin/warehouse/orders/${orderId}/packing-slip`, "_blank");
   };
 
   if (loading && !order) return <LoadingState label="Loading order..." />;

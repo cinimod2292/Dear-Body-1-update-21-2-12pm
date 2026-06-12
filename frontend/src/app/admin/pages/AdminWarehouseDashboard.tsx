@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { apiRequest } from "../api/client";
+import { API_BASE } from "../../lib/api";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
@@ -383,7 +384,7 @@ function ExpandedPickPanel({
           </button>
         )}
         <button
-          onClick={() => window.open(`/api/admin/warehouse/orders/${orderId}/packing-slip`, "_blank")}
+          onClick={() => window.open(`${API_BASE}/admin/warehouse/orders/${orderId}/packing-slip`, "_blank")}
           className="py-2 px-3 rounded-lg border border-gray-300 text-gray-600 text-xs hover:bg-gray-50"
         >
           Packing Slip ↗
@@ -681,7 +682,7 @@ export default function AdminWarehouseDashboard() {
   const printAllSlips = () => {
     const toPrint = [...myActive, ...myPicked];
     if (toPrint.length === 0) { toast.error("No assigned orders to print"); return; }
-    toPrint.forEach((o) => window.open(`/api/admin/warehouse/orders/${o.id}/packing-slip`, "_blank"));
+    toPrint.forEach((o) => window.open(`${API_BASE}/admin/warehouse/orders/${o.id}/packing-slip`, "_blank"));
   };
 
   if (loading && allOrders.length === 0) return <LoadingState label="Loading warehouse…" />;

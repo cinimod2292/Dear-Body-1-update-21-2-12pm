@@ -48,6 +48,7 @@ const AdminPudoRates = lazy(() => import("./admin/pages/AdminPudoRates"));
 const AdminWarehouseDashboard = lazy(() => import("./admin/pages/AdminWarehouseDashboard"));
 const AdminPickOrder = lazy(() => import("./admin/pages/AdminPickOrder"));
 const AdminCollectionSchedule = lazy(() => import("./admin/pages/AdminCollectionSchedule"));
+const AdminAnalytics = lazy(() => import("./admin/pages/AdminAnalytics"));
 
 export const router = createBrowserRouter([
   {
@@ -143,6 +144,7 @@ export const router = createBrowserRouter([
           { path: "warehouse", Component: AdminWarehouseDashboard },
           { path: "warehouse/orders/:orderId", Component: AdminPickOrder },
           { path: "fulfillment/collection-schedule", Component: AdminCollectionSchedule },
+          { path: "analytics", Component: AdminAnalytics },
         ],
       },
     ],

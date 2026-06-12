@@ -45,7 +45,10 @@ async function buildRenderData(sampleData: Record<string, unknown>): Promise<Rec
   const accentColor = typeof data.accentColor === "string" ? data.accentColor : null;
   if (primaryColor && accentColor) {
     const gradientUrl = await getOrCreateHeaderGradientUrl(primaryColor, accentColor);
-    if (gradientUrl) data.headerBgImage = `url("${gradientUrl}")`;
+    // Single quotes are required here: the value is injected into a style="…"
+    // HTML attribute in decorateGeneratedShell, so double quotes would prematurely
+    // terminate the attribute and produce malformed HTML.
+    if (gradientUrl) data.headerBgImage = `url('${gradientUrl}')`;
   }
 
   return data;

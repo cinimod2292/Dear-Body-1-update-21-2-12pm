@@ -276,6 +276,7 @@ function PudoPickupTab() {
     if (!session?.accessToken) return;
     try {
       setLoading(true);
+      // PUDO pickup schedule uses the /pudo-pickup-schedule endpoint (collection_schedule DB key)
       const res = await apiRequest<{ data: CollectionSchedule | null }>("/admin/fulfillment/pudo-pickup-schedule", {}, session.accessToken);
       if (res.data) setSchedule(res.data);
     } catch {

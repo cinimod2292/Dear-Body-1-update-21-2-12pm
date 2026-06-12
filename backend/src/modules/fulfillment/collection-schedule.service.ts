@@ -21,8 +21,8 @@ export type CollectionWindow = z.infer<typeof collectionWindowSchema>;
 export type CollectionSchedule = z.infer<typeof collectionScheduleSchema>;
 
 const SETTING_SCOPE = "fulfillment";
-const SETTING_KEY = "collection_schedule";
-const PUDO_PICKUP_KEY = "pudo_pickup_schedule";
+const SETTING_KEY = "collection_schedule";           // PUDO pickup schedule (existing data)
+const WAREHOUSE_CUSTOMER_KEY = "warehouse_customer_schedule"; // When customers collect from warehouse
 
 export async function getCollectionSchedule(): Promise<CollectionSchedule | null> {
   const record = await prisma.setting.findUnique({
@@ -33,10 +33,13 @@ export async function getCollectionSchedule(): Promise<CollectionSchedule | null
   return parsed.success ? parsed.data : null;
 }
 
-/** Returns the collection schedule, seeding a Mon–Fri 09:00–17:00 default if none is configured. */
+/** Returns the warehouse customer schedule, seeding a Mon–Fri 09:00–17:00 default if none is configured. */
 export async function getOrCreateDefaultCollectionSchedule(): Promise<CollectionSchedule> {
-  const existing = await getCollectionSchedule();
-  if (existing) return existing;
+  const record = await prisma.setting.findUnique({
+    where: { scope_key: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY } },
+  });
+  const parsed = record ? collectionScheduleSchema.safeParse(record.value) : null;
+  if (parsed?.success) return parsed.data;
 
   const defaultSchedule: CollectionSchedule = {
     windows: [1, 2, 3, 4, 5].map((d) => ({
@@ -51,27 +54,38 @@ export async function getOrCreateDefaultCollectionSchedule(): Promise<Collection
   };
 
   await prisma.setting.upsert({
-    where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
+    where: { scope_key: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY } },
     update: { value: defaultSchedule as any },
-    create: { scope: SETTING_SCOPE, key: SETTING_KEY, value: defaultSchedule as any },
+    create: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY, value: defaultSchedule as any },
   });
 
   return defaultSchedule;
 }
 
-export async function upsertCollectionSchedule(rawBody: unknown): Promise<CollectionSchedule> {
+/** Warehouse customer collection schedule — when customers come to collect orders. */
+export async function getWarehouseCustomerSchedule(): Promise<CollectionSchedule | null> {
+  const record = await prisma.setting.findUnique({
+    where: { scope_key: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY } },
+  });
+  if (!record) return null;
+  const parsed = collectionScheduleSchema.safeParse(record.value);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function upsertWarehouseCustomerSchedule(rawBody: unknown): Promise<CollectionSchedule> {
   const schedule = collectionScheduleSchema.parse(rawBody);
   await prisma.setting.upsert({
-    where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
+    where: { scope_key: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY } },
     update: { value: schedule as any },
-    create: { scope: SETTING_SCOPE, key: SETTING_KEY, value: schedule as any },
+    create: { scope: SETTING_SCOPE, key: WAREHOUSE_CUSTOMER_KEY, value: schedule as any },
   });
   return schedule;
 }
 
+/** PUDO pickup schedule — when the PUDO courier collects parcels from the warehouse. */
 export async function getPudoPickupSchedule(): Promise<CollectionSchedule | null> {
   const record = await prisma.setting.findUnique({
-    where: { scope_key: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY } },
+    where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
   });
   if (!record) return null;
   const parsed = collectionScheduleSchema.safeParse(record.value);
@@ -81,11 +95,15 @@ export async function getPudoPickupSchedule(): Promise<CollectionSchedule | null
 export async function upsertPudoPickupSchedule(rawBody: unknown): Promise<CollectionSchedule> {
   const schedule = collectionScheduleSchema.parse(rawBody);
   await prisma.setting.upsert({
-    where: { scope_key: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY } },
+    where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
     update: { value: schedule as any },
-    create: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY, value: schedule as any },
+    create: { scope: SETTING_SCOPE, key: SETTING_KEY, value: schedule as any },
   });
   return schedule;
+}
+
+export async function upsertCollectionSchedule(rawBody: unknown): Promise<CollectionSchedule> {
+  return upsertPudoPickupSchedule(rawBody);
 }
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {

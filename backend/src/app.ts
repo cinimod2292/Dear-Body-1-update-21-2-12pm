@@ -33,6 +33,7 @@ import { notifySlaWarning } from "./modules/fulfillment/fulfillment.service.js";
 import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
+import { sitemapRoutes } from "./modules/sitemap/sitemap.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -202,6 +203,8 @@ export async function buildApp() {
   });
 
   app.get("/ping", async (_request, reply) => reply.status(200).send({ ok: true }));
+
+  app.register(sitemapRoutes);
 
   app.register(async (api) => {
     await api.register(setupRoutes);

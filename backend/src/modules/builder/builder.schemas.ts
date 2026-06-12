@@ -41,6 +41,7 @@ export const BUILDER_SECTION_TYPES = [
 
 const MAX_SECTIONS = 40;
 const MAX_TEXT = 500;
+const MAX_BODY_TEXT = 2000;
 const MAX_RICH_TEXT = 5000;
 
 function hasScriptTag(value: string) {
@@ -50,6 +51,11 @@ function hasScriptTag(value: string) {
 const safeText = z
   .string()
   .max(MAX_TEXT)
+  .refine((value) => !hasScriptTag(value), "Script tags are not allowed");
+
+const safeBodyText = z
+  .string()
+  .max(MAX_BODY_TEXT)
   .refine((value) => !hasScriptTag(value), "Script tags are not allowed");
 
 const safeUrl = z
@@ -98,7 +104,7 @@ const featuredProductsPropsSchema = z.object({
 
 const imageTextPropsSchema = z.object({
   title: safeText.min(1),
-  body: safeText.optional(),
+  body: safeBodyText.optional(),
   imageUrl: safeUrl.optional(),
   imageAlt: safeText.optional(),
   buttonText: safeText.optional(),

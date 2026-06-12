@@ -704,9 +704,11 @@ function InspectorImageField({
 
       let uploadResponse: Response;
       try {
+        const uploadHeaders: Record<string, string> = { ...prep.data.headers };
+        if (accessToken) uploadHeaders["Authorization"] = `Bearer ${accessToken}`;
         uploadResponse = await fetch(prep.data.uploadUrl, {
           method: prep.data.method,
-          headers: prep.data.headers,
+          headers: uploadHeaders,
           body: file,
         });
       } catch (error) {

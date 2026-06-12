@@ -295,7 +295,7 @@ export async function prepareUpload(filename: string, mimeType: string, configOv
 
   const publicUrl = resolvePublicUrlForStorageKey(storageKey, cfg);
   const uploadUrl = (cfg.provider === "s3" || cfg.provider === "cloudflare-r2")
-    ? await createS3UploadUrl(storageKey, mimeType, cfg)
+    ? `${resolveApiBaseUrl()}${env.API_PREFIX}/admin/media/uploads/proxy?storageKey=${encodeURIComponent(storageKey)}`
     : publicUrl;
 
   return {

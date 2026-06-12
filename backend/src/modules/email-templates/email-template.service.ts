@@ -18,6 +18,7 @@ import {
   renderTemplateString,
   retainsSystemDefaultStatus,
 } from "./email-template.render.js";
+import { getOrCreateHeaderGradientUrl } from "./email-header-gradient.js";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -34,7 +35,20 @@ async function loadEmailTheme(): Promise<EmailTheme> {
 
 async function buildRenderData(sampleData: Record<string, unknown>): Promise<Record<string, unknown>> {
   const theme = await loadEmailTheme();
-  return mergeEmailRenderData(theme, sampleData);
+  const data = mergeEmailRenderData(theme, sampleData) as Record<string, unknown>;
+
+  // Attempt to replace the CSS gradient fallback with a hosted PNG so that
+  // Outlook iOS (which strips CSS gradients in dark mode) shows the correct
+  // header gradient. Falls back silently to the CSS gradient if sharp is
+  // unavailable or upload fails.
+  const primaryColor = typeof data.primaryColor === "string" ? data.primaryColor : null;
+  const accentColor = typeof data.accentColor === "string" ? data.accentColor : null;
+  if (primaryColor && accentColor) {
+    const gradientUrl = await getOrCreateHeaderGradientUrl(primaryColor, accentColor);
+    if (gradientUrl) data.headerBgImage = `url("${gradientUrl}")`;
+  }
+
+  return data;
 }
 
 const SYSTEM_TEMPLATES_VERSION = "v5-warehouse-collection-ready";

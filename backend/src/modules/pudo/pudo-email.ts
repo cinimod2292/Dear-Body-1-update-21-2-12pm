@@ -3,7 +3,8 @@ export function normalizePudoTrackingStatus(status: string): string {
 }
 
 export function emailTemplateKeyForPudoStatus(status: string): string {
-  return normalizePudoTrackingStatus(status) === "ready_for_collection"
-    ? "order_ready_for_collection"
-    : "pudo_tracking_update";
+  const normalized = normalizePudoTrackingStatus(status);
+  if (normalized === "delivered") return "order_delivered";
+  if (normalized === "ready_for_collection") return "order_ready_for_collection";
+  return "pudo_tracking_update";
 }

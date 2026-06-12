@@ -32,6 +32,32 @@ export async function getCollectionSchedule(): Promise<CollectionSchedule | null
   return parsed.success ? parsed.data : null;
 }
 
+/** Returns the collection schedule, seeding a Mon–Fri 09:00–17:00 default if none is configured. */
+export async function getOrCreateDefaultCollectionSchedule(): Promise<CollectionSchedule> {
+  const existing = await getCollectionSchedule();
+  if (existing) return existing;
+
+  const defaultSchedule: CollectionSchedule = {
+    windows: [1, 2, 3, 4, 5].map((d) => ({
+      dayOfWeek: d,
+      startTime: "09:00",
+      endTime: "17:00",
+      label: ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][d],
+    })),
+    timezone: TZ,
+    cutoffMinutesBefore: 60,
+    enabled: true,
+  };
+
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
+    update: { value: defaultSchedule as any },
+    create: { scope: SETTING_SCOPE, key: SETTING_KEY, value: defaultSchedule as any },
+  });
+
+  return defaultSchedule;
+}
+
 export async function upsertCollectionSchedule(rawBody: unknown): Promise<CollectionSchedule> {
   const schedule = collectionScheduleSchema.parse(rawBody);
   await prisma.setting.upsert({

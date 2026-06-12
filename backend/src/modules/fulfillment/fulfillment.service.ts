@@ -1,7 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { z } from "zod";
-import { calculateNextCollectionDate, getCollectionSchedule, getSlaStatus } from "./collection-schedule.service.js";
+import { calculateNextCollectionDate, getOrCreateDefaultCollectionSchedule, getSlaStatus } from "./collection-schedule.service.js";
 import { sendEmail } from "../notifications/notification.service.js";
 import { resolveTemplateByKey } from "../email-templates/email-template.service.js";
 import { StockMovementType, WarehouseStatus } from "@prisma/client";
@@ -221,7 +221,7 @@ export async function initWarehouseOnPayment(orderId: string): Promise<void> {
   });
   if (!order || order.warehouseStatus !== null) return; // already initialised
 
-  const schedule = await getCollectionSchedule();
+  const schedule = await getOrCreateDefaultCollectionSchedule();
   let collectionFields: {
     collectionDate?: Date;
     collectionWindowStart?: Date;
@@ -229,16 +229,14 @@ export async function initWarehouseOnPayment(orderId: string): Promise<void> {
     slaDeadline?: Date;
   } = {};
 
-  if (schedule) {
-    const result = calculateNextCollectionDate(schedule);
-    if (result) {
-      collectionFields = {
-        collectionDate: result.collectionDate,
-        collectionWindowStart: result.windowStart,
-        collectionWindowEnd: result.windowEnd,
-        slaDeadline: result.slaDeadline,
-      };
-    }
+  const result = calculateNextCollectionDate(schedule);
+  if (result) {
+    collectionFields = {
+      collectionDate: result.collectionDate,
+      collectionWindowStart: result.windowStart,
+      collectionWindowEnd: result.windowEnd,
+      slaDeadline: result.slaDeadline,
+    };
   }
 
   await prisma.order.update({
@@ -463,8 +461,7 @@ export async function flagWarehouseException(orderId: string, actorId: string, n
 // ─── Collection date management ───────────────────────────────────────────────
 
 export async function recalculateCollectionDate(orderId: string, actorId?: string) {
-  const schedule = await getCollectionSchedule();
-  if (!schedule) throw new AppError(400, "No collection schedule configured", "NO_COLLECTION_SCHEDULE");
+  const schedule = await getOrCreateDefaultCollectionSchedule();
 
   const result = calculateNextCollectionDate(schedule);
   if (!result) throw new AppError(400, "No upcoming collection windows found in schedule", "NO_COLLECTION_WINDOW");

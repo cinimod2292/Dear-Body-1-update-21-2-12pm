@@ -441,6 +441,24 @@ export async function markAwaitingCollection(orderId: string, actorId: string) {
   return getWarehouseOrder(orderId);
 }
 
+export async function markCollected(orderId: string, actorId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, warehouseStatus: true },
+  });
+  if (!order) throw new AppError(404, "Order not found", "ORDER_NOT_FOUND");
+  if (order.warehouseStatus !== "AWAITING_COLLECTION") {
+    throw new AppError(400, "Order is not awaiting collection", "INVALID_WAREHOUSE_STATUS");
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { warehouseStatus: null, status: "SHIPPED" },
+  });
+
+  await recordOrderEvent(orderId, actorId, "WAREHOUSE_COLLECTED");
+}
+
 export async function flagWarehouseException(orderId: string, actorId: string, notes: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },

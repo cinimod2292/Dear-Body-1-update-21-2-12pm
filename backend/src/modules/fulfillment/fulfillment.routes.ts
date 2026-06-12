@@ -17,6 +17,8 @@ import {
 import {
   getCollectionSchedule,
   upsertCollectionSchedule,
+  getPudoPickupSchedule,
+  upsertPudoPickupSchedule,
 } from "./collection-schedule.service.js";
 
 export async function fulfillmentRoutes(app: FastifyInstance) {
@@ -35,6 +37,24 @@ export async function fulfillmentRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
     async (request, reply) => {
       return reply.send({ data: await upsertCollectionSchedule(request.body) });
+    },
+  );
+
+  // ── PUDO Pickup Schedule ───────────────────────────────────────────────────
+
+  app.get(
+    "/admin/fulfillment/pudo-pickup-schedule",
+    { preHandler: [app.verifyAdmin, app.requirePermission("warehouse:read")] },
+    async (_request, reply) => {
+      return reply.send({ data: await getPudoPickupSchedule() });
+    },
+  );
+
+  app.put(
+    "/admin/fulfillment/pudo-pickup-schedule",
+    { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
+    async (request, reply) => {
+      return reply.send({ data: await upsertPudoPickupSchedule(request.body) });
     },
   );
 

@@ -22,6 +22,7 @@ export type CollectionSchedule = z.infer<typeof collectionScheduleSchema>;
 
 const SETTING_SCOPE = "fulfillment";
 const SETTING_KEY = "collection_schedule";
+const PUDO_PICKUP_KEY = "pudo_pickup_schedule";
 
 export async function getCollectionSchedule(): Promise<CollectionSchedule | null> {
   const record = await prisma.setting.findUnique({
@@ -64,6 +65,25 @@ export async function upsertCollectionSchedule(rawBody: unknown): Promise<Collec
     where: { scope_key: { scope: SETTING_SCOPE, key: SETTING_KEY } },
     update: { value: schedule as any },
     create: { scope: SETTING_SCOPE, key: SETTING_KEY, value: schedule as any },
+  });
+  return schedule;
+}
+
+export async function getPudoPickupSchedule(): Promise<CollectionSchedule | null> {
+  const record = await prisma.setting.findUnique({
+    where: { scope_key: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY } },
+  });
+  if (!record) return null;
+  const parsed = collectionScheduleSchema.safeParse(record.value);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function upsertPudoPickupSchedule(rawBody: unknown): Promise<CollectionSchedule> {
+  const schedule = collectionScheduleSchema.parse(rawBody);
+  await prisma.setting.upsert({
+    where: { scope_key: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY } },
+    update: { value: schedule as any },
+    create: { scope: SETTING_SCOPE, key: PUDO_PICKUP_KEY, value: schedule as any },
   });
   return schedule;
 }

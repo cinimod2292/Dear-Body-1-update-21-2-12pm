@@ -15,20 +15,22 @@ import {
   updatePickItem,
 } from "./fulfillment.service.js";
 import {
-  getCollectionSchedule,
-  upsertCollectionSchedule,
   getPudoPickupSchedule,
   upsertPudoPickupSchedule,
+  getWarehouseCustomerSchedule,
+  upsertWarehouseCustomerSchedule,
 } from "./collection-schedule.service.js";
 
 export async function fulfillmentRoutes(app: FastifyInstance) {
   // ── Collection Schedule (settings:write / warehouse:write) ─────────────────
 
+  // ── Warehouse Customer Collection Schedule ─────────────────────────────────
+
   app.get(
     "/admin/fulfillment/collection-schedule",
     { preHandler: [app.verifyAdmin, app.requirePermission("warehouse:read")] },
     async (_request, reply) => {
-      return reply.send({ data: await getCollectionSchedule() });
+      return reply.send({ data: await getWarehouseCustomerSchedule() });
     },
   );
 
@@ -36,7 +38,7 @@ export async function fulfillmentRoutes(app: FastifyInstance) {
     "/admin/fulfillment/collection-schedule",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] },
     async (request, reply) => {
-      return reply.send({ data: await upsertCollectionSchedule(request.body) });
+      return reply.send({ data: await upsertWarehouseCustomerSchedule(request.body) });
     },
   );
 

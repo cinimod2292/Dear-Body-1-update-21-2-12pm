@@ -1062,3 +1062,20 @@ model WebhookEvent {
   @@index([source, eventType])
   @@index([status])
 }
+
+model PageView {
+  id         String   @id @default(cuid())
+  sessionId  String
+  path       String
+  referrer   String?
+  country    String?
+  city       String?
+  userAgent  String?
+  duration   Int?
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([path])
+  @@index([createdAt])
+  @@index([country])
+}

@@ -9,24 +9,22 @@ function getSessionId(): string {
   return id;
 }
 
+function beacon(url: string, data: unknown) {
+  navigator.sendBeacon(url, new Blob([JSON.stringify(data)], { type: "application/json" }));
+}
+
 export function trackPageView(path: string) {
   const sessionId = getSessionId();
-  navigator.sendBeacon(
-    `${API_BASE}/track/pageview`,
-    JSON.stringify({
-      sessionId,
-      path,
-      referrer: document.referrer || null,
-      userAgent: navigator.userAgent,
-    }),
-  );
+  beacon(`${API_BASE}/track/pageview`, {
+    sessionId,
+    path,
+    referrer: document.referrer || null,
+    userAgent: navigator.userAgent,
+  });
   return { sessionId, path, startedAt: Date.now() };
 }
 
 export function trackPageLeave(sessionId: string, path: string, startedAt: number) {
   const duration = Math.round((Date.now() - startedAt) / 1000);
-  navigator.sendBeacon(
-    `${API_BASE}/track/pageleave`,
-    JSON.stringify({ sessionId, path, duration }),
-  );
+  beacon(`${API_BASE}/track/pageleave`, { sessionId, path, duration });
 }

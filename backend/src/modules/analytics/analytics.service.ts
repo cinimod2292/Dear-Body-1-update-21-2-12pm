@@ -1,6 +1,7 @@
 import geoip from "geoip-lite";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { verifyAdminPassword } from "../auth/auth.service.js";
 
 const pageViewSchema = z.object({
   sessionId: z.string().min(1).max(64),
@@ -133,4 +134,16 @@ export async function getViewsByDay(rawQuery: unknown) {
     views,
     sessions: sessions.size,
   }));
+}
+
+const deleteAnalyticsSchema = z.object({
+  confirmation: z.literal("DELETE ALL ANALYTICS"),
+  password: z.string().min(1),
+});
+
+export async function deleteAllAnalytics(rawBody: unknown, actorId: string) {
+  const parsed = deleteAnalyticsSchema.parse(rawBody);
+  await verifyAdminPassword(actorId, parsed.password);
+  const { count } = await prisma.pageView.deleteMany({});
+  return { deletedRows: count };
 }

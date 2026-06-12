@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/orders", label: "Orders", permission: "orders:read" },
   { to: "/admin/warehouse", label: "Warehouse", permission: "warehouse:read" },
   { to: "/admin/fulfillment/collection-schedule", label: "Collection Schedule", permission: "warehouse:read", excludedRoles: ["PICKER_PACKER"] },
+  { to: "/admin/analytics", label: "Analytics", permission: "dashboard:read" },
   { to: "/admin/operations", label: "Operations", permission: "dashboard:read" },
   { to: "/admin/shipping-methods", label: "Shipping", permission: "settings:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },

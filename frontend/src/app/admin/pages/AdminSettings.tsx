@@ -5,7 +5,7 @@ import { ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { Switch } from "../../components/ui/switch";
 import { clearCmsBootstrapCache } from "../../lib/cms";
-import { AlertTriangle, PackageX, Trash2, X } from "lucide-react";
+import { AlertTriangle, BarChart2, PackageX, Trash2, X } from "lucide-react";
 
 interface PaymentEvent {
   id: string;
@@ -176,7 +176,7 @@ export default function AdminSettings() {
   const [sendgridTestTo, setSendgridTestTo] = useState("");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [comingSoon, setComingSoon] = useState(false);
-  const [dangerAction, setDangerAction] = useState<"orders" | "shipments" | null>(null);
+  const [dangerAction, setDangerAction] = useState<"orders" | "shipments" | "analytics" | null>(null);
   const [dangerConfirmation, setDangerConfirmation] = useState("");
   const [dangerPassword, setDangerPassword] = useState("");
   const [dangerDeleting, setDangerDeleting] = useState(false);
@@ -518,7 +518,7 @@ export default function AdminSettings() {
 
   const runDangerAction = async () => {
     if (!session?.accessToken || !dangerAction) return;
-    const expectedConfirmation = dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS";
+    const expectedConfirmation = dangerAction === "orders" ? "DELETE ALL ORDERS" : dangerAction === "shipments" ? "DELETE ALL SHIPMENTS" : "DELETE ALL ANALYTICS";
     if (dangerConfirmation !== expectedConfirmation || !dangerPassword) return;
 
     try {
@@ -530,6 +530,13 @@ export default function AdminSettings() {
           session.accessToken,
         );
         toast.success(`Deleted ${response.data.deletedOrders} orders and restored ${response.data.restoredUnits} stock units.`);
+      } else if (dangerAction === "analytics") {
+        const response = await apiRequest<{ data: { deletedRows: number } }>(
+          "/admin/reports/site",
+          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation, password: dangerPassword }) },
+          session.accessToken,
+        );
+        toast.success(`Deleted ${response.data.deletedRows.toLocaleString()} analytics records.`);
       } else {
         const response = await apiRequest<{ data: { deletedShipments: number } }>(
           "/admin/pudo/shipments",
@@ -914,6 +921,22 @@ export default function AdminSettings() {
             <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <BarChart2 size={19} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-950">Delete all site analytics</h3>
+                  <p className="mt-1 max-w-xl text-sm text-gray-600">Permanently deletes all page view tracking records. Live visitor counts, top pages, location data, and traffic history will be reset to zero.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDangerAction("analytics")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">
+                <BarChart2 size={16} aria-hidden="true" />
+                Delete all analytics
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
                   <PackageX size={19} aria-hidden="true" />
                 </span>
                 <div>
@@ -992,12 +1015,14 @@ export default function AdminSettings() {
                 </span>
                 <div>
                   <h3 id="danger-dialog-title" className="text-lg font-black text-gray-950">
-                    {dangerAction === "orders" ? "Delete all orders and reinstate stock?" : "Delete all shipments?"}
+                    {dangerAction === "orders" ? "Delete all orders and reinstate stock?" : dangerAction === "analytics" ? "Delete all site analytics?" : "Delete all shipments?"}
                   </h3>
                   <p className="mt-1 text-sm text-gray-600">
                     {dangerAction === "orders"
                       ? "Every order will be permanently removed and its item quantities added back to inventory."
-                      : "All locally stored shipment and tracking data will be removed. Existing courier shipments will not be cancelled."}
+                      : dangerAction === "analytics"
+                        ? "All page view records will be permanently deleted. Traffic history, location data, and session data cannot be recovered."
+                        : "All locally stored shipment and tracking data will be removed. Existing courier shipments will not be cancelled."}
                   </p>
                 </div>
               </div>
@@ -1012,15 +1037,15 @@ export default function AdminSettings() {
             <input id="danger-password" type="password" autoFocus autoComplete="current-password" value={dangerPassword} onChange={(event) => setDangerPassword(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
 
             <label className="mt-4 block text-sm font-semibold text-gray-800" htmlFor="danger-confirmation">
-              Type <span className="select-all font-mono text-red-700">{dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS"}</span> to confirm
+              Type <span className="select-all font-mono text-red-700">{dangerAction === "orders" ? "DELETE ALL ORDERS" : dangerAction === "analytics" ? "DELETE ALL ANALYTICS" : "DELETE ALL SHIPMENTS"}</span> to confirm
             </label>
             <input id="danger-confirmation" autoComplete="off" value={dangerConfirmation} onChange={(event) => setDangerConfirmation(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
 
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" disabled={dangerDeleting} onClick={closeDangerDialog} className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-              <button type="button" disabled={dangerDeleting || !dangerPassword || dangerConfirmation !== (dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS")} onClick={runDangerAction} className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">
-                {dangerAction === "orders" ? <Trash2 size={16} aria-hidden="true" /> : <PackageX size={16} aria-hidden="true" />}
-                {dangerDeleting ? "Deleting..." : dangerAction === "orders" ? "Delete all orders" : "Delete all shipments"}
+              <button type="button" disabled={dangerDeleting || !dangerPassword || dangerConfirmation !== (dangerAction === "orders" ? "DELETE ALL ORDERS" : dangerAction === "analytics" ? "DELETE ALL ANALYTICS" : "DELETE ALL SHIPMENTS")} onClick={runDangerAction} className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">
+                {dangerAction === "orders" ? <Trash2 size={16} aria-hidden="true" /> : dangerAction === "analytics" ? <BarChart2 size={16} aria-hidden="true" /> : <PackageX size={16} aria-hidden="true" />}
+                {dangerDeleting ? "Deleting..." : dangerAction === "orders" ? "Delete all orders" : dangerAction === "analytics" ? "Delete all analytics" : "Delete all shipments"}
               </button>
             </div>
           </div>

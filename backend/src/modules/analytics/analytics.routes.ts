@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import {
+  deleteAllAnalytics,
   getLiveVisitors,
   getLocationBreakdown,
   getSiteOverview,
@@ -39,5 +40,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
   app.get("/admin/reports/site/views-by-day", { preHandler: [app.verifyAdmin, app.requirePermission("dashboard:read")] }, async (request, reply) => {
     return reply.send({ data: await getViewsByDay(request.query) });
+  });
+
+  app.delete("/admin/reports/site", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    return reply.send({ data: await deleteAllAnalytics(request.body, request.user.sub) });
   });
 }

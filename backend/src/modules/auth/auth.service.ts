@@ -317,6 +317,13 @@ export async function listStaffUsers() {
   });
 }
 
+export async function verifyAdminPassword(userId: string, password: string): Promise<void> {
+  const user = await prisma.staffUser.findUnique({ where: { id: userId }, select: { passwordHash: true, status: true } });
+  if (!user || user.status !== "ACTIVE") throw new AppError(403, "Invalid credentials", "INVALID_CREDENTIALS");
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) throw new AppError(403, "Invalid password", "INVALID_CREDENTIALS");
+}
+
 export async function createStaffUser(data: { email: string; password: string; firstName?: string; lastName?: string; role?: string }) {
   const existing = await prisma.staffUser.findUnique({ where: { email: data.email } });
   if (existing) throw new AppError(409, "A user with that email already exists", "STAFF_USER_EXISTS");

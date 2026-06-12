@@ -178,6 +178,7 @@ export default function AdminSettings() {
   const [comingSoon, setComingSoon] = useState(false);
   const [dangerAction, setDangerAction] = useState<"orders" | "shipments" | null>(null);
   const [dangerConfirmation, setDangerConfirmation] = useState("");
+  const [dangerPassword, setDangerPassword] = useState("");
   const [dangerDeleting, setDangerDeleting] = useState(false);
 
   const buildStoragePayload = () => ({
@@ -512,32 +513,34 @@ export default function AdminSettings() {
     if (dangerDeleting) return;
     setDangerAction(null);
     setDangerConfirmation("");
+    setDangerPassword("");
   };
 
   const runDangerAction = async () => {
     if (!session?.accessToken || !dangerAction) return;
     const expectedConfirmation = dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS";
-    if (dangerConfirmation !== expectedConfirmation) return;
+    if (dangerConfirmation !== expectedConfirmation || !dangerPassword) return;
 
     try {
       setDangerDeleting(true);
       if (dangerAction === "orders") {
         const response = await apiRequest<{ data: { deletedOrders: number; restoredUnits: number } }>(
           "/admin/orders",
-          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation }) },
+          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation, password: dangerPassword }) },
           session.accessToken,
         );
         toast.success(`Deleted ${response.data.deletedOrders} orders and restored ${response.data.restoredUnits} stock units.`);
       } else {
         const response = await apiRequest<{ data: { deletedShipments: number } }>(
           "/admin/pudo/shipments",
-          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation }) },
+          { method: "DELETE", body: JSON.stringify({ confirmation: dangerConfirmation, password: dangerPassword }) },
           session.accessToken,
         );
         toast.success(`Deleted shipment data from ${response.data.deletedShipments} orders.`);
       }
       setDangerAction(null);
       setDangerConfirmation("");
+      setDangerPassword("");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Danger zone action failed");
     } finally {
@@ -1003,14 +1006,19 @@ export default function AdminSettings() {
               </button>
             </div>
 
-            <label className="mt-6 block text-sm font-semibold text-gray-800" htmlFor="danger-confirmation">
+            <label className="mt-6 block text-sm font-semibold text-gray-800" htmlFor="danger-password">
+              Enter your super admin password
+            </label>
+            <input id="danger-password" type="password" autoFocus autoComplete="current-password" value={dangerPassword} onChange={(event) => setDangerPassword(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
+
+            <label className="mt-4 block text-sm font-semibold text-gray-800" htmlFor="danger-confirmation">
               Type <span className="select-all font-mono text-red-700">{dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS"}</span> to confirm
             </label>
-            <input id="danger-confirmation" autoFocus autoComplete="off" value={dangerConfirmation} onChange={(event) => setDangerConfirmation(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
+            <input id="danger-confirmation" autoComplete="off" value={dangerConfirmation} onChange={(event) => setDangerConfirmation(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" />
 
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" disabled={dangerDeleting} onClick={closeDangerDialog} className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-              <button type="button" disabled={dangerDeleting || dangerConfirmation !== (dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS")} onClick={runDangerAction} className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">
+              <button type="button" disabled={dangerDeleting || !dangerPassword || dangerConfirmation !== (dangerAction === "orders" ? "DELETE ALL ORDERS" : "DELETE ALL SHIPMENTS")} onClick={runDangerAction} className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">
                 {dangerAction === "orders" ? <Trash2 size={16} aria-hidden="true" /> : <PackageX size={16} aria-hidden="true" />}
                 {dangerDeleting ? "Deleting..." : dangerAction === "orders" ? "Delete all orders" : "Delete all shipments"}
               </button>

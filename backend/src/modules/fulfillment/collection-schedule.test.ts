@@ -20,6 +20,9 @@ const baseSchedule: CollectionSchedule = {
   timezone: TZ,
   cutoffMinutesBefore: 60,
   enabled: true,
+  mode: "fixed",
+  dynamicHoursAfterOrder: 2,
+  dynamicFallbackHoursFromWindowStart: 2,
 };
 
 describe("calculateNextCollectionDate", () => {

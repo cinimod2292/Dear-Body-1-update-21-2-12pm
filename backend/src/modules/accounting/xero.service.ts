@@ -11,6 +11,29 @@ const XERO_CONFIG_KEY = "xero.config";
 const XERO_TOKEN_KEY = "xero.tokens";
 const XERO_STATE_TTL_MS = 10 * 60 * 1000;
 
+// Scopes required for post-March-2026 Xero apps (granular scope model).
+// offline_access is mandatory to receive a refresh token.
+// accounting.transactions is the legacy broad scope — replaced by granular ones.
+const XERO_DEFAULT_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "accounting.contacts",
+  "accounting.invoices",
+  "accounting.payments",
+  "accounting.settings.read",
+];
+
+function migrateScopes(scopes: string[]): string[] {
+  const upgraded = scopes.filter((s) => s !== "accounting.transactions");
+  if (!upgraded.includes("offline_access")) upgraded.unshift("offline_access");
+  if (!upgraded.includes("accounting.invoices")) upgraded.push("accounting.invoices");
+  if (!upgraded.includes("accounting.payments")) upgraded.push("accounting.payments");
+  if (!upgraded.includes("accounting.settings.read")) upgraded.push("accounting.settings.read");
+  return upgraded;
+}
+
 interface XeroConfigStored {
   enabled: boolean;
   clientId: string;
@@ -199,7 +222,7 @@ export async function getXeroSettings() {
     clientSecretConfigured: Boolean(cfg?.encryptedClientSecret),
     redirectUri: cfg?.redirectUri ?? "",
     tenantId: cfg?.tenantId ?? "",
-    scopes: cfg?.scopes ?? ["openid", "profile", "email", "accounting.contacts", "accounting.transactions"],
+    scopes: cfg ? migrateScopes(cfg.scopes ?? []) : XERO_DEFAULT_SCOPES,
     connectionStatus: token ? (isExpired(token.expiresAt) ? "expired" : "connected") : "disconnected",
     tokenExpiresAt: token?.expiresAt ?? null,
   };
@@ -239,7 +262,7 @@ export async function getXeroConnectUrl() {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
-  url.searchParams.set("scope", config.scopes.join(" "));
+  url.searchParams.set("scope", migrateScopes(config.scopes).join(" "));
   url.searchParams.set("state", state);
 
   return { url: url.toString(), state };

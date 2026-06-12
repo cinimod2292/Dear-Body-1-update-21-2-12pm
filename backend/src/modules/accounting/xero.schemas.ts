@@ -6,7 +6,7 @@ export const xeroSettingsSchema = z.object({
   clientSecret: z.string().min(6).optional(),
   redirectUri: z.string().url(),
   tenantId: z.string().optional(),
-  scopes: z.array(z.string()).default(["openid", "profile", "email", "accounting.contacts", "accounting.transactions"]),
+  scopes: z.array(z.string()).default(["openid", "profile", "email", "offline_access", "accounting.contacts", "accounting.invoices", "accounting.payments", "accounting.settings.read"]),
 });
 
 export const xeroSyncQuerySchema = z.object({

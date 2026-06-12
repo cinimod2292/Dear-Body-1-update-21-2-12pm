@@ -208,7 +208,9 @@ function decorateGeneratedShell(html: string): string {
   decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => {
     let header = setAttribute(addClass(tag, "db-email-header"), "bgcolor", "{{primaryColor}}");
     header = setStyleProperty(header, "background-color", "{{primaryColor}} !important");
-    return setStyleProperty(header, "background-image", "linear-gradient(90deg,{{primaryColor}},{{accentColor}}) !important");
+    header = setStyleProperty(header, "background-image", "linear-gradient(90deg,{{primaryColor}},{{accentColor}}) !important");
+    // forced-color-adjust inline prevents Outlook dark mode from stripping the gradient.
+    return setStyleProperty(header, "forced-color-adjust", "none");
   });
   // The brand-name <div> inside the header uses a hardcoded #ffffff colour that
   // Outlook dark mode can invert to black. Protect it inline so Outlook sees an

@@ -272,9 +272,36 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     category: "SHIPPING",
     subject: "Order #{{orderNumber}} is ready for collection",
     htmlBody: brandedEmailShell({
-      preheader: "Your order is ready for collection",
-      title: "Ready for collection",
-      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> is ready to collect from your selected PUDO locker.<br/><br/>Please follow the collection instructions sent by PUDO.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong>",
+      preheader: "Your order is at the locker — grab it with your PIN",
+      title: "Your order is at the locker! 🔓",
+      body: `Hi {{firstName}},<br/><br/>Great news — your order <strong>#{{orderNumber}}</strong> has arrived at your PUDO locker and is ready to collect.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong><br/><br/>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border-collapse:collapse;">
+  <tr><td colspan="2" style="padding-bottom:12px;font-size:15px;font-weight:700;color:#1e293b;">How to collect your parcel — 6 easy steps</td></tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">📱</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>01 — Register &amp; top up</strong><br/>Register on the PUDO app and top up your account — quick and simple!</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">📦</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>02 — Choose your door size</strong><br/>Small parcel, small price! Got something bigger? We've got larger doors too.</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">📋</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>03 — Enter recipient details</strong><br/>Name, contact details, and destination — and write them on the parcel too!</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">🔢</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>04 — Scan your PIN or QR code</strong><br/>At any Courier Guy Locker, scan your PIN or QR code — your booked door opens! We'll upgrade your door size at no extra cost if needed. Pop in your parcel and close within 36 seconds.</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">🚚</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>05 — Delivery to your locker</strong><br/>Our drivers deliver your package to your chosen Locker, Kiosk, or doorstep. You'll get the good news as soon as it arrives.</td>
+  </tr>
+  <tr valign="top">
+    <td width="28" style="padding:0 10px 14px 0;font-size:22px;line-height:1;">🎉</td>
+    <td style="padding-bottom:14px;font-size:14px;line-height:1.5;color:#334155;"><strong>06 — Collect your goodies</strong><br/>Punch in the PIN code received on WhatsApp or email at the Locker, grab your goodies, and you're sorted!</td>
+  </tr>
+</table>`,
       ctaLabel: "View Order",
       ctaUrl: "{{orderUrl}}",
     }),
@@ -286,13 +313,13 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     category: "SHIPPING",
     subject: "Your order #{{orderNumber}} is on its way — tracking inside",
     htmlBody: brandedEmailShell({
-      preheader: "Your shipment has been booked with PUDO",
+      preheader: "Your shipment has been booked with PUDO – The Courier Guy",
       title: "Your shipment is booked 📦",
-      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> has been handed to <strong>PUDO – The Courier Guy</strong> and is heading your way.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong><br/><br/>You'll receive updates as your order moves through the delivery network.",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> has been handed to <strong>PUDO – The Courier Guy</strong> and is heading your way.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong><br/><br/>You'll receive updates as your order moves through the delivery network.{{lockerGuideSection}}",
       ctaLabel: "Track Your Order",
       ctaUrl: "{{trackingUrl}}",
     }),
-    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "trackingUrl", "companyName", "supportEmail", "siteUrl"],
+    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "trackingUrl", "lockerGuideSection", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "pudo_tracking_update",

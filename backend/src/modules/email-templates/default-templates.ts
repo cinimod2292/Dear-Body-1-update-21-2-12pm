@@ -245,12 +245,12 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     subject: "Order #{{orderNumber}} is ready for collection",
     htmlBody: brandedEmailShell({
       preheader: "Your order is packed and ready for collection",
-      title: "Your order is ready",
-      body: "Hi {{firstName}},<br/><br/>Great news — order <strong>#{{orderNumber}}</strong> has been packed and is ready for collection from our warehouse.<br/><br/>Please bring your order number when collecting.",
+      title: "Your order is ready 🎉",
+      body: "Hi {{firstName}},<br/><br/>Great news — order <strong>#{{orderNumber}}</strong> has been packed and is ready for collection from our warehouse.<br/><br/><strong>Collection window:</strong> {{collectionWindow}}<br/><br/>Please bring your order number when collecting.",
       ctaLabel: "View Order",
       ctaUrl: "{{orderUrl}}",
     }),
-    placeholderKeys: ["firstName", "orderNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+    placeholderKeys: ["firstName", "orderNumber", "collectionWindow", "orderUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "order_ready_for_collection",
@@ -265,6 +265,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
       ctaUrl: "{{orderUrl}}",
     }),
     placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "orderUrl", "companyName", "supportEmail", "siteUrl"],
+  },
+  {
+    key: "pudo_shipment_created",
+    name: "PUDO Shipment Created",
+    category: "SHIPPING",
+    subject: "Your order #{{orderNumber}} is on its way — tracking inside",
+    htmlBody: brandedEmailShell({
+      preheader: "Your shipment has been booked with PUDO",
+      title: "Your shipment is booked 📦",
+      body: "Hi {{firstName}},<br/><br/>Your order <strong>#{{orderNumber}}</strong> has been handed to <strong>PUDO – The Courier Guy</strong> and is heading your way.<br/><br/>Waybill: <strong>{{waybillNumber}}</strong><br/><br/>You'll receive updates as your order moves through the delivery network.",
+      ctaLabel: "Track Your Order",
+      ctaUrl: "{{trackingUrl}}",
+    }),
+    placeholderKeys: ["firstName", "orderNumber", "waybillNumber", "trackingUrl", "companyName", "supportEmail", "siteUrl"],
   },
   {
     key: "pudo_tracking_update",

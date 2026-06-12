@@ -663,10 +663,10 @@ async function sendPudoShippingEmail(orderId: string, waybillNumber: string) {
 
   const trackingUrl = `https://pudo.co.za/track/${encodeURIComponent(waybillNumber)}`;
 
-  const template = await resolveTemplateByKey("shipping_confirmation", {
+  const template = await resolveTemplateByKey("pudo_shipment_created", {
+    firstName: order.customer.firstName ?? "there",
     orderNumber: order.orderNumber,
-    carrier: "PUDO",
-    trackingNumber: waybillNumber,
+    waybillNumber,
     trackingUrl,
   });
 
@@ -680,7 +680,7 @@ async function sendPudoShippingEmail(orderId: string, waybillNumber: string) {
 
 const PUDO_STATUS_LABELS: Record<string, string> = {
   collected:            "Collected from sender",
-  in_transit:           "In transit",
+  in_transit:           "At hub",
   out_for_delivery:     "Out for delivery",
   delivered:            "Delivered",
   ready_for_collection: "Ready for collection",
@@ -697,7 +697,7 @@ function labelForStatus(raw: string): string {
 const PUDO_SILENT_STATUSES = new Set(["exception"]);
 
 async function sendPudoTrackingUpdateEmail(
-  order: { id: string; orderNumber: string; customer: { firstName: string | null; email: string } | null },
+  order: { id: string; orderNumber: string; pudoDeliveryType: string | null; customer: { firstName: string | null; email: string } | null },
   rawStatus: string,
   waybillNumber: string,
   siteUrl: string,
@@ -705,6 +705,9 @@ async function sendPudoTrackingUpdateEmail(
   if (!order.customer?.email) return;
   const normalizedStatus = normalizePudoTrackingStatus(rawStatus);
   if (PUDO_SILENT_STATUSES.has(normalizedStatus)) return;
+
+  // "ready_for_collection" means the parcel is in the locker — only relevant for locker orders
+  if (normalizedStatus === "ready_for_collection" && order.pudoDeliveryType === "door") return;
 
   const statusLabel = PUDO_STATUS_LABELS[normalizedStatus] ?? rawStatus;
 
@@ -878,7 +881,7 @@ export async function syncPudoTrackingStatuses(): Promise<{ synced: number; erro
     },
     select: {
       id: true, orderNumber: true, trackingNumber: true,
-      fulfillmentStatus: true, status: true, pudoTrackingStatus: true,
+      fulfillmentStatus: true, status: true, pudoTrackingStatus: true, pudoDeliveryType: true,
       customer: { select: { firstName: true, email: true } },
     },
   });
@@ -1254,7 +1257,7 @@ export async function processPudoTrackingWebhook(payload: unknown): Promise<void
   const order = await prisma.order.findFirst({
     where: { trackingNumber: waybillNumber },
     select: {
-      id: true, orderNumber: true, status: true, fulfillmentStatus: true, pudoTrackingStatus: true,
+      id: true, orderNumber: true, status: true, fulfillmentStatus: true, pudoTrackingStatus: true, pudoDeliveryType: true,
       customer: { select: { firstName: true, email: true } },
     },
   });

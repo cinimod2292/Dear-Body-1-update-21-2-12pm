@@ -346,6 +346,18 @@ async function sendOrderConfirmationEmail(orderId: string) {
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
+function formatCollectionWindow(order: { collectionWindowStart?: Date | null; collectionWindowEnd?: Date | null }): string {
+  if (!order.collectionWindowStart) return "Contact us for collection time";
+  const tz = "Africa/Johannesburg";
+  const dateOpts: Intl.DateTimeFormatOptions = { timeZone: tz, weekday: "long", month: "long", day: "numeric" };
+  const timeOpts: Intl.DateTimeFormatOptions = { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false };
+  const datePart = order.collectionWindowStart.toLocaleDateString("en-ZA", dateOpts);
+  const startTime = order.collectionWindowStart.toLocaleTimeString("en-ZA", timeOpts);
+  if (!order.collectionWindowEnd) return `${datePart} from ${startTime}`;
+  const endTime = order.collectionWindowEnd.toLocaleTimeString("en-ZA", timeOpts);
+  return `${datePart}, ${startTime}–${endTime}`;
+}
+
 async function sendWarehouseCollectionReadyEmail(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -362,6 +374,7 @@ async function sendWarehouseCollectionReadyEmail(orderId: string) {
   const template = await resolveTemplateByKey("warehouse_collection_ready", {
     firstName: order.customer.firstName ?? "there",
     orderNumber: order.orderNumber,
+    collectionWindow: formatCollectionWindow(order),
     orderUrl: `${env.STOREFRONT_URL ?? ""}/account/orders/${order.id}`,
   });
   await sendEmail({
@@ -397,10 +410,11 @@ async function sendAdminNewOrderEmailSafe(orderId: string) {
 async function sendReadyForCollectionEmail(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true } });
   if (!order?.customer?.email) return;
-  const collectionDetails = `Please bring your order confirmation when collecting.`;
-  const template = await resolveTemplateByKey("ready_for_collection", {
+  const template = await resolveTemplateByKey("warehouse_collection_ready", {
+    firstName: order.customer.firstName ?? "there",
     orderNumber: order.orderNumber,
-    collectionDetails,
+    collectionWindow: formatCollectionWindow(order),
+    orderUrl: `${env.STOREFRONT_URL ?? ""}/account/orders/${order.id}`,
   });
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }

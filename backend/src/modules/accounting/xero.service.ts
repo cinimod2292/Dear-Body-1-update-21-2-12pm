@@ -199,7 +199,7 @@ export async function getXeroSettings() {
     clientSecretConfigured: Boolean(cfg?.encryptedClientSecret),
     redirectUri: cfg?.redirectUri ?? "",
     tenantId: cfg?.tenantId ?? "",
-    scopes: cfg?.scopes ?? ["openid", "profile", "email", "accounting.contacts", "accounting.transactions"],
+    scopes: cfg?.scopes ?? ["openid", "profile", "email", "offline_access", "accounting.contacts", "accounting.transactions", "accounting.settings.read"],
     connectionStatus: token ? (isExpired(token.expiresAt) ? "expired" : "connected") : "disconnected",
     tokenExpiresAt: token?.expiresAt ?? null,
   };

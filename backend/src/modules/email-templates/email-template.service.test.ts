@@ -138,6 +138,39 @@ test("baked-in logo img in DB template is replaced by logoMarkup token, not dupl
   assert.equal(logoMatches?.length, 1, "logo must appear exactly once");
 });
 
+test("logoMarkup misplaced in content area is moved to header, not duplicated", async () => {
+  const { renderEmailHtml } = await import("./email-template.render.js");
+  // Simulates a DB template saved with {{logoMarkup}} inside the heading td
+  // (wrong location). The normalization must relocate it to the header only.
+  const dbHtml = `<!doctype html><html><body style="margin:0;background:#f0f0f0;color:#222222;">
+    <table role="presentation" style="background:#f0f0f0;padding:24px 0;"><tr><td align="center">
+      <table role="presentation" style="max-width:620px;background:#ffffff;">
+        <tr><td style="padding:18px 24px;background:linear-gradient(90deg,#ee5ca8,#ff8552);text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:#ffffff;">Dear Body</div>
+        </td></tr>
+        <tr><td style="font-size:28px;color:#111827;">{{logoMarkup}}Welcome!</td></tr>
+        <tr><td style="font-size:16px;color:#374151;">Body text.</td></tr>
+        <tr><td style="background:#111827;color:#d1d5db;font-size:13px;">Footer</td></tr>
+      </table>
+    </td></tr></table>
+  </body></html>`;
+
+  const rendered = renderEmailHtml(dbHtml, {
+    primaryColor: "#ee5ca8", accentColor: "#ff8552",
+    outerBg: "#f0f0f0", contentBg: "#ffffff",
+    headingColor: "#111827", bodyTextColor: "#374151",
+    footerBg: "#111827", footerText: "#d1d5db",
+    logoMarkup: '<img src="https://cdn.example/logo.png" alt="Logo" />',
+    footerLinksMarkup: "",
+  });
+
+  const logoMatches = rendered.match(/cdn\.example\/logo\.png/g);
+  assert.equal(logoMatches?.length, 1, "logo must appear exactly once");
+  // Logo must be in the header (inside the gradient td), not inside the heading td
+  assert.match(rendered, /linear-gradient[\s\S]{0,300}cdn\.example\/logo\.png/);
+  assert.doesNotMatch(rendered, /cdn\.example\/logo\.png[\s\S]{0,50}Welcome!/);
+});
+
 test("advanced custom HTML is not structurally rewritten", async () => {
   const { renderEmailHtml } = await import("./email-template.render.js");
   const custom = '<html><body style="background:#123456"><p style="color:#654321">Custom {{firstName}}</p></body></html>';

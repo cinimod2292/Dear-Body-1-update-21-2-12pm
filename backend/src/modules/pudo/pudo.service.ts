@@ -6,6 +6,7 @@ import { resolveTemplateByKey } from "../email-templates/email-template.service.
 import { sendEmail } from "../notifications/notification.service.js";
 import { emailTemplateKeyForPudoStatus, normalizePudoTrackingStatus } from "./pudo-email.js";
 import { deleteAllShipmentsSchema } from "./pudo-danger-zone.js";
+import { verifyAdminPassword } from "../auth/auth.service.js";
 import { calculateNextCollectionDate, getCollectionSchedule } from "../fulfillment/collection-schedule.service.js";
 
 const PUDO_API_PROD = "https://api-pudo.co.za";
@@ -568,8 +569,9 @@ export async function getPudoDoorRates(
   return pudoFetch<unknown>("POST", "/rates", settings, payload);
 }
 
-export async function deleteAllShipments(rawBody: unknown) {
-  deleteAllShipmentsSchema.parse(rawBody);
+export async function deleteAllShipments(rawBody: unknown, actorId: string) {
+  const parsed = deleteAllShipmentsSchema.parse(rawBody);
+  await verifyAdminPassword(actorId, parsed.password);
 
   const shipmentWhere = {
     OR: [

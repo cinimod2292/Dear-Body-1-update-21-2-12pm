@@ -21,6 +21,7 @@ import { resolveTemplateByKey } from "../email-templates/email-template.service.
 import { sendEmail } from "../notifications/notification.service.js";
 import { isWarehouseCollectionOrder, shouldSendWarehouseCollectionReadyEmail } from "./order-collection-email.js";
 import { summarizeInventoryRestore } from "./order-danger-zone.js";
+import { verifyAdminPassword } from "../auth/auth.service.js";
 import { shouldSendOrderConfirmation } from "./order-email-policy.js";
 
 const shippingRulesSchema = z.object({
@@ -633,7 +634,8 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
 }
 
 export async function deleteAllOrdersAndRestoreStock(rawBody: unknown, actorId: string) {
-  deleteAllOrdersSchema.parse(rawBody);
+  const parsed = deleteAllOrdersSchema.parse(rawBody);
+  await verifyAdminPassword(actorId, parsed.password);
 
   return prisma.$transaction(async (tx) => {
     const orders = await tx.order.findMany({

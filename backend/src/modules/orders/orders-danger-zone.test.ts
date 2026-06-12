@@ -3,9 +3,10 @@ import test from "node:test";
 import { deleteAllOrdersSchema } from "./orders.schemas.js";
 import { summarizeInventoryRestore } from "./order-danger-zone.js";
 
-test("danger-zone confirmation requires the exact destructive phrase", () => {
-  assert.equal(deleteAllOrdersSchema.safeParse({ confirmation: "DELETE ALL ORDERS" }).success, true);
-  assert.equal(deleteAllOrdersSchema.safeParse({ confirmation: "delete all orders" }).success, false);
+test("danger-zone confirmation requires the exact destructive phrase and a password", () => {
+  assert.equal(deleteAllOrdersSchema.safeParse({ confirmation: "DELETE ALL ORDERS", password: "secret" }).success, true);
+  assert.equal(deleteAllOrdersSchema.safeParse({ confirmation: "DELETE ALL ORDERS" }).success, false);
+  assert.equal(deleteAllOrdersSchema.safeParse({ confirmation: "delete all orders", password: "secret" }).success, false);
   assert.equal(deleteAllOrdersSchema.safeParse({}).success, false);
 });
 

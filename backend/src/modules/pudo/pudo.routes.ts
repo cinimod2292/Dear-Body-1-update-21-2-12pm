@@ -112,7 +112,7 @@ export async function pudoRoutes(app: FastifyInstance) {
   app.delete(
     "/admin/pudo/shipments",
     { preHandler: [app.verifyAdmin, app.requirePermission("orders:delete-all")] },
-    async (request, reply) => reply.send({ data: await deleteAllShipments(request.body) }),
+    async (request, reply) => reply.send({ data: await deleteAllShipments(request.body, request.user.sub) }),
   );
 
   app.get(

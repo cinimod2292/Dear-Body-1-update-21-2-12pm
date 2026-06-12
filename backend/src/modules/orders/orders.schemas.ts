@@ -95,4 +95,5 @@ export const refundSchema = z.object({
 
 export const deleteAllOrdersSchema = z.object({
   confirmation: z.literal("DELETE ALL ORDERS"),
+  password: z.string().min(1),
 });

@@ -1,8 +1,9 @@
 import { Outlet, useLocation } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
 import { fetchCmsBootstrap } from "../lib/cms";
+import { trackPageLeave, trackPageView } from "../lib/tracking";
 import MaintenancePage from "../pages/MaintenancePage";
 import UnderConstructionPage from "../pages/UnderConstructionPage";
 
@@ -11,9 +12,26 @@ type SiteStatus = { maintenanceMode: boolean; comingSoon: boolean };
 export function Root() {
   const { pathname } = useLocation();
   const [siteStatus, setSiteStatus] = useState<SiteStatus | null>(null);
+  const trackRef = useRef<{ sessionId: string; path: string; startedAt: number } | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [pathname]);
+
+  useEffect(() => {
+    if (trackRef.current) {
+      const { sessionId, path, startedAt } = trackRef.current;
+      trackPageLeave(sessionId, path, startedAt);
+    }
+    const result = trackPageView(pathname);
+    trackRef.current = result;
+    return () => {
+      if (trackRef.current) {
+        const { sessionId, path, startedAt } = trackRef.current;
+        trackPageLeave(sessionId, path, startedAt);
+        trackRef.current = null;
+      }
+    };
   }, [pathname]);
 
   useEffect(() => {

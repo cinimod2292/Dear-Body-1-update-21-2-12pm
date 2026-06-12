@@ -34,6 +34,7 @@ import { setupRoutes } from "./modules/setup/setup.routes.js";
 import { storeAccountRoutes } from "./modules/store-account/store-account.routes.js";
 import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { sitemapRoutes } from "./modules/sitemap/sitemap.routes.js";
+import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -228,6 +229,7 @@ export async function buildApp() {
     await api.register(fulfillmentRoutes);
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
+    await api.register(analyticsRoutes);
   }, { prefix: env.API_PREFIX });
 
   registerErrorHandler(app);

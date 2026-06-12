@@ -31,7 +31,9 @@ interface WarehouseOrder {
   slaStatus: "green" | "amber" | "red" | "critical" | "missed";
   slaDeadline: string | null;
   collectionWindowStart: string | null; collectionWindowEnd: string | null;
+  collectionDate: string | null;
   totalAmount: number; currency: string; placedAt: string;
+  packedAt: string | null;
   warehouseNotes: string | null;
   customer: { firstName?: string; lastName?: string; email: string } | null;
   items: { id: string; sku: string; productName: string; quantity: number }[];
@@ -72,6 +74,29 @@ function bySla(a: WarehouseOrder, b: WarehouseOrder) {
   return new Date(a.slaDeadline).getTime() - new Date(b.slaDeadline).getTime();
 }
 
+function isCustomerPickup(order: WarehouseOrder): boolean {
+  if (!order.shippingMethod) return false;
+  return (
+    order.shippingMethod.type === "COLLECT" ||
+    /collect|pick[\s-]?up|warehouse/i.test(order.shippingMethod.name)
+  );
+}
+
+function fmtTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("en-ZA", {
+    timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-ZA", {
+    timeZone: "Africa/Johannesburg", weekday: "short", month: "short",
+    day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 // ─── CountdownTimer ───────────────────────────────────────────────────────────
 
 function CountdownTimer({ deadline, large = false }: { deadline: string | null; large?: boolean }) {
@@ -98,6 +123,14 @@ function CountdownTimer({ deadline, large = false }: { deadline: string | null; 
 
 // ─── ExpandedPickPanel ────────────────────────────────────────────────────────
 
+// Status transitions used for optimistic updates
+const STATUS_AFTER_ACTION: Record<string, string> = {
+  "complete-picking": "PICKED",
+  "start-packing": "PACKING",
+  "complete-packing": "PACKED",
+  "awaiting-collection": "AWAITING_COLLECTION",
+};
+
 function ExpandedPickPanel({
   orderId, accessToken, onDone,
 }: {
@@ -119,7 +152,45 @@ function ExpandedPickPanel({
 
   useEffect(() => { void loadDetail(); }, [loadDetail]);
 
+  // Optimistic item update — UI changes instantly, API syncs in background
+  const updateItem = async (pickTaskItemId: string, status: "PICKED" | "ISSUE", issueType?: string, issueNotes?: string) => {
+    setDetail((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((item) => ({
+          ...item,
+          pickTaskItems: item.pickTaskItems.map((p) =>
+            p.id !== pickTaskItemId ? p : {
+              ...p,
+              status,
+              issueType: (status === "ISSUE" ? (issueType ?? "OUT_OF_STOCK") : "NONE") as PickTaskItem["issueType"],
+              issueNotes: status === "ISSUE" ? (issueNotes ?? null) : null,
+              pickedAt: status === "PICKED" ? new Date().toISOString() : p.pickedAt,
+            }
+          ),
+        })),
+      };
+    });
+
+    try {
+      await apiRequest(
+        `/admin/warehouse/orders/${orderId}/pick-items/${pickTaskItemId}`,
+        { method: "PATCH", body: JSON.stringify({ status, ...(issueType ? { issueType, issueNotes } : {}) }) },
+        accessToken,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update item");
+      void loadDetail(); // Revert optimistic update on error
+    }
+  };
+
+  // Optimistic status action — shows new state immediately, syncs in background
   const doAction = async (endpoint: string, body?: object) => {
+    const nextStatus = STATUS_AFTER_ACTION[endpoint];
+    if (nextStatus) {
+      setDetail((prev) => prev ? { ...prev, warehouseStatus: nextStatus } : prev);
+    }
     setActing(true);
     try {
       await apiRequest(
@@ -127,28 +198,12 @@ function ExpandedPickPanel({
         { method: "POST", body: body ? JSON.stringify(body) : undefined },
         accessToken,
       );
-      await loadDetail();
-      onDone();
       toast.success("Updated");
+      onDone(); // Refresh parent list in background
+      void loadDetail();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Action failed");
-    } finally {
-      setActing(false);
-    }
-  };
-
-  const updateItem = async (pickTaskItemId: string, status: "PICKED" | "ISSUE", issueType?: string, issueNotes?: string) => {
-    setActing(true);
-    try {
-      await apiRequest(
-        `/admin/warehouse/orders/${orderId}/pick-items/${pickTaskItemId}`,
-        { method: "PATCH", body: JSON.stringify({ status, ...(issueType ? { issueType, issueNotes } : {}) }) },
-        accessToken,
-      );
-      await loadDetail();
-      onDone();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update item");
+      void loadDetail(); // Revert on error
     } finally {
       setActing(false);
     }
@@ -205,7 +260,7 @@ function ExpandedPickPanel({
                   {isPicked && <span className="ml-2 text-green-600 font-bold text-xs">✓ PICKED</span>}
                   {isIssue && <span className="ml-2 text-red-600 font-bold text-xs">⚠ {pick?.issueType?.replace(/_/g, " ")}</span>}
                 </div>
-                {ws === "PICKING" && !acting && (
+                {ws === "PICKING" && (
                   <div className="flex gap-1.5 shrink-0">
                     {!isPicked && (
                       <button
@@ -372,8 +427,8 @@ function OrderCard({
               {customerName(order)} · {order.items.length} item{order.items.length !== 1 ? "s" : ""}
               {order.collectionWindowStart && (
                 <span className="ml-1">
-                  · Collection {new Date(order.collectionWindowStart).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit" })}
-                  {order.collectionWindowEnd && `–${new Date(order.collectionWindowEnd).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit" })}`}
+                  · Collection {fmtTime(order.collectionWindowStart)}
+                  {order.collectionWindowEnd && `–${fmtTime(order.collectionWindowEnd)}`}
                 </span>
               )}
             </div>
@@ -392,6 +447,158 @@ function OrderCard({
   );
 }
 
+// ─── AwaitingCollectionTab ────────────────────────────────────────────────────
+
+function CollectionCard({ order }: { order: WarehouseOrder }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-gray-900">#{order.orderNumber}</span>
+            {order.stockIssueStatus !== "NONE" && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                {order.stockIssueStatus.replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-700 mt-0.5 font-medium">{customerName(order)}</p>
+          <p className="text-xs text-gray-400 truncate">{order.customer?.email ?? ""}</p>
+        </div>
+        <Link
+          to={`/admin/warehouse/orders/${order.id}`}
+          className="shrink-0 text-xs text-pink-600 hover:underline font-medium"
+        >
+          Open →
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div>
+          <span className="text-gray-400">Method</span>
+          <p className="text-gray-700 font-medium truncate">{order.shippingMethod?.name ?? "—"}</p>
+        </div>
+        <div>
+          <span className="text-gray-400">Items</span>
+          <p className="text-gray-700 font-medium">{order.items.length}</p>
+        </div>
+        {order.packedAt && (
+          <div>
+            <span className="text-gray-400">Packed at</span>
+            <p className="text-gray-700 font-medium">{fmtDateTime(order.packedAt)}</p>
+          </div>
+        )}
+        {order.collectionWindowStart && (
+          <div>
+            <span className="text-gray-400">Collection window</span>
+            <p className="text-gray-700 font-medium">
+              {fmtDateTime(order.collectionWindowStart)}
+              {order.collectionWindowEnd && ` – ${fmtTime(order.collectionWindowEnd)}`}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {order.items.length > 0 && (
+        <p className="text-xs text-gray-400 truncate">
+          {order.items.slice(0, 3).map((i) => i.productName).join(", ")}
+          {order.items.length > 3 && ` +${order.items.length - 3} more`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AwaitingCollectionTab({ orders }: { orders: WarehouseOrder[] }) {
+  const awaitingOrders = orders.filter((o) => o.warehouseStatus === "AWAITING_COLLECTION");
+  const exceptions = orders.filter((o) => o.warehouseStatus === "EXCEPTION");
+
+  const courierCollection = awaitingOrders.filter((o) => !isCustomerPickup(o));
+  const customerPickup = awaitingOrders.filter((o) => isCustomerPickup(o));
+
+  return (
+    <div className="space-y-6">
+      {awaitingOrders.length === 0 && exceptions.length === 0 && (
+        <div className="rounded-xl border border-dashed border-gray-300 py-12 text-center text-sm text-gray-400">
+          Nothing awaiting collection
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* Courier Collection */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Courier Collection</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+              {courierCollection.length}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 -mt-2">Awaiting courier pickup from warehouse</p>
+
+          {courierCollection.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
+              No orders awaiting courier
+            </div>
+          ) : (
+            courierCollection.map((order) => (
+              <CollectionCard key={order.id} order={order} />
+            ))
+          )}
+        </div>
+
+        {/* Customer Pickup */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Customer Pickup</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">
+              {customerPickup.length}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 -mt-2">Customer will collect in person</p>
+
+          {customerPickup.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
+              No orders awaiting customer pickup
+            </div>
+          ) : (
+            customerPickup.map((order) => (
+              <CollectionCard key={order.id} order={order} />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Exceptions */}
+      {exceptions.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="font-bold text-red-700 text-sm uppercase tracking-wide flex items-center gap-2">
+            Exceptions
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">{exceptions.length}</span>
+          </h2>
+          {exceptions.map((order) => (
+            <div key={order.id} className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="font-bold text-gray-800">#{order.orderNumber}</span>
+                <span className="text-sm text-gray-600">{customerName(order)}</span>
+                <span className="text-xs text-gray-500">{order.items.length} items</span>
+                {order.warehouseNotes && (
+                  <span className="text-xs text-red-600 italic truncate max-w-xs">{order.warehouseNotes.split("\n").pop()}</span>
+                )}
+              </div>
+              <Link
+                to={`/admin/warehouse/orders/${order.id}`}
+                className="shrink-0 text-xs text-pink-600 hover:underline font-medium"
+              >
+                Open →
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function AdminWarehouseDashboard() {
@@ -403,7 +610,7 @@ export default function AdminWarehouseDashboard() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
+  const [activeTab, setActiveTab] = useState<"queue" | "collection">("queue");
 
   const load = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -433,17 +640,24 @@ export default function AdminWarehouseDashboard() {
   const claimOrder = async (orderId: string) => {
     if (!session?.accessToken) return;
     setActing(orderId);
+
+    // Optimistic: move order to PICKING immediately
+    setAllOrders((prev) => prev.map((o) =>
+      o.id !== orderId ? o : { ...o, warehouseStatus: "PICKING", pickedBy: { id: myId } }
+    ));
+    setExpandedId(orderId);
+
     try {
       await apiRequest(
         `/admin/warehouse/orders/${orderId}/start-picking`,
         { method: "POST" },
         session.accessToken,
       );
-      await load();
-      setExpandedId(orderId);
       toast.success("Order claimed — start picking!");
+      void load(); // Background refresh
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to claim order");
+      void load(); // Revert on error
     } finally {
       setActing(null);
     }
@@ -460,8 +674,7 @@ export default function AdminWarehouseDashboard() {
   const myPicked = allOrders
     .filter((o) => ["PICKED", "PACKED"].includes(o.warehouseStatus) && (o.pickedBy?.id === myId || o.packedBy?.id === myId))
     .sort(bySla);
-  const done = allOrders.filter((o) => ["AWAITING_COLLECTION", "EXCEPTION"].includes(o.warehouseStatus));
-  const exceptions = allOrders.filter((o) => o.warehouseStatus === "EXCEPTION");
+  const collectionOrders = allOrders.filter((o) => ["AWAITING_COLLECTION", "EXCEPTION"].includes(o.warehouseStatus));
 
   const nextPick = myActive[0] ?? unassigned[0] ?? null;
 
@@ -472,6 +685,9 @@ export default function AdminWarehouseDashboard() {
   };
 
   if (loading && allOrders.length === 0) return <LoadingState label="Loading warehouse…" />;
+
+  const awaitingCount = collectionOrders.filter((o) => o.warehouseStatus === "AWAITING_COLLECTION").length;
+  const exceptionCount = collectionOrders.filter((o) => o.warehouseStatus === "EXCEPTION").length;
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
@@ -524,219 +740,219 @@ export default function AdminWarehouseDashboard() {
         </div>
       )}
 
-      {/* My Next Pick — highlighted banner */}
-      {nextPick && (
-        <div className={`rounded-2xl border-2 p-4 ${
-          nextPick.slaStatus === "critical" || nextPick.slaStatus === "missed"
-            ? "border-red-400 bg-red-50"
-            : nextPick.slaStatus === "red"
-            ? "border-orange-400 bg-orange-50"
-            : nextPick.slaStatus === "amber"
-            ? "border-yellow-400 bg-yellow-50"
-            : "border-blue-300 bg-blue-50"
-        }`}>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-                {myActive.length > 0 ? "My Next Active Order" : "Next Unassigned Order"}
-              </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xl font-black text-gray-900">#{nextPick.orderNumber}</span>
-                <span className="text-sm text-gray-600">{customerName(nextPick)}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-white border border-gray-300 text-gray-700">
-                  {nextPick.items.length} items
-                </span>
-              </div>
-              {nextPick.collectionWindowStart && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Collection {new Date(nextPick.collectionWindowStart).toLocaleString("en-ZA", {
-                    timeZone: "Africa/Johannesburg", weekday: "short", month: "short", day: "numeric",
-                    hour: "2-digit", minute: "2-digit",
-                  })}
-                  {nextPick.collectionWindowEnd && ` – ${new Date(nextPick.collectionWindowEnd).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit" })}`}
-                </p>
-              )}
-            </div>
-            <div className="text-center">
-              <div className={`${SLA_TIMER_COLOR[nextPick.slaStatus] ?? "text-gray-700"}`}>
-                <CountdownTimer deadline={nextPick.slaDeadline} large />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">until cutoff</p>
-            </div>
-            <div>
-              {myActive.length > 0 && myActive[0].id === nextPick.id ? (
-                <button
-                  onClick={() => setExpandedId((id) => id === nextPick.id ? null : nextPick.id)}
-                  className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700"
-                >
-                  {expandedId === nextPick.id ? "Collapse ▲" : "Continue Picking ▼"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => claimOrder(nextPick.id)}
-                  disabled={acting === nextPick.id}
-                  className="px-6 py-3 rounded-xl bg-pink-600 text-white font-bold text-sm hover:bg-pink-700 disabled:opacity-50"
-                >
-                  {acting === nextPick.id ? "Claiming…" : "Claim & Start Picking →"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
-
-        {/* Left: My Active Orders */}
-        <div className="lg:col-span-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">
-              My Queue <span className="ml-1 text-gray-400 font-normal normal-case">({myActive.length + myPicked.length})</span>
-            </h2>
-          </div>
-
-          {myActive.length === 0 && myPicked.length === 0 && (
-            <div className="rounded-xl border border-dashed border-gray-300 py-8 text-center text-sm text-gray-400">
-              No active orders — claim one from the queue →
-            </div>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab("queue")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition -mb-px border border-transparent ${
+            activeTab === "queue"
+              ? "border-gray-200 border-b-white bg-white text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Picking & Packing
+          {(unassigned.length + myActive.length) > 0 && (
+            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 font-bold">
+              {unassigned.length + myActive.length}
+            </span>
           )}
-
-          {[...myActive, ...myPicked].map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              expanded={expandedId === order.id}
-              onToggle={() => setExpandedId((id) => id === order.id ? null : order.id)}
-            >
-              {expandedId === order.id && session?.accessToken && (
-                <ExpandedPickPanel
-                  orderId={order.id}
-                  accessToken={session.accessToken}
-                  onDone={load}
-                />
-              )}
-            </OrderCard>
-          ))}
-
-          {/* Other pickers' active orders */}
-          {otherActive.length > 0 && (
-            <details className="group">
-              <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none py-1">
-                {otherActive.length} order{otherActive.length !== 1 ? "s" : ""} being picked by others ▾
-              </summary>
-              <div className="mt-2 space-y-2 opacity-70">
-                {otherActive.map((order) => (
-                  <div key={order.id} className="rounded-lg border border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-3">
-                    <div>
-                      <span className="font-bold text-gray-700">#{order.orderNumber}</span>
-                      <span className="text-xs text-gray-400 ml-2">
-                        {order.pickedBy ? `${order.pickedBy.firstName ?? ""} ${order.pickedBy.lastName ?? ""}`.trim() : "Unknown"}
-                      </span>
-                      <span className="text-xs text-gray-400 ml-2">{order.items.length} items</span>
-                    </div>
-                    <div className={`font-mono text-sm font-bold ${SLA_TIMER_COLOR[order.slaStatus]}`}>
-                      <CountdownTimer deadline={order.slaDeadline} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
+        </button>
+        <button
+          onClick={() => setActiveTab("collection")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition -mb-px border border-transparent ${
+            activeTab === "collection"
+              ? "border-gray-200 border-b-white bg-white text-gray-900"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Awaiting Collection
+          {awaitingCount > 0 && (
+            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-bold">
+              {awaitingCount}
+            </span>
           )}
-        </div>
-
-        {/* Right: Unassigned Queue */}
-        <div className="lg:col-span-2 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">
-              Unassigned <span className="ml-1 text-gray-400 font-normal normal-case">({unassigned.length})</span>
-            </h2>
-          </div>
-
-          {unassigned.length === 0 && (
-            <div className="rounded-xl border border-dashed border-gray-300 py-8 text-center text-sm text-gray-400">
-              No unassigned orders
-            </div>
+          {exceptionCount > 0 && (
+            <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">
+              {exceptionCount} exc
+            </span>
           )}
-
-          {unassigned.map((order) => (
-            <div
-              key={order.id}
-              className={`bg-white rounded-xl border border-l-4 ${SLA_BORDER[order.slaStatus] ?? "border-l-gray-300"} border-gray-200 p-3`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-gray-900 text-sm">#{order.orderNumber}</span>
-                    {order.stockIssueStatus !== "NONE" && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{order.stockIssueStatus.replace(/_/g, " ")}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">{customerName(order)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {order.items.length} item{order.items.length !== 1 ? "s" : ""}
-                    {order.items.length > 0 && ` · ${order.items.slice(0, 2).map((i) => i.productName).join(", ")}${order.items.length > 2 ? ` +${order.items.length - 2}` : ""}`}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className={`font-mono font-bold text-sm ${SLA_TIMER_COLOR[order.slaStatus]}`}>
-                    <CountdownTimer deadline={order.slaDeadline} />
-                  </div>
-                  <div className="text-xs text-gray-400">cutoff</div>
-                </div>
-              </div>
-              <button
-                onClick={() => claimOrder(order.id)}
-                disabled={acting === order.id}
-                className="mt-2 w-full py-1.5 rounded-lg bg-pink-600 text-white text-xs font-bold hover:bg-pink-700 disabled:opacity-50"
-              >
-                {acting === order.id ? "Claiming…" : "Claim Order →"}
-              </button>
-            </div>
-          ))}
-        </div>
+        </button>
       </div>
 
-      {/* Done / Awaiting Collection */}
-      {done.length > 0 && (
-        <div>
-          <button
-            onClick={() => setShowDone((s) => !s)}
-            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 py-1"
-          >
-            {showDone ? "▲" : "▼"} Awaiting Collection &amp; Exceptions ({done.length})
-            {exceptions.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{exceptions.length} exception{exceptions.length !== 1 ? "s" : ""}</span>
-            )}
-          </button>
-          {showDone && (
-            <div className="mt-2 space-y-1.5">
-              {done.map((order) => (
-                <div key={order.id} className={`rounded-lg border bg-white px-3 py-2 flex items-center justify-between gap-3 ${order.warehouseStatus === "EXCEPTION" ? "border-red-300 bg-red-50" : "border-gray-200"}`}>
+      {/* Tab content */}
+      {activeTab === "collection" ? (
+        <AwaitingCollectionTab orders={collectionOrders} />
+      ) : (
+        <div className="space-y-4">
+          {/* My Next Pick — highlighted banner */}
+          {nextPick && (
+            <div className={`rounded-2xl border-2 p-4 ${
+              nextPick.slaStatus === "critical" || nextPick.slaStatus === "missed"
+                ? "border-red-400 bg-red-50"
+                : nextPick.slaStatus === "red"
+                ? "border-orange-400 bg-orange-50"
+                : nextPick.slaStatus === "amber"
+                ? "border-yellow-400 bg-yellow-50"
+                : "border-blue-300 bg-blue-50"
+            }`}>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                    {myActive.length > 0 ? "My Next Active Order" : "Next Unassigned Order"}
+                  </p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-sm text-gray-700">#{order.orderNumber}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${order.warehouseStatus === "EXCEPTION" ? "bg-red-100 text-red-800" : "bg-teal-100 text-teal-800"}`}>
-                      {order.warehouseStatus.replace(/_/g, " ")}
+                    <span className="text-xl font-black text-gray-900">#{nextPick.orderNumber}</span>
+                    <span className="text-sm text-gray-600">{customerName(nextPick)}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white border border-gray-300 text-gray-700">
+                      {nextPick.items.length} items
                     </span>
-                    <span className="text-xs text-gray-400">{customerName(order)}</span>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {order.slaDeadline && (
-                      <div className={`font-mono text-xs ${SLA_TIMER_COLOR[order.slaStatus]}`}>
+                  {nextPick.collectionWindowStart && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Collection {fmtDateTime(nextPick.collectionWindowStart)}
+                      {nextPick.collectionWindowEnd && ` – ${fmtTime(nextPick.collectionWindowEnd)}`}
+                    </p>
+                  )}
+                </div>
+                <div className="text-center">
+                  <div className={`${SLA_TIMER_COLOR[nextPick.slaStatus] ?? "text-gray-700"}`}>
+                    <CountdownTimer deadline={nextPick.slaDeadline} large />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">until cutoff</p>
+                </div>
+                <div>
+                  {myActive.length > 0 && myActive[0].id === nextPick.id ? (
+                    <button
+                      onClick={() => setExpandedId((id) => id === nextPick.id ? null : nextPick.id)}
+                      className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700"
+                    >
+                      {expandedId === nextPick.id ? "Collapse ▲" : "Continue Picking ▼"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => claimOrder(nextPick.id)}
+                      disabled={acting === nextPick.id}
+                      className="px-6 py-3 rounded-xl bg-pink-600 text-white font-bold text-sm hover:bg-pink-700 disabled:opacity-50"
+                    >
+                      {acting === nextPick.id ? "Claiming…" : "Claim & Start Picking →"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Main two-column layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+
+            {/* Left: My Active Orders */}
+            <div className="lg:col-span-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                  My Queue <span className="ml-1 text-gray-400 font-normal normal-case">({myActive.length + myPicked.length})</span>
+                </h2>
+              </div>
+
+              {myActive.length === 0 && myPicked.length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-300 py-8 text-center text-sm text-gray-400">
+                  No active orders — claim one from the queue →
+                </div>
+              )}
+
+              {[...myActive, ...myPicked].map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  expanded={expandedId === order.id}
+                  onToggle={() => setExpandedId((id) => id === order.id ? null : order.id)}
+                >
+                  {expandedId === order.id && session?.accessToken && (
+                    <ExpandedPickPanel
+                      orderId={order.id}
+                      accessToken={session.accessToken}
+                      onDone={load}
+                    />
+                  )}
+                </OrderCard>
+              ))}
+
+              {/* Other pickers' active orders */}
+              {otherActive.length > 0 && (
+                <details className="group">
+                  <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none py-1">
+                    {otherActive.length} order{otherActive.length !== 1 ? "s" : ""} being picked by others ▾
+                  </summary>
+                  <div className="mt-2 space-y-2 opacity-70">
+                    {otherActive.map((order) => (
+                      <div key={order.id} className="rounded-lg border border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-3">
+                        <div>
+                          <span className="font-bold text-gray-700">#{order.orderNumber}</span>
+                          <span className="text-xs text-gray-400 ml-2">
+                            {order.pickedBy ? `${order.pickedBy.firstName ?? ""} ${order.pickedBy.lastName ?? ""}`.trim() : "Unknown"}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-2">{order.items.length} items</span>
+                        </div>
+                        <div className={`font-mono text-sm font-bold ${SLA_TIMER_COLOR[order.slaStatus]}`}>
+                          <CountdownTimer deadline={order.slaDeadline} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+
+            {/* Right: Unassigned Queue */}
+            <div className="lg:col-span-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                  Unassigned <span className="ml-1 text-gray-400 font-normal normal-case">({unassigned.length})</span>
+                </h2>
+              </div>
+
+              {unassigned.length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-300 py-8 text-center text-sm text-gray-400">
+                  No unassigned orders
+                </div>
+              )}
+
+              {unassigned.map((order) => (
+                <div
+                  key={order.id}
+                  className={`bg-white rounded-xl border border-l-4 ${SLA_BORDER[order.slaStatus] ?? "border-l-gray-300"} border-gray-200 p-3`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-gray-900 text-sm">#{order.orderNumber}</span>
+                        {order.stockIssueStatus !== "NONE" && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{order.stockIssueStatus.replace(/_/g, " ")}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{customerName(order)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {order.items.length} item{order.items.length !== 1 ? "s" : ""}
+                        {order.items.length > 0 && ` · ${order.items.slice(0, 2).map((i) => i.productName).join(", ")}${order.items.length > 2 ? ` +${order.items.length - 2}` : ""}`}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`font-mono font-bold text-sm ${SLA_TIMER_COLOR[order.slaStatus]}`}>
                         <CountdownTimer deadline={order.slaDeadline} />
                       </div>
-                    )}
-                    <Link
-                      to={`/admin/warehouse/orders/${order.id}`}
-                      className="text-xs text-pink-600 hover:underline"
-                    >
-                      Open →
-                    </Link>
+                      <div className="text-xs text-gray-400">cutoff</div>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => claimOrder(order.id)}
+                    disabled={acting === order.id}
+                    className="mt-2 w-full py-1.5 rounded-lg bg-pink-600 text-white text-xs font-bold hover:bg-pink-700 disabled:opacity-50"
+                  >
+                    {acting === order.id ? "Claiming…" : "Claim Order →"}
+                  </button>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

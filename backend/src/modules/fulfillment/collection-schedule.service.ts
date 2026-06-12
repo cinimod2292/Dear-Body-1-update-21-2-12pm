@@ -15,6 +15,12 @@ export const collectionScheduleSchema = z.object({
   timezone: z.string().default(TZ),
   cutoffMinutesBefore: z.number().int().min(0).max(480).default(60),
   enabled: z.boolean().default(true),
+  // "fixed"  — assign the next upcoming window (original behaviour)
+  // "dynamic" — assign now + hoursAfterOrder if inside a window,
+  //             otherwise nextWindowStart + fallbackHoursFromWindowStart
+  mode: z.enum(["fixed", "dynamic"]).default("fixed"),
+  dynamicHoursAfterOrder: z.number().min(0.5).max(48).default(2),
+  dynamicFallbackHoursFromWindowStart: z.number().min(0).max(24).default(2),
 });
 
 export type CollectionWindow = z.infer<typeof collectionWindowSchema>;
@@ -51,6 +57,9 @@ export async function getOrCreateDefaultCollectionSchedule(): Promise<Collection
     timezone: TZ,
     cutoffMinutesBefore: 60,
     enabled: true,
+    mode: "fixed",
+    dynamicHoursAfterOrder: 2,
+    dynamicFallbackHoursFromWindowStart: 2,
   };
 
   await prisma.setting.upsert({
@@ -145,9 +154,39 @@ export interface CollectionDateResult {
   daysOfWeek: number[];
 }
 
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function sortedWindowsByWeekday(windows: CollectionWindow[]) {
+  return [...windows].sort((a, b) => {
+    const da = a.dayOfWeek === 0 ? 7 : a.dayOfWeek;
+    const db = b.dayOfWeek === 0 ? 7 : b.dayOfWeek;
+    return da - db;
+  });
+}
+
 /**
- * Calculates the next available collection window from now.
- * All window times are interpreted in Africa/Johannesburg (UTC+2, no DST).
+ * Calculates the next collection date/time from `from`.
+ *
+ * Two modes (controlled by schedule.mode):
+ *
+ * "fixed"   — Finds the next upcoming window and assigns its start time as the
+ *             collection date.  The SLA deadline is cutoffMinutesBefore before
+ *             that window opens (original behaviour).
+ *
+ * "dynamic" — Estimated collection time = order time + dynamicHoursAfterOrder,
+ *             capped to within an open window.
+ *             • If `from` is inside a window AND the estimated time is still
+ *               within that window:
+ *                   collectionDate = from + dynamicHoursAfterOrder
+ *                   slaDeadline    = collectionDate − cutoffMinutesBefore
+ *             • Otherwise (outside a window, or estimate overshoots window end):
+ *                   collectionDate = nextWindowStart + dynamicFallbackHoursFromWindowStart
+ *                   slaDeadline    = collectionDate − cutoffMinutesBefore
+ *
+ * cutoffMinutesBefore acts as the picker buffer in both modes — the time
+ * staff must have the order ready before the customer arrives.
+ *
+ * All times are interpreted in Africa/Johannesburg (SAST, UTC+2, no DST).
  */
 export function calculateNextCollectionDate(
   schedule: CollectionSchedule,
@@ -155,42 +194,87 @@ export function calculateNextCollectionDate(
 ): CollectionDateResult | null {
   if (!schedule.enabled || schedule.windows.length === 0) return null;
 
-  const cutoffMs = schedule.cutoffMinutesBefore * 60 * 1000;
+  const sorted = sortedWindowsByWeekday(schedule.windows);
+  const daysOfWeek = sorted.map((w) => w.dayOfWeek);
+  const bufferMs = schedule.cutoffMinutesBefore * 60 * 1000;
 
-  // Sort windows: Monday first (day 1) wrapping to Sunday (0) last
-  const sortedWindows = [...schedule.windows].sort((a, b) => {
-    const da = a.dayOfWeek === 0 ? 7 : a.dayOfWeek;
-    const db = b.dayOfWeek === 0 ? 7 : b.dayOfWeek;
-    return da - db;
-  });
+  // ── Dynamic mode ────────────────────────────────────────────────────────────
+  if (schedule.mode === "dynamic") {
+    const hoursAfterMs   = (schedule.dynamicHoursAfterOrder ?? 2) * 3_600_000;
+    const fallbackHoursMs = (schedule.dynamicFallbackHoursFromWindowStart ?? 2) * 3_600_000;
 
-  // Try up to 14 days from now to find the next collection window
-  for (let dayOffset = 0; dayOffset <= 14; dayOffset++) {
-    // Compute the candidate date offset from "from" in SAST
-    const candidateDate = new Date(from.getTime() + dayOffset * 86_400_000);
-    const candidateIsoDate = getIsoDateInTz(candidateDate, TZ);
-    const candidateDow = getDayOfWeekInTz(candidateDate, TZ);
-
-    for (const window of sortedWindows) {
-      if (window.dayOfWeek !== candidateDow) continue;
-
-      const startTime = parseTime(window.startTime);
-      const windowStartTime = buildJhbDateTime(candidateIsoDate, startTime.hours, startTime.minutes);
-      const cutoffTime = new Date(windowStartTime.getTime() - cutoffMs);
-
-      // Skip if we're past the cutoff for this window
-      if (from >= cutoffTime) continue;
-
-      const endTime = parseTime(window.endTime);
-      const windowEndTime = buildJhbDateTime(candidateIsoDate, endTime.hours, endTime.minutes);
-
+    // 1. Are we currently inside a window AND does the estimate fit inside it?
+    const todayIso = getIsoDateInTz(from, TZ);
+    const todayDow = getDayOfWeekInTz(from, TZ);
+    for (const w of sorted) {
+      if (w.dayOfWeek !== todayDow) continue;
+      const st = parseTime(w.startTime);
+      const et = parseTime(w.endTime);
+      const windowStart  = buildJhbDateTime(todayIso, st.hours, st.minutes);
+      const windowEnd    = buildJhbDateTime(todayIso, et.hours, et.minutes);
+      if (from < windowStart || from >= windowEnd) continue; // not in this window
+      const collectionDate = new Date(from.getTime() + hoursAfterMs);
+      if (collectionDate > windowEnd) break; // overshoots — fall through to next-window logic
+      const slaDeadline = new Date(collectionDate.getTime() - bufferMs);
       return {
-        collectionDate: windowStartTime,
-        windowStart: windowStartTime,
-        windowEnd: windowEndTime,
+        collectionDate,
+        windowStart,
+        windowEnd,
+        slaDeadline,
+        windowLabel: `${DAY_SHORT[w.dayOfWeek]} ${w.startTime}–${w.endTime} (+${schedule.dynamicHoursAfterOrder ?? 2}h)`,
+        daysOfWeek,
+      };
+    }
+
+    // 2. Outside all windows (or estimate overshot) — next window start + fallback hours
+    for (let dayOffset = 0; dayOffset <= 14; dayOffset++) {
+      const candidate    = new Date(from.getTime() + dayOffset * 86_400_000);
+      const candidateIso = getIsoDateInTz(candidate, TZ);
+      const candidateDow = getDayOfWeekInTz(candidate, TZ);
+      for (const w of sorted) {
+        if (w.dayOfWeek !== candidateDow) continue;
+        const st = parseTime(w.startTime);
+        const et = parseTime(w.endTime);
+        const windowStart = buildJhbDateTime(candidateIso, st.hours, st.minutes);
+        if (from >= windowStart) continue; // already past this window start
+        const windowEnd      = buildJhbDateTime(candidateIso, et.hours, et.minutes);
+        const collectionDate = new Date(windowStart.getTime() + fallbackHoursMs);
+        const slaDeadline    = new Date(collectionDate.getTime() - bufferMs);
+        return {
+          collectionDate,
+          windowStart,
+          windowEnd,
+          slaDeadline,
+          windowLabel: `${DAY_SHORT[w.dayOfWeek]} ${w.startTime}–${w.endTime} (+${schedule.dynamicFallbackHoursFromWindowStart ?? 2}h from open)`,
+          daysOfWeek,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  // ── Fixed mode (original behaviour) ─────────────────────────────────────────
+  for (let dayOffset = 0; dayOffset <= 14; dayOffset++) {
+    const candidate    = new Date(from.getTime() + dayOffset * 86_400_000);
+    const candidateIso = getIsoDateInTz(candidate, TZ);
+    const candidateDow = getDayOfWeekInTz(candidate, TZ);
+
+    for (const w of sorted) {
+      if (w.dayOfWeek !== candidateDow) continue;
+      const st = parseTime(w.startTime);
+      const windowStart = buildJhbDateTime(candidateIso, st.hours, st.minutes);
+      const cutoffTime  = new Date(windowStart.getTime() - bufferMs);
+      if (from >= cutoffTime) continue; // past cutoff — skip to next window
+      const et = parseTime(w.endTime);
+      const windowEnd = buildJhbDateTime(candidateIso, et.hours, et.minutes);
+      return {
+        collectionDate: windowStart,
+        windowStart,
+        windowEnd,
         slaDeadline: cutoffTime,
-        windowLabel: `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][window.dayOfWeek]} ${window.startTime}–${window.endTime}`,
-        daysOfWeek: sortedWindows.map((w) => w.dayOfWeek),
+        windowLabel: `${DAY_SHORT[w.dayOfWeek]} ${w.startTime}–${w.endTime}`,
+        daysOfWeek,
       };
     }
   }

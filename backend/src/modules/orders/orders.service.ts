@@ -334,16 +334,31 @@ function generateOrderNumber() {
 
 
 async function sendOrderConfirmationEmail(orderId: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { customer: true, items: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, items: true, shippingMethod: true },
+  });
   if (!order?.customer?.email || !shouldSendOrderConfirmation(order.paymentStatus)) return;
   const orderItems = order.items.map((item) => `${item.productName} x${item.quantity}`).join(", ");
-  const template = await resolveTemplateByKey("order_confirmation", {
+  const isCollection = isWarehouseCollectionOrder(order);
+  const templateKey = isCollection ? "collection_order_confirmation" : "order_confirmation";
+  const placeholders: Record<string, string> = {
     firstName: order.customer.firstName ?? "Customer",
     orderNumber: order.orderNumber,
     orderDate: order.createdAt.toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }),
     orderItems: orderItems || "—",
     orderTotal: `${order.currency} ${Number(order.totalAmount).toFixed(2)}`,
-  });
+  };
+  if (isCollection) {
+    placeholders.estimatedCollectionTime = order.collectionDate
+      ? order.collectionDate.toLocaleString("en-ZA", {
+          timeZone: "Africa/Johannesburg",
+          weekday: "long", month: "long", day: "numeric",
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        })
+      : "To be confirmed";
+  }
+  const template = await resolveTemplateByKey(templateKey, placeholders);
   await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 

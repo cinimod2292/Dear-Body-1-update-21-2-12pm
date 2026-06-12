@@ -16,6 +16,9 @@ interface CollectionSchedule {
   timezone: string;
   cutoffMinutesBefore: number;
   enabled: boolean;
+  mode: "fixed" | "dynamic";
+  dynamicHoursAfterOrder: number;
+  dynamicFallbackHoursFromWindowStart: number;
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -25,6 +28,9 @@ const DEFAULT_SCHEDULE: CollectionSchedule = {
   timezone: "Africa/Johannesburg",
   cutoffMinutesBefore: 60,
   enabled: true,
+  mode: "fixed",
+  dynamicHoursAfterOrder: 2,
+  dynamicFallbackHoursFromWindowStart: 2,
 };
 
 type Tab = "warehouse" | "pudo";
@@ -39,9 +45,10 @@ interface ScheduleFormProps {
   saving: boolean;
   description: string;
   howItWorks: string[];
+  showMode?: boolean;
 }
 
-function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description, howItWorks }: ScheduleFormProps) {
+function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description, howItWorks, showMode }: ScheduleFormProps) {
   const [preview, setPreview] = useState<{ windowLabel: string; collectionDate: string; slaDeadline: string } | null>(null);
 
   const addWindow = () =>
@@ -56,31 +63,62 @@ function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description
   const calculatePreview = () => {
     if (schedule.windows.length === 0) { setPreview(null); return; }
     const now = new Date();
-    const cutoffMs = schedule.cutoffMinutesBefore * 60 * 1000;
+    const fmt = (d: Date) => d.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", weekday: "long", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
     const sorted = [...schedule.windows].sort((a, b) => {
       const da = a.dayOfWeek === 0 ? 7 : a.dayOfWeek;
       const db = b.dayOfWeek === 0 ? 7 : b.dayOfWeek;
       return da - db;
     });
+
+    if (schedule.mode === "dynamic") {
+      const hoursAfterMs = (schedule.dynamicHoursAfterOrder ?? 2) * 3_600_000;
+      const fallbackMs = (schedule.dynamicFallbackHoursFromWindowStart ?? 2) * 3_600_000;
+      const todayDow = now.getDay();
+      // Check if inside a window right now
+      for (const w of sorted) {
+        if (w.dayOfWeek !== todayDow) continue;
+        const [sh, sm] = w.startTime.split(":").map(Number);
+        const [eh, em] = w.endTime.split(":").map(Number);
+        const wStart = new Date(now); wStart.setHours(sh, sm, 0, 0);
+        const wEnd = new Date(now); wEnd.setHours(eh, em, 0, 0);
+        if (now >= wStart && now < wEnd) {
+          const collectionDate = new Date(now.getTime() + hoursAfterMs);
+          setPreview({ windowLabel: `${DAY_NAMES[w.dayOfWeek]} ${w.startTime}–${w.endTime} (inside window)`, collectionDate: fmt(collectionDate), slaDeadline: fmt(collectionDate) });
+          return;
+        }
+      }
+      // Outside windows — find next window
+      for (let offset = 0; offset <= 14; offset++) {
+        const candidate = new Date(now); candidate.setDate(candidate.getDate() + offset);
+        const dow = candidate.getDay();
+        for (const w of sorted) {
+          if (w.dayOfWeek !== dow) continue;
+          const [sh, sm] = w.startTime.split(":").map(Number);
+          const [eh, em] = w.endTime.split(":").map(Number);
+          const wStart = new Date(candidate); wStart.setHours(sh, sm, 0, 0);
+          if (now >= wStart) continue;
+          const wEnd = new Date(candidate); wEnd.setHours(eh, em, 0, 0);
+          const collectionDate = new Date(wStart.getTime() + fallbackMs);
+          setPreview({ windowLabel: `${DAY_NAMES[w.dayOfWeek]} ${w.startTime}–${w.endTime} (next window)`, collectionDate: fmt(collectionDate), slaDeadline: fmt(wStart) });
+          return;
+        }
+      }
+      setPreview(null);
+      return;
+    }
+
+    // Fixed mode
+    const cutoffMs = schedule.cutoffMinutesBefore * 60 * 1000;
     for (let offset = 0; offset <= 14; offset++) {
-      const candidate = new Date(now);
-      candidate.setDate(candidate.getDate() + offset);
+      const candidate = new Date(now); candidate.setDate(candidate.getDate() + offset);
       const dow = candidate.getDay();
       for (const w of sorted) {
         if (w.dayOfWeek !== dow) continue;
         const [sh, sm] = w.startTime.split(":").map(Number);
-        const windowStart = new Date(candidate);
-        windowStart.setHours(sh, sm, 0, 0);
+        const windowStart = new Date(candidate); windowStart.setHours(sh, sm, 0, 0);
         const cutoff = new Date(windowStart.getTime() - cutoffMs);
         if (now >= cutoff) continue;
-        const [eh, em] = w.endTime.split(":").map(Number);
-        const windowEnd = new Date(candidate);
-        windowEnd.setHours(eh, em, 0, 0);
-        setPreview({
-          windowLabel: `${DAY_NAMES[w.dayOfWeek]} ${w.startTime}–${w.endTime}`,
-          collectionDate: windowStart.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", weekday: "long", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-          slaDeadline: cutoff.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", weekday: "long", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-        });
+        setPreview({ windowLabel: `${DAY_NAMES[w.dayOfWeek]} ${w.startTime}–${w.endTime}`, collectionDate: fmt(windowStart), slaDeadline: fmt(cutoff) });
         return;
       }
     }
@@ -105,11 +143,72 @@ function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description
         </button>
       </div>
 
-      {/* Cutoff */}
+      {/* Mode selector — Warehouse tab only */}
+      {showMode && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
+          <h2 className="font-semibold text-gray-900">Collection Timing Mode</h2>
+          <div className="flex gap-3">
+            <button
+              onClick={() => onChange({ ...schedule, mode: "fixed" })}
+              className={`flex-1 py-2.5 px-4 rounded-lg border text-sm font-medium transition ${schedule.mode === "fixed" ? "bg-pink-50 border-pink-500 text-pink-700" : "border-gray-200 text-gray-500 hover:border-gray-400"}`}
+            >
+              Fixed windows
+            </button>
+            <button
+              onClick={() => onChange({ ...schedule, mode: "dynamic" })}
+              className={`flex-1 py-2.5 px-4 rounded-lg border text-sm font-medium transition ${schedule.mode === "dynamic" ? "bg-pink-50 border-pink-500 text-pink-700" : "border-gray-200 text-gray-500 hover:border-gray-400"}`}
+            >
+              Dynamic (rolling)
+            </button>
+          </div>
+
+          {schedule.mode === "fixed" && (
+            <p className="text-sm text-gray-500">
+              Each order is assigned to the <strong>start of the next upcoming window</strong>. Warehouse staff must have it ready before the cutoff below.
+            </p>
+          )}
+
+          {schedule.mode === "dynamic" && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">
+                If the order is placed <strong>during a collection window</strong>, the customer can collect in <strong>X hours</strong> from now. If outside all windows, they collect <strong>Y hours after the next window opens</strong>.
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-sm text-gray-600 w-56">Hours after order (if inside window):</label>
+                <input
+                  type="number" min={0.5} max={48} step={0.5}
+                  value={schedule.dynamicHoursAfterOrder}
+                  onChange={(e) => onChange({ ...schedule, dynamicHoursAfterOrder: Number(e.target.value) })}
+                  className="w-20 border rounded-lg px-3 py-2 text-sm"
+                />
+                <span className="text-sm text-gray-400">hours</span>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-sm text-gray-600 w-56">Hours from window open (if outside):</label>
+                <input
+                  type="number" min={0} max={24} step={0.5}
+                  value={schedule.dynamicFallbackHoursFromWindowStart}
+                  onChange={(e) => onChange({ ...schedule, dynamicFallbackHoursFromWindowStart: Number(e.target.value) })}
+                  className="w-20 border rounded-lg px-3 py-2 text-sm"
+                />
+                <span className="text-sm text-gray-400">hours</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Picker buffer / cutoff — applies in both modes */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h2 className="font-semibold text-gray-900 mb-3">Cutoff Setting</h2>
+        <h2 className="font-semibold text-gray-900 mb-3">
+          {schedule.mode === "dynamic" ? "Picker Buffer" : "Cutoff Setting"}
+        </h2>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600 w-64">Minutes before window start to stop assigning orders:</label>
+          <label className="text-sm text-gray-600 w-64">
+            {schedule.mode === "dynamic"
+              ? "Minutes before estimated collection time staff must finish packing:"
+              : "Minutes before window start to stop assigning orders:"}
+          </label>
           <input
             type="number" min={0} max={480}
             value={schedule.cutoffMinutesBefore}
@@ -119,7 +218,9 @@ function ScheduleForm({ schedule, onChange, onSave, onReset, saving, description
           <span className="text-sm text-gray-400">minutes</span>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          E.g., cutoff of 60 min with a 09:00 window means orders placed after 08:00 roll to the next window.
+          {schedule.mode === "dynamic"
+            ? `Staff must have the order ready ${schedule.cutoffMinutesBefore} min before the customer arrives. This sets the SLA countdown on the warehouse dashboard.`
+            : "E.g., cutoff of 60 min with a 09:00 window means orders placed after 08:00 roll to the next window."}
         </p>
       </div>
 
@@ -253,13 +354,24 @@ function WarehouseCollectionTab() {
       onReset={load}
       saving={saving}
       description="Define when customers can collect their orders from your warehouse. The system assigns every new paid collection order to the next available window and shows the time in the customer's confirmation email."
-      howItWorks={[
-        "When an order is paid, the next available window is assigned automatically",
-        `The SLA deadline is set to ${schedule.cutoffMinutesBefore} minutes before window start`,
-        "The collection time is shown in the customer's 'order ready' email",
-        "Warehouse staff see a countdown timer and SLA indicator per order",
-        "Staff can manually recalculate if a collection window is missed",
-      ]}
+      showMode
+      howItWorks={
+        schedule.mode === "dynamic"
+          ? [
+              "If the order is placed inside a window, collection = now + X hours",
+              "If the order is placed outside all windows, collection = next window open + Y hours",
+              "The SLA deadline is the calculated collection time (dynamic) or the window start (fallback)",
+              "The collection time is shown in the customer's 'order ready' email",
+              "Staff can manually recalculate if needed",
+            ]
+          : [
+              "When an order is paid, the next available window is assigned automatically",
+              `The SLA deadline is set to ${schedule.cutoffMinutesBefore} minutes before window start`,
+              "The collection time is shown in the customer's 'order ready' email",
+              "Warehouse staff see a countdown timer and SLA indicator per order",
+              "Staff can manually recalculate if a collection window is missed",
+            ]
+      }
     />
   );
 }

@@ -27,6 +27,7 @@ const DEFAULT_RENDER_DATA: Record<string, unknown> = {
   message: "I need help with my order",
   primaryColor: "#f472b6",
   accentColor: "#fb923c",
+  headerBgImage: "linear-gradient(90deg,#f472b6,#fb923c)",
   buttonBg: "#111827",
   buttonTextColor: "#ffffff",
   headingColor: "#111827",
@@ -69,6 +70,12 @@ export function mergeEmailRenderData(
   const footerText = themeString(theme, "footerText") ?? String(DEFAULT_RENDER_DATA.footerText);
   const links = themeLinks(theme);
 
+  // Resolve the colours that will be used so we can pre-compute the CSS gradient
+  // fallback. buildRenderData() in the service layer may override headerBgImage
+  // with a hosted PNG URL when sharp is available.
+  const primaryColor = themeString(theme, "primaryColor") ?? String(DEFAULT_RENDER_DATA.primaryColor);
+  const accentColor = themeString(theme, "accentColor") ?? String(DEFAULT_RENDER_DATA.accentColor);
+
   return {
     ...DEFAULT_RENDER_DATA,
     ...sampleData,
@@ -80,6 +87,9 @@ export function mergeEmailRenderData(
     footerLinksMarkup: links.length
       ? `<br />${links.map((link) => `<a href="${escapeHtml(link.url.trim())}" style="color:${escapeHtml(footerText)} !important;-webkit-text-fill-color:${escapeHtml(footerText)} !important;text-decoration:underline;forced-color-adjust:none;">${escapeHtml(link.label.trim())}</a>`).join(" · ")}`
       : "",
+    // CSS gradient fallback — overridden with url("…") by the async service layer
+    // when a hosted PNG has been generated for this colour combination.
+    headerBgImage: `linear-gradient(90deg,${primaryColor},${accentColor})`,
   };
 }
 
@@ -113,7 +123,7 @@ const THEME_HEAD = `<head>
     .db-email-body, .db-email-outer, .db-email-card, .db-email-header, .db-email-heading, .db-email-content, .db-email-cta-row, .db-email-button, .db-email-footer { forced-color-adjust: none !important; }
     .db-email-body, .db-email-outer { background-color: {{outerBg}} !important; color: {{bodyTextColor}} !important; }
     .db-email-card { background-color: {{contentBg}} !important; }
-    .db-email-header { background-color: {{primaryColor}} !important; background-image: linear-gradient(90deg, {{primaryColor}}, {{accentColor}}) !important; }
+    .db-email-header { background-color: {{primaryColor}} !important; background-image: {{headerBgImage}} !important; }
     .db-email-header div { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; forced-color-adjust: none; }
     .db-email-heading { color: {{headingColor}} !important; -webkit-text-fill-color: {{headingColor}} !important; }
     .db-email-content { color: {{bodyTextColor}} !important; -webkit-text-fill-color: {{bodyTextColor}} !important; }
@@ -208,8 +218,11 @@ function decorateGeneratedShell(html: string): string {
   decorated = decorated.replace(/<td\b[^>]*background:linear-gradient\(90deg,{{primaryColor}},{{accentColor}}\)[^>]*>/i, (tag) => {
     let header = setAttribute(addClass(tag, "db-email-header"), "bgcolor", "{{primaryColor}}");
     header = setStyleProperty(header, "background-color", "{{primaryColor}} !important");
-    header = setStyleProperty(header, "background-image", "linear-gradient(90deg,{{primaryColor}},{{accentColor}}) !important");
-    // forced-color-adjust inline prevents Outlook dark mode from stripping the gradient.
+    // {{headerBgImage}} is either a hosted PNG url("…") — which survives Outlook iOS
+    // dark mode — or the CSS gradient fallback when image generation is unavailable.
+    header = setStyleProperty(header, "background-image", "{{headerBgImage}} !important");
+    header = setStyleProperty(header, "background-size", "100% 100%");
+    // forced-color-adjust inline prevents Outlook.com from stripping the background.
     return setStyleProperty(header, "forced-color-adjust", "none");
   });
   // The brand-name <div> inside the header uses a hardcoded #ffffff colour that

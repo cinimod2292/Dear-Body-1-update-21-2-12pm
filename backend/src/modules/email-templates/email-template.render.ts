@@ -194,9 +194,6 @@ function protectBackground(tag: string, color: string): string {
 function protectText(tag: string, color: string): string {
   let protectedTag = setStyleProperty(tag, "color", `${color} !important`);
   protectedTag = setStyleProperty(protectedTag, "-webkit-text-fill-color", `${color} !important`);
-  // mso-color-alt is the Outlook-specific inline property that tells classic and
-  // new Outlook which colour to render in dark mode instead of auto-inverting.
-  protectedTag = setStyleProperty(protectedTag, "mso-color-alt", color);
   return setStyleProperty(protectedTag, "forced-color-adjust", "none");
 }
 

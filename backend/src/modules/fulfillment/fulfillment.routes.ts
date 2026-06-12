@@ -9,6 +9,7 @@ import {
   getWarehouseOrderDetail,
   listWarehouseOrders,
   markAwaitingCollection,
+  markCollected,
   recalculateCollectionDate,
   startPacking,
   startPicking,
@@ -142,6 +143,16 @@ export async function fulfillmentRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
       return reply.send({ data: await markAwaitingCollection(orderId, request.user.sub) });
+    },
+  );
+
+  app.post(
+    "/admin/warehouse/orders/:orderId/mark-collected",
+    { preHandler: [app.verifyAdmin, app.requirePermission("warehouse:write")] },
+    async (request, reply) => {
+      const { orderId } = request.params as { orderId: string };
+      await markCollected(orderId, request.user.sub);
+      return reply.send({ data: { success: true } });
     },
   );
 

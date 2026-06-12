@@ -450,7 +450,28 @@ function OrderCard({
 
 // ─── AwaitingCollectionTab ────────────────────────────────────────────────────
 
-function CollectionCard({ order }: { order: WarehouseOrder }) {
+function CollectionCard({ order, onCollected }: { order: WarehouseOrder; onCollected: () => void }) {
+  const { session } = useAdminAuth();
+  const [collecting, setCollecting] = useState(false);
+
+  const markCollected = async () => {
+    if (!session?.accessToken) return;
+    setCollecting(true);
+    try {
+      await apiRequest(
+        `/admin/warehouse/orders/${order.id}/mark-collected`,
+        { method: "POST" },
+        session.accessToken,
+      );
+      toast.success(`Order #${order.orderNumber} marked as collected`);
+      onCollected();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to mark collected");
+    } finally {
+      setCollecting(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2 shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -506,11 +527,19 @@ function CollectionCard({ order }: { order: WarehouseOrder }) {
           {order.items.length > 3 && ` +${order.items.length - 3} more`}
         </p>
       )}
+
+      <button
+        onClick={markCollected}
+        disabled={collecting}
+        className="w-full py-2 rounded-lg bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 disabled:opacity-50"
+      >
+        {collecting ? "Marking…" : isCustomerPickup(order) ? "Mark Customer Collected" : "Mark Dispatched"}
+      </button>
     </div>
   );
 }
 
-function AwaitingCollectionTab({ orders }: { orders: WarehouseOrder[] }) {
+function AwaitingCollectionTab({ orders, onRefresh }: { orders: WarehouseOrder[]; onRefresh: () => void }) {
   const awaitingOrders = orders.filter((o) => o.warehouseStatus === "AWAITING_COLLECTION");
   const exceptions = orders.filter((o) => o.warehouseStatus === "EXCEPTION");
 
@@ -542,7 +571,7 @@ function AwaitingCollectionTab({ orders }: { orders: WarehouseOrder[] }) {
             </div>
           ) : (
             courierCollection.map((order) => (
-              <CollectionCard key={order.id} order={order} />
+              <CollectionCard key={order.id} order={order} onCollected={onRefresh} />
             ))
           )}
         </div>
@@ -563,7 +592,7 @@ function AwaitingCollectionTab({ orders }: { orders: WarehouseOrder[] }) {
             </div>
           ) : (
             customerPickup.map((order) => (
-              <CollectionCard key={order.id} order={order} />
+              <CollectionCard key={order.id} order={order} onCollected={onRefresh} />
             ))
           )}
         </div>
@@ -642,11 +671,10 @@ export default function AdminWarehouseDashboard() {
     if (!session?.accessToken) return;
     setActing(orderId);
 
-    // Optimistic: move order to PICKING immediately
+    // Optimistic: show PICKING status on the card immediately
     setAllOrders((prev) => prev.map((o) =>
       o.id !== orderId ? o : { ...o, warehouseStatus: "PICKING", pickedBy: { id: myId } }
     ));
-    setExpandedId(orderId);
 
     try {
       await apiRequest(
@@ -654,6 +682,7 @@ export default function AdminWarehouseDashboard() {
         { method: "POST" },
         session.accessToken,
       );
+      setExpandedId(orderId); // Open panel only after start-picking succeeds
       toast.success("Order claimed — start picking!");
       void load(); // Background refresh
     } catch (err) {
@@ -782,7 +811,7 @@ export default function AdminWarehouseDashboard() {
 
       {/* Tab content */}
       {activeTab === "collection" ? (
-        <AwaitingCollectionTab orders={collectionOrders} />
+        <AwaitingCollectionTab orders={collectionOrders} onRefresh={load} />
       ) : (
         <div className="space-y-4">
           {/* My Next Pick — highlighted banner */}

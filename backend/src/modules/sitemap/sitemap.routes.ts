@@ -19,7 +19,7 @@ function urlEntry(loc: string, lastmod?: Date, priority = "0.5"): string {
 }
 
 export async function sitemapRoutes(app: FastifyInstance) {
-  app.get("/robots.txt", async (_request, reply) => {
+  app.get("/robots.txt", { config: { compress: false } }, async (_request, reply) => {
     const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
     const sitemapLine = base ? `Sitemap: ${base}/sitemap.xml` : "";
     const body = [
@@ -37,7 +37,7 @@ export async function sitemapRoutes(app: FastifyInstance) {
   });
 
   app.get("/sitemap.xml", {
-    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    config: { compress: false, rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
     const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -86,11 +86,13 @@ export async function sitemapRoutes(app: FastifyInstance) {
       "</urlset>",
     ].join("\n");
 
+    const buf = Buffer.from(xml, "utf-8");
     reply
       .header("Content-Type", "application/xml; charset=utf-8")
+      .header("Content-Length", buf.byteLength)
       .header("Cache-Control", `public, max-age=${SITEMAP_TTL_SECONDS}, stale-while-revalidate=86400`)
       .header("X-Robots-Tag", "noindex")
       .status(200)
-      .send(xml);
+      .send(buf);
   });
 }

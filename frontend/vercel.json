@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/sitemap.xml",
-      "destination": "https://dear-body-backend.onrender.com/sitemap.xml"
+      "destination": "https://dear-body-1-update-21-2-12pm-w25v.onrender.com/sitemap.xml"
     },
     {
       "source": "/robots.txt",
-      "destination": "https://dear-body-backend.onrender.com/robots.txt"
+      "destination": "https://dear-body-1-update-21-2-12pm-w25v.onrender.com/robots.txt"
     },
     {
       "source": "/((?!api/|assets/|.*\\..*).*)",

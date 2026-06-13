@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
 
-const SITEMAP_TTL_SECONDS = 3600; // regenerate at most once per hour via Cache-Control
+const SITEMAP_TTL_SECONDS = 3600;
 
 function xmlEscape(str: string): string {
   return str
@@ -18,32 +18,35 @@ function urlEntry(loc: string, lastmod?: Date, priority = "0.5"): string {
   return `  <url>\n    <loc>${xmlEscape(loc)}</loc>${lastmodStr}\n    <priority>${priority}</priority>\n  </url>`;
 }
 
-export async function sitemapRoutes(app: FastifyInstance) {
-  app.get("/robots.txt", { config: { compress: false } }, async (_request, reply) => {
-    const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
-    const sitemapLine = base ? `Sitemap: ${base}/sitemap.xml` : "";
-    const body = [
-      "User-agent: *",
-      "Allow: /",
-      "",
-      sitemapLine,
-    ].filter((line, i) => i < 3 || line).join("\n");
+function sendRaw(reply: any, statusCode: number, contentType: string, cacheControl: string, body: Buffer): void {
+  reply.raw.writeHead(statusCode, {
+    "Content-Type": contentType,
+    "Content-Length": body.byteLength,
+    "Cache-Control": cacheControl,
+  });
+  reply.raw.end(body);
+  reply.sent = true;
+}
 
-    reply
-      .header("Content-Type", "text/plain; charset=utf-8")
-      .header("Cache-Control", "public, max-age=86400")
-      .status(200)
-      .send(body);
+export async function sitemapRoutes(app: FastifyInstance) {
+  app.get("/robots.txt", async (_request, reply) => {
+    const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+    const lines = ["User-agent: *", "Allow: /", ""];
+    if (base) lines.push(`Sitemap: ${base}/sitemap.xml`);
+    sendRaw(reply, 200, "text/plain; charset=utf-8", "public, max-age=86400", Buffer.from(lines.join("\n"), "utf-8"));
   });
 
   app.get("/sitemap.xml", {
-    config: { compress: false, rateLimit: { max: 60, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
     const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
 
     if (!base) {
       app.log.error("sitemap: STOREFRONT_URL or PUBLIC_BASE_URL must be set");
-      return reply.status(500).send({ error: { message: "Sitemap base URL not configured" } });
+      reply.raw.writeHead(500, { "Content-Type": "application/json" });
+      reply.raw.end(JSON.stringify({ error: { message: "Sitemap base URL not configured" } }));
+      reply.sent = true;
+      return;
     }
 
     const [products, categories, brands] = await Promise.all([
@@ -86,13 +89,12 @@ export async function sitemapRoutes(app: FastifyInstance) {
       "</urlset>",
     ].join("\n");
 
-    const buf = Buffer.from(xml, "utf-8");
-    reply
-      .header("Content-Type", "application/xml; charset=utf-8")
-      .header("Content-Length", buf.byteLength)
-      .header("Cache-Control", `public, max-age=${SITEMAP_TTL_SECONDS}, stale-while-revalidate=86400`)
-      .header("X-Robots-Tag", "noindex")
-      .status(200)
-      .send(buf);
+    sendRaw(
+      reply,
+      200,
+      "application/xml; charset=utf-8",
+      `public, max-age=${SITEMAP_TTL_SECONDS}, stale-while-revalidate=86400`,
+      Buffer.from(xml, "utf-8"),
+    );
   });
 }

@@ -387,7 +387,23 @@ export default function Checkout() {
 
 
 
-  // Guest checkout: no redirect — logged-in or guest both proceed
+  const [guestCheckoutEnabled, setGuestCheckoutEnabled] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/settings/checkout`)
+      .then((r) => r.json())
+      .then((payload) => {
+        if (typeof payload?.data?.guestCheckoutEnabled === "boolean") setGuestCheckoutEnabled(payload.data.guestCheckoutEnabled);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Redirect guests to login if guest checkout is disabled
+  useEffect(() => {
+    if (!customer && guestCheckoutEnabled === false) {
+      navigate(`/account/login?next=${encodeURIComponent("/checkout")}`);
+    }
+  }, [customer, guestCheckoutEnabled, navigate]);
 
   useEffect(() => {
     if (!token) return;

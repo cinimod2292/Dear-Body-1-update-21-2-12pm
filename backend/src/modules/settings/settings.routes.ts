@@ -95,7 +95,17 @@ function toSendgridResponse(config: SendgridStoredConfig | null) {
   };
 }
 
+const CHECKOUT_SCOPE = "checkout";
+const CHECKOUT_KEY = "rules";
+
 export async function settingsRoutes(app: FastifyInstance) {
+  // Public endpoint: storefront reads checkout settings (guest checkout flag)
+  app.get("/store/settings/checkout", async (_request, reply) => {
+    const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: CHECKOUT_SCOPE, key: CHECKOUT_KEY } } });
+    const value = (setting?.value ?? {}) as Record<string, unknown>;
+    reply.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    return reply.send({ data: { guestCheckoutEnabled: value.guestCheckoutEnabled !== false } });
+  });
   app.get(
     "/admin/settings",
     { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] },
@@ -206,6 +216,25 @@ export async function settingsRoutes(app: FastifyInstance) {
     });
 
     return reply.send({ data: toSendgridResponse(next) });
+  });
+
+  app.get("/admin/settings/checkout", { preHandler: [app.verifyAdmin, app.requirePermission("settings:read")] }, async (_request, reply) => {
+    const setting = await prisma.setting.findUnique({ where: { scope_key: { scope: CHECKOUT_SCOPE, key: CHECKOUT_KEY } } });
+    const value = (setting?.value ?? {}) as Record<string, unknown>;
+    return reply.send({ data: { guestCheckoutEnabled: value.guestCheckoutEnabled !== false } });
+  });
+
+  app.put("/admin/settings/checkout", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { guestCheckoutEnabled?: boolean };
+    const existing = await prisma.setting.findUnique({ where: { scope_key: { scope: CHECKOUT_SCOPE, key: CHECKOUT_KEY } } });
+    const current = (existing?.value ?? {}) as Record<string, unknown>;
+    const next = { ...current, guestCheckoutEnabled: body.guestCheckoutEnabled !== false };
+    await prisma.setting.upsert({
+      where: { scope_key: { scope: CHECKOUT_SCOPE, key: CHECKOUT_KEY } },
+      update: { value: next as unknown as Prisma.InputJsonValue },
+      create: { scope: CHECKOUT_SCOPE, key: CHECKOUT_KEY, value: next as unknown as Prisma.InputJsonValue },
+    });
+    return reply.send({ data: { guestCheckoutEnabled: next.guestCheckoutEnabled } });
   });
 
   app.post("/admin/settings/email/sendgrid/test", { preHandler: [app.verifyAdmin, app.requirePermission("settings:write")] }, async (request, reply) => {

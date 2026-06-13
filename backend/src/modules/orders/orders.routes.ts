@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { prisma } from "../../lib/prisma.js";
 import {
   addCartItem,
   addOrderNote,
@@ -73,8 +74,18 @@ export async function ordersRoutes(app: FastifyInstance) {
   app.post("/store/checkout/:cartId", { preHandler: [app.optionalCustomer] }, async (request, reply) => {
     const checkoutRouteStartedAt = Date.now();
     const { cartId } = request.params as { cartId: string };
+    const customerId: string | null = (request as any).customer?.id ?? null;
+
+    if (!customerId) {
+      const checkoutSetting = await prisma.setting.findUnique({ where: { scope_key: { scope: "checkout", key: "rules" } } });
+      const guestEnabled = ((checkoutSetting?.value ?? {}) as Record<string, unknown>).guestCheckoutEnabled !== false;
+      if (!guestEnabled) {
+        return reply.status(401).send({ error: { message: "Guest checkout is disabled. Please sign in to continue.", code: "GUEST_CHECKOUT_DISABLED" } });
+      }
+    }
+
     console.info("[checkout-timing] payment-init route entered", { cartId, requestId: request.id });
-    const order = await checkoutCart(cartId, request.body, (request as any).customer?.id ?? null);
+    const order = await checkoutCart(cartId, request.body, customerId);
     console.info("[checkout-timing] order creation/update complete", {
       cartId,
       orderId: order?.id,

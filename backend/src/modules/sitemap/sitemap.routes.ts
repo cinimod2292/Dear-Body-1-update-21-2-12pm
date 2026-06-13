@@ -19,6 +19,23 @@ function urlEntry(loc: string, lastmod?: Date, priority = "0.5"): string {
 }
 
 export async function sitemapRoutes(app: FastifyInstance) {
+  app.get("/robots.txt", async (_request, reply) => {
+    const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+    const sitemapLine = base ? `Sitemap: ${base}/sitemap.xml` : "";
+    const body = [
+      "User-agent: *",
+      "Allow: /",
+      "",
+      sitemapLine,
+    ].filter((line, i) => i < 3 || line).join("\n");
+
+    reply
+      .header("Content-Type", "text/plain; charset=utf-8")
+      .header("Cache-Control", "public, max-age=86400")
+      .status(200)
+      .send(body);
+  });
+
   app.get("/sitemap.xml", {
     config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (_request, reply) => {

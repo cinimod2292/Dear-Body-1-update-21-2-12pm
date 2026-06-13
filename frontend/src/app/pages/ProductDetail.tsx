@@ -16,8 +16,7 @@ import { ProductFaqSection } from "../components/ProductFaqSection";
 
 function buildProductSchema(product: Product, canonicalUrl: string) {
   const firstImage = product.galleryImages?.[0]?.url || product.image;
-  const schema: any = {
-    "@context": "https://schema.org",
+  const productSchema: any = {
     "@type": "Product",
     name: product.name,
     description: product.description || product.tagline,
@@ -41,7 +40,7 @@ function buildProductSchema(product: Product, canonicalUrl: string) {
   };
 
   if (product.reviews > 0 && product.rating > 0) {
-    schema.aggregateRating = {
+    productSchema.aggregateRating = {
       "@type": "AggregateRating",
       ratingValue: product.rating.toFixed(1),
       reviewCount: product.reviews,
@@ -50,7 +49,20 @@ function buildProductSchema(product: Product, canonicalUrl: string) {
     };
   }
 
-  return schema;
+  const breadcrumb = {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: buildCanonical("/") },
+      { "@type": "ListItem", position: 2, name: "Shop", item: buildCanonical("/shop") },
+      ...(product.category ? [{ "@type": "ListItem", position: 3, name: product.category, item: buildCanonical(`/shop?category=${encodeURIComponent(product.category)}`) }] : []),
+      { "@type": "ListItem", position: product.category ? 4 : 3, name: product.name, item: canonicalUrl },
+    ],
+  };
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [productSchema, breadcrumb],
+  };
 }
 
 export default function ProductDetail() {

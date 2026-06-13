@@ -99,6 +99,21 @@ export const authPlugin = fp(async (app) => {
     request.customer = customer;
   });
 
+  app.decorate("optionalCustomer", async (request: any, _reply: any) => {
+    if (!request.headers.authorization) return;
+    try {
+      await request.jwtVerify();
+      if (request.user?.tokenType !== "customer") return;
+      const customer = await prisma.customer.findUnique({
+        where: { id: request.user.sub },
+        select: { id: true, email: true },
+      });
+      if (customer) request.customer = customer;
+    } catch {
+      // Invalid token → treat as guest
+    }
+  });
+
   app.decorate("requirePermission", (permission: string) => async (request: any, _reply: any) => {
     const role = request.user?.role;
     if (!role || !hasPermission(role, permission)) {

@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { prisma } from "../../lib/prisma.js";
 import {
   attachImagesToProduct,
   bulkProductAction,
@@ -167,5 +168,26 @@ export async function catalogRoutes(app: FastifyInstance) {
     const params = request.params as { variantId: string };
     const variant = await updateVariant(params.variantId, request.body);
     return reply.send({ data: variant });
+  });
+
+  // Auto-generate missing SEO metadata for products using rule-based templates
+  app.post("/admin/products/generate-seo", { preHandler: [app.verifyAdmin, app.requirePermission("catalog:write")] }, async (_request, reply) => {
+    const products = await prisma.product.findMany({
+      where: { seoMetadataId: null, status: "ACTIVE" },
+      include: { category: { select: { name: true } }, brand: { select: { name: true } } },
+    });
+
+    let created = 0;
+    for (const p of products) {
+      const categoryName = p.category?.name ?? "beauty";
+      const brandName = p.brand?.name ?? "Dear Body";
+      const title = `${p.name} | ${brandName} South Africa`;
+      const description = `Shop ${p.name} by ${brandName}. Premium ${categoryName.toLowerCase()} delivered across South Africa. Fast shipping, secure checkout.`;
+      const seoMeta = await prisma.seoMetadata.create({ data: { title, description } });
+      await prisma.product.update({ where: { id: p.id }, data: { seoMetadataId: seoMeta.id } });
+      created++;
+    }
+
+    return reply.send({ data: { created, total: products.length } });
   });
 }

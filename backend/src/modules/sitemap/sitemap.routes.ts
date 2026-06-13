@@ -131,9 +131,9 @@ export async function sitemapRoutes(app: FastifyInstance) {
       entries.push(urlEntry(`${base}/shop?category=${xmlEscape(c.slug)}`, c.updatedAt, "0.7", "weekly"));
     }
 
-    // Brands
+    // Brands — dedicated landing pages
     for (const b of brands) {
-      entries.push(urlEntry(`${base}/shop?brand=${xmlEscape(b.slug)}`, b.updatedAt, "0.6", "weekly"));
+      entries.push(urlEntry(`${base}/brands/${xmlEscape(b.slug)}`, b.updatedAt, "0.6", "weekly"));
     }
 
     // Static builder pages
@@ -180,5 +180,69 @@ export async function sitemapRoutes(app: FastifyInstance) {
       `public, max-age=${SITEMAP_TTL_SECONDS}, stale-while-revalidate=86400`,
       Buffer.from(xml, "utf-8"),
     );
+  });
+
+  // Google Merchant Center product feed
+  app.get("/feed/google-merchant.xml", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+  }, async (_request, reply) => {
+    const base = (env.STOREFRONT_URL ?? env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+
+    const feedProducts = await prisma.product.findMany({
+      where: { status: "ACTIVE", visibility: "PUBLIC" },
+      include: {
+        variants: { where: { isActive: true }, take: 1, orderBy: { price: "asc" }, include: { inventoryLevel: { select: { quantityOnHand: true, reservedQuantity: true } } } },
+        brand: { select: { name: true } },
+        category: { select: { name: true } },
+        seoMetadata: { select: { title: true, description: true } },
+        galleries: { take: 1, orderBy: { position: "asc" }, include: { mediaAsset: { select: { publicUrl: true } } } },
+      },
+    });
+
+    const items = feedProducts
+      .filter((p) => p.variants.length > 0)
+      .map((p) => {
+        const variant = p.variants[0];
+        const price = Number(variant.salePrice ?? variant.price).toFixed(2);
+        const imageUrl = p.galleries[0]?.mediaAsset?.publicUrl ?? "";
+        const productUrl = base ? `${base}/product/${xmlEscape(p.slug)}` : "";
+        const title = xmlEscape(p.seoMetadata?.title || p.name);
+        const description = xmlEscape(p.seoMetadata?.description || p.name);
+        const brand = xmlEscape(p.brand?.name || "Dear Body");
+        const category = xmlEscape(p.category?.name || "Beauty");
+        const onHand = variant.inventoryLevel?.quantityOnHand ?? 0;
+        const reserved = variant.inventoryLevel?.reservedQuantity ?? 0;
+        const inStock = (onHand - reserved) > 0 || variant.allowBackorder;
+        return [
+          `    <item>`,
+          `      <g:id>${xmlEscape(p.id)}</g:id>`,
+          `      <g:title>${title}</g:title>`,
+          `      <g:description>${description}</g:description>`,
+          `      <g:link>${productUrl}</g:link>`,
+          imageUrl ? `      <g:image_link>${xmlEscape(imageUrl)}</g:image_link>` : null,
+          `      <g:condition>new</g:condition>`,
+          `      <g:availability>${inStock ? "in stock" : "out of stock"}</g:availability>`,
+          `      <g:price>${price} ZAR</g:price>`,
+          `      <g:brand>${brand}</g:brand>`,
+          `      <g:google_product_category>Beauty &amp; Personal Care</g:google_product_category>`,
+          `      <g:product_type>${category}</g:product_type>`,
+          `      <g:identifier_exists>false</g:identifier_exists>`,
+          `    </item>`,
+        ].filter(Boolean).join("\n");
+      });
+
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">',
+      "  <channel>",
+      "    <title>Dear Body Product Feed</title>",
+      `    <link>${base || ""}</link>`,
+      "    <description>Dear Body South Africa product catalogue</description>",
+      ...items,
+      "  </channel>",
+      "</rss>",
+    ].join("\n");
+
+    sendRaw(reply, 200, "application/xml; charset=utf-8", "public, max-age=3600, stale-while-revalidate=86400", Buffer.from(xml, "utf-8"));
   });
 }

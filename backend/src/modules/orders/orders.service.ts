@@ -338,12 +338,13 @@ async function sendOrderConfirmationEmail(orderId: string) {
     where: { id: orderId },
     include: { customer: true, items: true, shippingMethod: true },
   });
-  if (!order?.customer?.email || !shouldSendOrderConfirmation(order.paymentStatus)) return;
-  const orderItems = order.items.map((item) => `${item.productName} x${item.quantity}`).join(", ");
-  const isCollection = isWarehouseCollectionOrder(order);
+  const recipientEmail = order?.customer?.email ?? (order as any)?.guestEmail;
+  if (!recipientEmail || !shouldSendOrderConfirmation(order!.paymentStatus)) return;
+  const orderItems = order!.items.map((item) => `${item.productName} x${item.quantity}`).join(", ");
+  const isCollection = isWarehouseCollectionOrder(order!);
   const templateKey = isCollection ? "collection_order_confirmation" : "order_confirmation";
   const placeholders: Record<string, string> = {
-    firstName: order.customer.firstName ?? "Customer",
+    firstName: order!.customer?.firstName ?? "Customer",
     orderNumber: order.orderNumber,
     orderDate: order.createdAt.toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }),
     orderItems: orderItems || "—",
@@ -359,7 +360,7 @@ async function sendOrderConfirmationEmail(orderId: string) {
       : "To be confirmed";
   }
   const template = await resolveTemplateByKey(templateKey, placeholders);
-  await sendEmail({ to: order.customer.email, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
+  await sendEmail({ to: recipientEmail, subject: template.subject, html: template.htmlBody, meta: { templateKey: template.key, orderId } });
 }
 
 function formatCollectionWindow(order: { collectionWindowStart?: Date | null; collectionWindowEnd?: Date | null }): string {
@@ -453,7 +454,7 @@ async function recordOrderEvent(orderId: string, actorId: string | undefined, ev
   await prisma.orderEvent.create({ data: { orderId, actorId, eventType, previousValue, nextValue, details } });
 }
 
-export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string) {
+export async function checkoutCart(cartId: string, rawBody: unknown, authenticatedCustomerId: string | null) {
   const checkoutStartedAt = Date.now();
   const body = checkoutSchema.parse(rawBody);
   const existingCart = await prisma.cart.findUnique({ where: { id: cartId }, include: { items: true } });
@@ -529,8 +530,11 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
   });
 
   const customerId = authenticatedCustomerId;
-  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
-  if (!customer) throw new AppError(401, "Customer authentication required", "UNAUTHORIZED");
+  const guestEmail = !customerId ? body.email : undefined;
+  if (customerId) {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+    if (!customer) throw new AppError(401, "Customer authentication required", "UNAUTHORIZED");
+  }
 
   const orderNumber = generateOrderNumber();
 
@@ -552,6 +556,7 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
         orderNumber,
         cartId,
         customerId,
+        guestEmail: guestEmail ?? null,
         status: "AWAITING_PAYMENT",
         paymentStatus: "AWAITING_PAYMENT",
         fulfillmentStatus: "UNFULFILLED",
@@ -603,22 +608,24 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
       },
     });
 
-    await tx.customer.update({
-      where: { id: customerId! },
-      data: {
-        lastOrderAt: new Date(),
-        lifetimeValue: { increment: finalTotal },
-      },
-    });
+    if (customerId) {
+      await tx.customer.update({
+        where: { id: customerId },
+        data: {
+          lastOrderAt: new Date(),
+          lifetimeValue: { increment: finalTotal },
+        },
+      });
 
-    await tx.customerOrder.create({
-      data: {
-        customerId: customerId,
-        orderNumber,
-        status: "AWAITING_PAYMENT",
-        totalAmount: cart.totalAmount,
-      },
-    });
+      await tx.customerOrder.create({
+        data: {
+          customerId,
+          orderNumber,
+          status: "AWAITING_PAYMENT",
+          totalAmount: cart.totalAmount,
+        },
+      });
+    }
 
     return created;
   });

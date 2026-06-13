@@ -5,6 +5,7 @@
 
 const GA4_ID = import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined;
 const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID as string | undefined;
+const CLARITY_ID = import.meta.env.VITE_CLARITY_ID as string | undefined;
 
 declare global {
   interface Window {
@@ -12,6 +13,7 @@ declare global {
     dataLayer?: any[];
     fbq?: (...args: any[]) => void;
     _fbq?: any;
+    clarity?: (...args: any[]) => void;
   }
 }
 
@@ -63,10 +65,20 @@ function loadMetaPixel() {
   window.fbq?.("track", "PageView");
 }
 
+function loadClarity() {
+  if (!CLARITY_ID || typeof window === "undefined") return;
+  (function(c: any, l: any, a: any, r: any, i: any, t?: any, y?: any) {
+    c[a] = c[a] || function() { (c[a].q = c[a].q || []).push(arguments); };
+    t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+  })(window, document, "clarity", "script", CLARITY_ID);
+}
+
 // Initialise on first call
 export function initAnalytics() {
   loadGA4();
   loadMetaPixel();
+  loadClarity();
 }
 
 // GA4 page view

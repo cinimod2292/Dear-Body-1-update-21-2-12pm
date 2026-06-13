@@ -752,6 +752,7 @@ model Order {
   orderNumber      String            @unique
   cartId           String?           @unique
   customerId       String?
+  guestEmail       String?
   status           OrderStatus       @default(PENDING)
   paymentStatus    PaymentStatus     @default(AWAITING_PAYMENT)
   stitchReference  String?           @unique

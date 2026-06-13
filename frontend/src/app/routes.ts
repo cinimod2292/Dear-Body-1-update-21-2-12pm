@@ -17,6 +17,7 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const CustomerDashboard = lazy(() => import("./pages/CustomerDashboard"));
 const CustomerOrderDetail = lazy(() => import("./pages/CustomerOrderDetail"));
 const CustomerProtectedRoute = lazy(() => import("./components/CustomerProtectedRoute").then((mod) => ({ default: mod.CustomerProtectedRoute })));
+const BrandPage = lazy(() => import("./pages/BrandPage"));
 const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
 const BuilderPage = lazy(() => import("./pages/BuilderPage"));
 const MaintenancePage = lazy(() => import("./pages/MaintenancePage"));
@@ -70,6 +71,7 @@ export const router = createBrowserRouter([
       { index: true, Component: Home },
       { path: "shop", Component: Shop },
       { path: "product/:id", Component: ProductDetail, ErrorBoundary: ProductDetailErrorBoundary },
+      { path: "brands/:slug", Component: BrandPage },
       { path: "cart", Component: Cart },
       { path: "favorites", Component: Favorites },
       { path: "checkout", Component: Checkout },

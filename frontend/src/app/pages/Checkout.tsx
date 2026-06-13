@@ -213,8 +213,11 @@ export default function Checkout() {
   }, [clearCart]);
 
   const loadExistingOrder = async (orderId: string) => {
-    if (!token) return;
-    const res = await fetch(`${API_BASE}/store/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+    const url = token
+      ? `${API_BASE}/store/orders/${orderId}`
+      : `${API_BASE}/store/orders/${orderId}/payment-status`;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(url, { headers });
     const payload = await res.json().catch(() => null);
     if (!res.ok || !payload?.data) throw new Error(payload?.error?.message || "Failed to load order");
     const o = payload.data;
@@ -384,11 +387,7 @@ export default function Checkout() {
 
 
 
-  useEffect(() => {
-    if (!customer) {
-      navigate(`/account/login?next=${encodeURIComponent('/checkout')}`);
-    }
-  }, [customer, navigate]);
+  // Guest checkout: no redirect — logged-in or guest both proceed
 
   useEffect(() => {
     if (!token) return;
@@ -435,14 +434,17 @@ export default function Checkout() {
   useEffect(() => {
     if (!processingPayment) return;
     const orderId = returnOrderId;
-    if (!orderId || !token) return;
+    if (!orderId) return;
 
     let attempts = 0;
     setProcessingTimedOut(false);
     const timer = window.setInterval(async () => {
       attempts += 1;
       try {
-        const res = await fetch(`${API_BASE}/store/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const statusUrl = token
+          ? `${API_BASE}/store/orders/${orderId}`
+          : `${API_BASE}/store/orders/${orderId}/payment-status`;
+        const res = await fetch(statusUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
         const payload = await res.json().catch(() => null);
         if (!res.ok || !payload?.data) return;
         const status = payload.data.paymentStatus;
@@ -487,10 +489,6 @@ export default function Checkout() {
     try {
       setSubmitting(true);
 
-      if (!token || !customer) {
-        navigate(`/account/login?next=${encodeURIComponent("/checkout")}`);
-        return;
-      }
       if (!canProceedToPayment) {
         throw new Error("Please select a shipping method to continue.");
       }
@@ -538,9 +536,9 @@ export default function Checkout() {
       const isPudo = isPudoLocker || isPudoDoor;
       const checkoutRes = await fetch(`${API_BASE}/store/checkout/${cartId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
-          email: customer.email,
+          email: form.email || customer?.email || "",
           shippingMethodId: isPudo ? undefined : (selectedShippingMethodId || undefined),
           shippingAddress: isPudoLocker || isCollection ? undefined : {
             firstName: form.firstName,
@@ -576,7 +574,7 @@ export default function Checkout() {
       if (payment && !payment.checkoutUrl) {
         const retryRes = await fetch(`${API_BASE}/store/orders/${order.id}/payments/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ gateway: selectedGateway || undefined, returnUrl: finalReturnUrl, cancelUrl: `${window.location.origin}/checkout?orderId=${order.id}&cancelled=1` }),
         });
         const retryPayload = await retryRes.json().catch(() => null);
@@ -657,7 +655,7 @@ export default function Checkout() {
             Thank you for your order! We're getting your goodies ready.
           </p>
           <p className="text-gray-400 text-sm mb-6">
-            Order <strong>#{orderInfo?.orderNumber}</strong> · Confirmation sent to <strong>{customer?.email || "your email"}</strong>
+            Order <strong>#{orderInfo?.orderNumber}</strong> · Confirmation sent to <strong>{customer?.email || form.email || "your email"}</strong>
           </p>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 text-left space-y-4">
@@ -783,7 +781,16 @@ export default function Checkout() {
             {/* CONTACT */}
             {step === "contact" && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="font-black text-gray-900 text-xl mb-6">Contact Information</h2>
+                <h2 className="font-black text-gray-900 text-xl mb-2">Contact Information</h2>
+                {!customer && (
+                  <p className="text-sm text-gray-500 mb-6">
+                    Checking out as guest.{" "}
+                    <Link to={`/account/login?next=${encodeURIComponent("/checkout")}`} className="text-pink-500 hover:underline font-medium">
+                      Sign in
+                    </Link>{" "}
+                    to use saved addresses and track your order.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { key: "firstName", label: "First Name", placeholder: "Jane", type: "text" },

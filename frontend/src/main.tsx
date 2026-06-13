@@ -3,6 +3,7 @@ import App from "./app/App.tsx";
 import { API_BASE } from "./app/admin/api/client";
 import "./styles/index.css";
 import { BUILD_MARKER, logBuildMarker } from "./app/lib/build-marker";
+import { initAnalytics } from "./app/lib/analytics";
 
 try {
   const apiOrigin = new URL(API_BASE).origin;
@@ -18,6 +19,9 @@ try {
 }
 
 logBuildMarker("main-bootstrap");
+
+// Initialise analytics (GA4 + Meta Pixel) early so first page view is captured
+initAnalytics();
 
 window.addEventListener("error", (event) => {
   console.error("[global-error]", {

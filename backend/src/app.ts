@@ -5,6 +5,7 @@ import cors from "@fastify/cors";
 import compress from "@fastify/compress";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
+import helmet from "@fastify/helmet";
 import { env } from "./config/env.js";
 import { registerErrorHandler } from "./lib/errors.js";
 import { prisma } from "./lib/prisma.js";
@@ -35,6 +36,8 @@ import { storeAccountRoutes } from "./modules/store-account/store-account.routes
 import { builderRoutes } from "./modules/builder/builder.routes.js";
 import { sitemapRoutes } from "./modules/sitemap/sitemap.routes.js";
 import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
+import { reviewsRoutes } from "./modules/reviews/reviews.routes.js";
+import { faqsRoutes } from "./modules/faqs/faqs.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -42,6 +45,31 @@ export async function buildApp() {
     logger: env.NODE_ENV === "production"
       ? { level: "info" }
       : { transport: { target: "pino-pretty" } },
+  });
+
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://connect.facebook.net"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+        connectSrc: ["'self'", "https://www.google-analytics.com", "https://analytics.google.com", "https://region1.google-analytics.com", "https://www.facebook.com"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: env.NODE_ENV === "production" ? [] : null,
+      },
+    },
+    hsts: env.NODE_ENV === "production" ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    xssFilter: true,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: { policy: "same-origin" },
   });
 
   await app.register(cors, {
@@ -230,6 +258,8 @@ export async function buildApp() {
     await api.register(auditRoutes);
     await api.register(webhookRoutes);
     await api.register(analyticsRoutes);
+    await api.register(reviewsRoutes);
+    await api.register(faqsRoutes);
   }, { prefix: env.API_PREFIX });
 
   registerErrorHandler(app);

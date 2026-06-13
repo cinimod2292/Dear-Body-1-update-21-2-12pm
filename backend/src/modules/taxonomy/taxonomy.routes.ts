@@ -11,9 +11,10 @@ export async function taxonomyRoutes(app: FastifyInstance) {
         isActive: true,
         products: { some: { status: "ACTIVE" } },
       },
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, description: true },
       orderBy: { name: "asc" },
     });
+    reply.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
     return reply.send({ data: categories });
   });
 

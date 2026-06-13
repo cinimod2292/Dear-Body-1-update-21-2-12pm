@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
-import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
+import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check, MessageCircle } from "lucide-react";
 import { fetchStoreProductById, fetchStoreProductsByQuery, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
@@ -9,6 +9,49 @@ import { formatRand } from "../lib/currency";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { deriveGalleryImages, type ProductDetailImage } from "../lib/product-detail-images";
 import { getGalleryMainSources, getLightboxSources, getThumbImageSources } from "../lib/product-images";
+import { useSEO, buildCanonical } from "../lib/seo";
+import { trackViewItem, trackAddToCart } from "../lib/analytics";
+import { ProductReviews } from "../components/ProductReviews";
+import { ProductFaqSection } from "../components/ProductFaqSection";
+
+function buildProductSchema(product: Product, canonicalUrl: string) {
+  const firstImage = product.galleryImages?.[0]?.url || product.image;
+  const schema: any = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description || product.tagline,
+    url: canonicalUrl,
+    sku: product.id,
+    image: firstImage ? [firstImage] : undefined,
+    brand: product.brand ? {
+      "@type": "Brand",
+      name: product.brand,
+    } : undefined,
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "ZAR",
+      price: product.price.toFixed(2),
+      availability: product.inStock
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      url: canonicalUrl,
+      seller: { "@type": "Organization", name: "Dear Body" },
+    },
+  };
+
+  if (product.reviews > 0 && product.rating > 0) {
+    schema.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: product.rating.toFixed(1),
+      reviewCount: product.reviews,
+      bestRating: "5",
+      worstRating: "1",
+    };
+  }
+
+  return schema;
+}
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -19,6 +62,18 @@ export default function ProductDetail() {
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canonicalUrl = product ? buildCanonical(`/product/${product.slug || id}`) : "";
+  const productSchema = product ? buildProductSchema(product, canonicalUrl) : null;
+
+  useSEO(product ? {
+    title: product.seoTitle || product.name,
+    description: product.seoDescription || product.tagline || product.description?.slice(0, 160),
+    canonical: canonicalUrl,
+    ogType: "product",
+    ogImage: product.seoOgImage || product.galleryImages?.[0]?.url || product.image,
+    structuredData: productSchema || undefined,
+  } : { title: "Product", noIndex: true });
 
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
@@ -38,8 +93,18 @@ export default function ProductDetail() {
       .then((foundProduct) => {
         if (isCancelled) return;
         setProduct(foundProduct);
-        if (foundProduct) document.title = `${foundProduct.name} — Dear Body`;
         setActiveImageIndex(0);
+        // Fire analytics product view event
+        if (foundProduct) {
+          trackViewItem({
+            id: foundProduct.id,
+            name: foundProduct.name,
+            price: foundProduct.price,
+            brand: foundProduct.brand,
+            category: foundProduct.category,
+            currency: "ZAR",
+          });
+        }
         setLightboxOpen(false);
         setLoading(false);
 
@@ -76,6 +141,15 @@ export default function ProductDetail() {
     addToCart(currentProduct, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
+    trackAddToCart({
+      id: currentProduct.id,
+      name: currentProduct.name,
+      price: currentProduct.price,
+      quantity,
+      brand: currentProduct.brand,
+      category: currentProduct.category,
+      currency: "ZAR",
+    });
   };
 
   const handleBuyNow = () => {
@@ -409,6 +483,36 @@ export default function ProductDetail() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* ── FAQs ── */}
+        <ProductFaqSection productId={product.id} />
+
+        {/* ── Reviews ── */}
+        <ProductReviews
+          productId={product.id}
+          productName={product.name}
+          initialRating={product.rating}
+          initialCount={product.reviews}
+        />
+
+        {/* ── WhatsApp CTA ── */}
+        <div className="mt-8 flex items-center gap-3 bg-green-50 border border-green-100 rounded-2xl p-4">
+          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shrink-0">
+            <MessageCircle size={20} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-gray-900 text-sm">Have a question about this product?</p>
+            <p className="text-gray-500 text-xs">Our team is ready to help via WhatsApp</p>
+          </div>
+          <a
+            href={`https://wa.me/${import.meta.env.VITE_WHATSAPP_NUMBER || "27000000000"}?text=${encodeURIComponent(`Hi! I have a question about: ${product.name}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-full text-sm font-bold transition-colors"
+          >
+            Chat Now
+          </a>
         </div>
 
         {/* ── Related Products ── */}

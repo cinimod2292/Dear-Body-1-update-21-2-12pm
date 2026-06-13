@@ -62,7 +62,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
   return (
     <Link
       ref={cardRef}
-      to={`/product/${product.id}`}
+      to={`/product/${product.slug || product.id}`}
       className="group block"
       onPointerEnter={() => hasValidHoverImage && setCanHydrateHoverImage(true)}
       onFocus={() => hasValidHoverImage && setCanHydrateHoverImage(true)}

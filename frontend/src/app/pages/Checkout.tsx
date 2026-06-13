@@ -8,6 +8,7 @@ import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { CheckoutDeliveryType, firstMethodIdForDeliveryType, methodsForDeliveryType } from "./checkout-shipping";
+import { useSEO } from "../lib/seo";
 
 type Step = "contact" | "shipping" | "payment" | "confirm";
 
@@ -92,6 +93,7 @@ function normalizeCountry(value: string | null | undefined): string {
 }
 
 export default function Checkout() {
+  useSEO({ title: "Secure Checkout", noIndex: true });
   const { cartItems, cartTotal, cartCount, clearCart } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

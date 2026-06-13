@@ -4,6 +4,8 @@ import { SlidersHorizontal, X, ChevronDown } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
 import { ALL_PRODUCTS_CATEGORY, getShopCategory, setShopCategory } from "./shop-query";
+import { useSEO, buildCanonical } from "../lib/seo";
+import { API_BASE } from "../admin/api/client";
 
 const sortOptions = [
   { value: "", label: "Featured" },
@@ -26,10 +28,42 @@ export default function Shop() {
   const [error, setError] = useState<string | null>(null);
   const hasUserAdjustedMax = useRef(false);
   const userSelectedMax = useRef<number | null>(null);
+  const [categoryMeta, setCategoryMeta] = useState<{ name: string; slug: string; description?: string | null } | null>(null);
 
-  useEffect(() => {
-    document.title = "Shop — Dear Body";
-  }, []);
+  const searchQuery = searchParams.get("search") || "";
+  const categorySlug = searchParams.get("category") || "";
+  const brandSlug = searchParams.get("brand") || "";
+
+  const seoTitle = searchQuery
+    ? `Search: ${searchQuery}`
+    : categorySlug
+    ? categorySlug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    : "Shop All Products";
+
+  const seoDescription = searchQuery
+    ? `Browse search results for "${searchQuery}" at Dear Body. Premium South African beauty and fragrance.`
+    : categorySlug
+    ? `Shop our ${categorySlug.replace(/-/g, " ")} range at Dear Body. Premium quality, fast delivery across South Africa.`
+    : "Browse Dear Body's complete range of perfumed body sprays, lotions, scrubs, butters and skincare. Premium South African beauty delivered to your door.";
+
+  const canonicalPath = categorySlug
+    ? `/shop?category=${categorySlug}`
+    : brandSlug
+    ? `/shop?brand=${brandSlug}`
+    : "/shop";
+
+  useSEO({
+    title: seoTitle,
+    description: seoDescription,
+    canonical: buildCanonical(canonicalPath),
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `${seoTitle} | Dear Body`,
+      description: seoDescription,
+      url: buildCanonical(canonicalPath),
+    },
+  });
 
   useEffect(() => {
     fetchStoreProducts()
@@ -41,6 +75,19 @@ export default function Shop() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Load category description for SEO content when filtering by category slug
+  useEffect(() => {
+    if (!categorySlug) { setCategoryMeta(null); return; }
+    fetch(`${API_BASE}/store/categories`)
+      .then((r) => r.json())
+      .catch(() => null)
+      .then((payload) => {
+        if (!Array.isArray(payload?.data)) return;
+        const match = payload.data.find((c: any) => c.slug === categorySlug);
+        setCategoryMeta(match || null);
+      });
+  }, [categorySlug]);
 
   const handleCategoryChange = (cat: string) => {
     setSearchParams((currentSearchParams) => setShopCategory(currentSearchParams, cat));
@@ -270,6 +317,16 @@ export default function Shop() {
             >
               Clear Filters
             </button>
+          </div>
+        )}
+
+        {/* Category SEO content — rendered below products for UX clarity */}
+        {categoryMeta?.description && (
+          <div className="mt-16 bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-3">{categoryMeta.name}</h2>
+            <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+              {categoryMeta.description}
+            </div>
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
 import { fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent, BuilderPageKey } from "../builder/types";
 import { API_BASE } from "../admin/api/client";
+import { useSEO, buildCanonical } from "../lib/seo";
 
 const PATH_TO_PAGE_KEY: Record<string, BuilderPageKey> = {
   "/about": "about",
@@ -28,6 +29,14 @@ const PAGE_TITLES: Record<string, string> = {
   "/faq": "FAQ | Dear Body",
   "/delivery": "Delivery | Dear Body",
   "/campaign": "Campaign | Dear Body",
+};
+
+const PAGE_DESCRIPTIONS: Record<string, string> = {
+  "/about": "Learn about Dear Body — our story, our values and our commitment to premium South African beauty and fragrance.",
+  "/contact": "Get in touch with the Dear Body team. We're here to help with orders, product questions and more.",
+  "/returns": "Read Dear Body's hassle-free 30-day return policy. Customer satisfaction is our top priority.",
+  "/faq": "Find answers to frequently asked questions about Dear Body products, delivery, returns and more.",
+  "/delivery": "Learn about Dear Body's delivery options, timelines and shipping rates across South Africa.",
 };
 
 interface CmsPagePayload {
@@ -89,29 +98,24 @@ export default function BuilderPage() {
   const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
   const [resolved, setResolved] = useState(false);
 
-  useEffect(() => {
-    const defaultTitle = PAGE_TITLES[location.pathname] ?? "Dear Body";
-    document.title = defaultTitle;
-  }, [location.pathname]);
+  const rawTitle = PAGE_TITLES[location.pathname]?.split(" | ")[0] ?? "Dear Body";
+  const seoTitle = builderContent?.seo?.title || rawTitle;
+  const seoDescription = builderContent?.seo?.description || PAGE_DESCRIPTIONS[location.pathname];
+  const seoImage = builderContent?.seo?.ogImage;
 
-  useEffect(() => {
-    if (!builderContent?.seo) return;
-    const { title, description, ogImage } = builderContent.seo;
-    if (title) document.title = title;
-    const setMeta = (name: string, content: string) => {
-      let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"], meta[property="${name}"]`);
-      if (!el) {
-        el = document.createElement("meta");
-        if (name.startsWith("og:")) el.setAttribute("property", name);
-        else el.setAttribute("name", name);
-        document.head.appendChild(el);
-      }
-      el.setAttribute("content", content);
-    };
-    if (description) setMeta("description", description);
-    if (ogImage) setMeta("og:image", ogImage);
-    if (title) setMeta("og:title", title);
-  }, [builderContent?.seo]);
+  useSEO({
+    title: seoTitle,
+    description: seoDescription,
+    canonical: buildCanonical(location.pathname),
+    ogImage: seoImage,
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": location.pathname === "/contact" ? "ContactPage" : "WebPage",
+      name: seoTitle,
+      description: seoDescription,
+      url: buildCanonical(location.pathname),
+    },
+  });
 
   useEffect(() => {
     if (!pageKey) {

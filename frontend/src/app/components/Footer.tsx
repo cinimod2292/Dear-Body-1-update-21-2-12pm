@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Instagram, Facebook, Twitter, Youtube, Mail, Phone, MapPin } from "lucide-react";
+import { Instagram, Facebook, Twitter, Youtube, Mail, Phone, MapPin, Shield, Truck, RotateCcw, MessageCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { fetchCmsBootstrap } from "../lib/cms";
@@ -67,6 +67,28 @@ export function Footer() {
 
   return (
     <footer className="bg-gray-900 text-white">
+      {/* Trust Bar */}
+      <div className="bg-gray-800 border-b border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+            {[
+              { icon: Shield, title: "Secure Checkout", sub: "SSL encrypted payments" },
+              { icon: Truck, title: "Fast Delivery", sub: "Nationwide South Africa" },
+              { icon: RotateCcw, title: "30-Day Returns", sub: "Hassle-free policy" },
+              { icon: MessageCircle, title: "SA Support", sub: "Real people, fast replies" },
+            ].map((t) => (
+              <div key={t.title} className="flex flex-col items-center gap-2 py-2">
+                <t.icon size={20} className="text-pink-400" />
+                <div>
+                  <p className="text-white text-xs font-bold">{t.title}</p>
+                  <p className="text-gray-400 text-xs">{t.sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="h-2 bg-gradient-to-r from-pink-500 via-red-500 via-orange-500 via-yellow-400 via-lime-500 to-sky-500" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -131,6 +153,12 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-gray-800 flex flex-col sm:flex-row justify-between items-center gap-4 text-gray-500 text-sm">
           <p>{copyright}</p>
+          <div className="flex items-center gap-2 text-gray-600 text-xs">
+            <Shield size={12} className="text-green-500" />
+            <span>Secure payments via PayFast &amp; Stitch</span>
+            <span>·</span>
+            <span>🇿🇦 South African Business</span>
+          </div>
         </div>
       </div>
     </footer>

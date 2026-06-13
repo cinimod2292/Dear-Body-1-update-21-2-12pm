@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router";
 import { API_BASE } from "../admin/api/client";
+import { useSEO, buildCanonical } from "../lib/seo";
 
 interface CmsPagePayload {
   slug: string;
@@ -16,6 +17,17 @@ export default function CmsPage() {
   const resolvedSlug = slug ?? (rawPathSlug || "about");
   const [page, setPage] = useState<CmsPagePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useSEO(page ? {
+    title: page.title,
+    canonical: buildCanonical(location.pathname),
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: page.title,
+      url: buildCanonical(location.pathname),
+    },
+  } : {});
 
   useEffect(() => {
     fetch(`${API_BASE}/store/cms/pages/${resolvedSlug}`)

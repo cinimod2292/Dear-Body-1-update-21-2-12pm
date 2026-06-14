@@ -8,7 +8,7 @@ import { resolveHeroImageConfig } from "../lib/hero-image-config";
 import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
 import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent } from "../builder/types";
-import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
+import { getBuilderHeroUrls, getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
 import { sanitizeBuilderImageUrl } from "../builder/media-url";
 import { useSEO, buildCanonical } from "../lib/seo";
 
@@ -293,11 +293,12 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [needsProducts]);
 
-  const heroPreloadUrl = useMemo(() => getBuilderHeroImageUrl(builderContent), [builderContent]);
+  const heroUrls = useMemo(() => getBuilderHeroUrls(builderContent), [builderContent]);
+  const heroPreloadUrl = heroUrls.imageUrl;
 
   useEffect(() => {
     if (!heroPreloadUrl) return;
-    const descriptor = heroPreloadDescriptor(heroPreloadUrl);
+    const descriptor = heroPreloadDescriptor(heroPreloadUrl, heroUrls.imageMobileUrl);
     const existing = document.head.querySelector<HTMLLinkElement>('link[data-builder-hero-preload="true"]');
     const link = existing ?? document.createElement("link");
     link.setAttribute("data-builder-hero-preload", "true");
@@ -305,11 +306,16 @@ export default function Home() {
     link.as = descriptor.as;
     link.href = descriptor.href;
     link.setAttribute("imagesizes", descriptor.imagesizes);
+    if ("imagesrcset" in descriptor) {
+      link.setAttribute("imagesrcset", descriptor.imagesrcset as string);
+    } else {
+      link.removeAttribute("imagesrcset");
+    }
     if (!existing) document.head.appendChild(link);
     return () => {
       if (link.parentNode) link.parentNode.removeChild(link);
     };
-  }, [heroPreloadUrl]);
+  }, [heroPreloadUrl, heroUrls.imageMobileUrl]);
 
   return (
     <div className="min-h-screen">

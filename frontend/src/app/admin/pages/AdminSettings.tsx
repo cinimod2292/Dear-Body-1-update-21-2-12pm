@@ -174,6 +174,7 @@ export default function AdminSettings() {
   });
   const [sendgridApiKey, setSendgridApiKey] = useState("");
   const [sendgridTestTo, setSendgridTestTo] = useState("");
+  const [guestCheckoutEnabled, setGuestCheckoutEnabled] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [comingSoon, setComingSoon] = useState(false);
   const [dangerAction, setDangerAction] = useState<"orders" | "shipments" | "analytics" | null>(null);
@@ -198,7 +199,7 @@ export default function AdminSettings() {
     try {
       setLoading(true);
       setError(null);
-      const [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes, siteConfigRes] = await Promise.allSettled([
+      const [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes, siteConfigRes, checkoutSettingsRes] = await Promise.allSettled([
         apiRequest<{ data: { items: Array<{ key: string; value: unknown }> } }>("/admin/settings?page=1&perPage=100", {}, session.accessToken),
         apiRequest<{ data: StitchSettings }>("/admin/payments/settings/stitch", {}, session.accessToken),
         apiRequest<{ data: PayfastSettings }>("/admin/payments/settings/payfast", {}, session.accessToken),
@@ -209,6 +210,7 @@ export default function AdminSettings() {
         apiRequest<{ data: StorageSettings }>("/admin/settings/storage", {}, session.accessToken),
         apiRequest<{ data: SendgridSettings }>("/admin/settings/email/sendgrid", {}, session.accessToken),
         apiRequest<{ data: { siteStatus?: { maintenanceMode: boolean; comingSoon: boolean } } }>("/admin/cms/site-config", {}, session.accessToken),
+        apiRequest<{ data: { guestCheckoutEnabled: boolean } }>("/admin/settings/checkout", {}, session.accessToken),
       ]);
 
       if (settingsRes.status === "fulfilled") {
@@ -259,8 +261,11 @@ export default function AdminSettings() {
         setMaintenanceMode(status?.maintenanceMode ?? false);
         setComingSoon(status?.comingSoon ?? false);
       }
+      if (checkoutSettingsRes.status === "fulfilled") {
+        setGuestCheckoutEnabled(checkoutSettingsRes.value.data.guestCheckoutEnabled);
+      }
 
-      const failed = [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes].filter((r) => r.status === "rejected");
+      const failed = [settingsRes, stitchRes, payfastRes, paymentEventsRes, xeroSettingsRes, xeroSyncRes, abandonedConfigRes, storageRes, sendgridRes, checkoutSettingsRes].filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         toast.error(`Loaded with partial failures (${failed.length})`);
       }
@@ -289,6 +294,20 @@ export default function AdminSettings() {
       toast.error(err instanceof Error ? err.message : "Failed to save settings");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveCheckoutSettings = async (nextGuestEnabled: boolean) => {
+    if (!session?.accessToken) return;
+    try {
+      await apiRequest("/admin/settings/checkout", {
+        method: "PUT",
+        body: JSON.stringify({ guestCheckoutEnabled: nextGuestEnabled }),
+      }, session.accessToken);
+      setGuestCheckoutEnabled(nextGuestEnabled);
+      toast.success(nextGuestEnabled ? "Guest checkout enabled" : "Guest checkout disabled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update checkout settings");
     }
   };
 
@@ -561,6 +580,7 @@ export default function AdminSettings() {
   const TABS = [
     ["status", "Site Status"],
     ["store", "Store"],
+    ["checkout", "Checkout"],
     ["stitch", "Stitch Payments"],
     ["payfast", "PayFast"],
     ["storage", "Storage"],
@@ -664,6 +684,29 @@ export default function AdminSettings() {
           </div>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Store Settings"}</button>
         </form>
+      )}
+
+      {activeTab === "checkout" && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-black text-gray-900">Checkout Settings</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-5">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">Guest Checkout</p>
+                <p className="text-sm text-gray-500 mt-0.5">Allow customers to place orders without creating an account. When disabled, customers must sign in or register before they can check out.</p>
+              </div>
+              <Switch
+                checked={guestCheckoutEnabled}
+                onCheckedChange={(checked) => saveCheckoutSettings(checked)}
+              />
+            </div>
+            <div className={`rounded-lg px-4 py-3 text-sm ${guestCheckoutEnabled ? "bg-green-50 text-green-800 border border-green-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
+              {guestCheckoutEnabled
+                ? "Guest checkout is enabled. Customers can buy without an account. Guest orders are stored with the email address they provide."
+                : "Guest checkout is disabled. Customers will be redirected to the login page if they try to check out without an account."}
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === "stitch" && (

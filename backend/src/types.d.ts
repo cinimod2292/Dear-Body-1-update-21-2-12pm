@@ -6,6 +6,7 @@ declare module "fastify" {
   interface FastifyInstance {
     verifyAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     verifyCustomer: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    optionalCustomer: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requirePermission: (permission: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 

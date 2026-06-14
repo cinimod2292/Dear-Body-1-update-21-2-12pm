@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { prisma } from "../../lib/prisma.js";
 import {
   addCartItem,
   addOrderNote,
@@ -70,11 +71,21 @@ export async function ordersRoutes(app: FastifyInstance) {
     const { cartId } = request.params as { cartId: string };
     return reply.send({ data: await applyCoupon(cartId, request.body) });
   });
-  app.post("/store/checkout/:cartId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
+  app.post("/store/checkout/:cartId", { preHandler: [app.optionalCustomer] }, async (request, reply) => {
     const checkoutRouteStartedAt = Date.now();
     const { cartId } = request.params as { cartId: string };
+    const customerId: string | null = (request as any).customer?.id ?? null;
+
+    if (!customerId) {
+      const checkoutSetting = await prisma.setting.findUnique({ where: { scope_key: { scope: "checkout", key: "rules" } } });
+      const guestEnabled = ((checkoutSetting?.value ?? {}) as Record<string, unknown>).guestCheckoutEnabled !== false;
+      if (!guestEnabled) {
+        return reply.status(401).send({ error: { message: "Guest checkout is disabled. Please sign in to continue.", code: "GUEST_CHECKOUT_DISABLED" } });
+      }
+    }
+
     console.info("[checkout-timing] payment-init route entered", { cartId, requestId: request.id });
-    const order = await checkoutCart(cartId, request.body, request.customer.id);
+    const order = await checkoutCart(cartId, request.body, customerId);
     console.info("[checkout-timing] order creation/update complete", {
       cartId,
       orderId: order?.id,
@@ -108,6 +119,14 @@ export async function ordersRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: { order } });
   });
   app.post("/store/checkout/resolve-items", async (request, reply) => reply.send({ data: await resolveStorefrontItems(request.body) }));
+
+  // Public lightweight status check — orderId is a CUID (not guessable), used for guest payment return
+  app.get("/store/orders/:orderId/payment-status", async (request, reply) => {
+    const { orderId } = request.params as { orderId: string };
+    const order = await getStoreOrderById(orderId);
+    return reply.send({ data: { id: order.id, orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, status: order.status } });
+  });
+
   app.get("/store/orders/:orderId", { preHandler: [app.verifyCustomer] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
     const order = await getStoreOrderById(orderId);

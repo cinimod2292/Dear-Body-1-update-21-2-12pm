@@ -4,6 +4,7 @@ import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { trackPageLeave, trackPageView } from "../lib/tracking";
+import { trackGA4PageView } from "../lib/analytics";
 import MaintenancePage from "../pages/MaintenancePage";
 import UnderConstructionPage from "../pages/UnderConstructionPage";
 
@@ -25,6 +26,7 @@ export function Root() {
     }
     const result = trackPageView(pathname);
     trackRef.current = result;
+    trackGA4PageView(pathname);
     return () => {
       if (trackRef.current) {
         const { sessionId, path, startedAt } = trackRef.current;

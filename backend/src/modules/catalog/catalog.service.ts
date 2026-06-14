@@ -1258,15 +1258,21 @@ export async function getProductById(productId: string) {
 
 export async function getStorefrontProductById(productId: string) {
   const cfg = await resolveUploadConfig();
+
+  // Support lookup by either database ID or URL slug
+  const productWhere = {
+    OR: [{ id: productId }, { slug: productId }],
+    status: "ACTIVE" as const,
+    visibility: "PUBLIC" as const,
+    variants: { some: { isActive: true } },
+  };
+
   const product = await prisma.product.findFirst({
-    where: {
-      id: productId,
-      status: "ACTIVE",
-      visibility: "PUBLIC",
-      variants: { some: { isActive: true } },
-    },
+    where: productWhere,
     include: {
+      brand: { select: { id: true, name: true, slug: true } },
       category: true,
+      seoMetadata: true,
       galleries: { include: { mediaAsset: { include: { variants: true } } }, orderBy: { position: "asc" } },
       hoverImage: { include: { variants: true } },
       variants: { where: { isActive: true }, include: { inventoryLevel: true } },
@@ -1274,7 +1280,20 @@ export async function getStorefrontProductById(productId: string) {
   });
 
   if (!product) throw new AppError(404, "Product not found", "PRODUCT_NOT_FOUND");
-  return withResolvedProductMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
+
+  const reviewAggregate = await prisma.productReview.aggregate({
+    where: { productId: product.id, status: "APPROVED" },
+    _avg: { rating: true },
+    _count: { id: true },
+  });
+  const resolved = withResolvedProductMediaUrls(product, (storageKey) => resolvePublicUrlForStorageKey(storageKey, cfg));
+  return {
+    ...resolved,
+    reviewSummary: {
+      averageRating: reviewAggregate._avg.rating ?? 0,
+      totalReviews: reviewAggregate._count.id,
+    },
+  };
 }
 
 export async function createProduct(rawBody: unknown) {

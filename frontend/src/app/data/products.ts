@@ -12,6 +12,8 @@ export interface Product {
   price: number;
   originalPrice?: number;
   category: string;
+  brand?: string;
+  brandSlug?: string;
   color: string;
   bgColor: string;
   textColor: string;
@@ -43,6 +45,9 @@ export interface Product {
   badge?: string;
   inStock: boolean;
   scent?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoOgImage?: string;
 }
 
 type StorefrontProductApi = {
@@ -52,6 +57,12 @@ type StorefrontProductApi = {
   description?: string | null;
   shortDescription?: string | null;
   category?: { id: string; name: string } | null;
+  brand?: { id: string; name: string; slug: string } | null;
+  seoMetadata?: {
+    title?: string | null;
+    description?: string | null;
+    ogImageUrl?: string | null;
+  } | null;
   featured?: boolean;
   hoverImageId?: string | null;
   galleries?: Array<{
@@ -69,6 +80,10 @@ type StorefrontProductApi = {
     salePrice?: number | null;
     inventoryLevel?: { quantityOnHand: number } | null;
   }>;
+  reviewSummary?: {
+    averageRating: number;
+    totalReviews: number;
+  } | null;
 };
 
 function normalizePrice(value: unknown, fallback = 0): number {
@@ -179,11 +194,16 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     ingredients: tagDetails?.ingredients ?? "",
     howToUse: tagDetails?.howToUse ?? "",
     size: tagDetails?.size ?? "",
-    rating: 5,
-    reviews: 0,
+    rating: api.reviewSummary?.averageRating ?? 0,
+    reviews: api.reviewSummary?.totalReviews ?? 0,
     badge: api.featured ? "BESTSELLER" : undefined,
     inStock: (primaryVariant?.inventoryLevel?.quantityOnHand ?? 0) > 0,
     scent: tagDetails?.scent,
+    brand: api.brand?.name,
+    brandSlug: api.brand?.slug,
+    seoTitle: api.seoMetadata?.title ?? undefined,
+    seoDescription: api.seoMetadata?.description ?? undefined,
+    seoOgImage: api.seoMetadata?.ogImageUrl ?? undefined,
   };
 }
 
@@ -260,7 +280,8 @@ export async function fetchStoreProductById(productId: string): Promise<Product 
   if (!response.ok) {
     throw new Error(payload?.error?.message || "Failed to load product");
   }
-  const mapped = toProduct(payload.data as StorefrontProductApi, 0);
+  const apiData = payload.data as StorefrontProductApi & { reviewSummary?: { averageRating: number; totalReviews: number } };
+  const mapped = toProduct(apiData, 0);
   if (!mapped.variantId) return null;
   return mapped;
 }

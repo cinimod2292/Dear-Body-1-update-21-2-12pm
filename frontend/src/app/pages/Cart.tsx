@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
 import { formatRand } from "../lib/currency";
 import { API_BASE } from "../admin/api/client";
+import { useSEO } from "../lib/seo";
+import { trackBeginCheckout } from "../lib/analytics";
 
 type Quote = {
   subtotalAmount: number;
@@ -24,10 +26,20 @@ export default function Cart() {
   const navigate = useNavigate();
   const [promoCode, setPromoCode] = useState("");
   const { customer } = useCustomerAuth();
+
+  useSEO({ title: "Your Cart", noIndex: true });
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState("");
 
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [guestCheckoutEnabled, setGuestCheckoutEnabled] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/store/settings/checkout`)
+      .then((r) => r.json())
+      .then((payload) => { if (typeof payload?.data?.guestCheckoutEnabled === "boolean") setGuestCheckoutEnabled(payload.data.guestCheckoutEnabled); })
+      .catch(() => undefined);
+  }, []);
   const discount = Number(quote?.discountAmount ?? 0);
   const shipping = Number(quote?.shippingAmount ?? 0);
   const total = Number(quote?.totalAmount ?? (cartTotal - discount + shipping));
@@ -244,7 +256,10 @@ export default function Cart() {
               </div>
 
               <button
-                onClick={() => navigate(customer ? "/checkout" : "/account/login?next=%2Fcheckout")}
+                onClick={() => {
+                  trackBeginCheckout({ total: cartTotal, itemCount: cartCount, currency: "ZAR" });
+                  navigate(customer || guestCheckoutEnabled ? "/checkout" : `/account/login?next=${encodeURIComponent("/checkout")}`);
+                }}
                 disabled={!canProceedToCheckout}
                 className="w-full py-4 bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white rounded-full font-black text-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
               >

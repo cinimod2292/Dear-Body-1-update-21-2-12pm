@@ -10,6 +10,7 @@ import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent } from "../builder/types";
 import { getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
 import { sanitizeBuilderImageUrl } from "../builder/media-url";
+import { useSEO, buildCanonical } from "../lib/seo";
 
 interface HomeSection {
   id: string;
@@ -170,35 +171,53 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
   );
 }
 
+const HOME_SCHEMA = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Dear Body",
+    url: typeof window !== "undefined" ? window.location.origin : "",
+    logo: typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "",
+    description: "Dear Body is a South African beauty and fragrance brand offering premium body sprays, lotions, scrubs and skincare.",
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "customer service",
+      availableLanguage: "English",
+    },
+    sameAs: [],
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Dear Body",
+    url: typeof window !== "undefined" ? window.location.origin : "",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${typeof window !== "undefined" ? window.location.origin : ""}/shop?search={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  },
+];
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
   const [builderResolved, setBuilderResolved] = useState(false);
   const [searchParams] = useSearchParams();
 
-  useEffect(() => {
-    document.title = "Dear Body";
-  }, []);
+  useSEO({
+    title: "South African Beauty & Fragrance",
+    description: "Discover Dear Body's luxurious range of perfumed body sprays, body lotions, scrubs and skincare. Free delivery on qualifying orders. Shop now.",
+    canonical: buildCanonical("/"),
+    ogType: "website",
+    structuredData: HOME_SCHEMA,
+  });
 
-  // Apply SEO metadata from builder content
-  useEffect(() => {
-    if (!builderContent?.seo) return;
-    const { title, description, ogImage } = builderContent.seo;
-    if (title) document.title = title;
-    const setMeta = (name: string, content: string) => {
-      let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"], meta[property="${name}"]`);
-      if (!el) {
-        el = document.createElement("meta");
-        if (name.startsWith("og:")) el.setAttribute("property", name);
-        else el.setAttribute("name", name);
-        document.head.appendChild(el);
-      }
-      el.setAttribute("content", content);
-    };
-    if (description) setMeta("description", description);
-    if (ogImage) { setMeta("og:image", ogImage); }
-    if (title) { setMeta("og:title", title); }
-  }, [builderContent?.seo]);
+  // Builder SEO overrides are handled by useSEO hook above
+
 
   useEffect(() => {
     let cancelled = false;

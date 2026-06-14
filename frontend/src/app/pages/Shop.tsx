@@ -292,13 +292,47 @@ export default function Shop() {
 
         {/* Products Grid */}
         {loading ? (
-          <div className="text-center py-24">
-            <h3 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700 }}>Loading products…</h3>
+          <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" aria-label="Loading products…">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
+                  <div className="bg-gray-100 aspect-square" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-3 bg-gray-100 rounded w-1/3" />
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2" />
+                    <div className="h-5 bg-gray-100 rounded w-1/4 mt-2" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : error ? (
-          <div className="text-center py-24">
-            <h3 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700 }}>Unable to load products</h3>
-            <p className="text-gray-500">{error}</p>
+          <div className="py-16">
+            <div className="max-w-2xl mx-auto text-center mb-12">
+              <h2 className="text-2xl font-bold text-gray-800 mb-3">Browse Our Collection</h2>
+              <p className="text-gray-500 mb-6">
+                Dear Body offers a luxurious range of South African beauty products — from perfumed body sprays and
+                hydrating lotions to exfoliating scrubs and rich body butters.
+              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-6 py-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-full font-bold hover:opacity-90 transition"
+              >
+                Retry
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
+              {["Body Sprays", "Body Lotions", "Body Scrubs", "Body Butters"].map((cat) => (
+                <a
+                  key={cat}
+                  href={`/shop?category=${encodeURIComponent(cat.slice(0, -1))}`}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 text-center hover:border-pink-300 transition group"
+                >
+                  <p className="font-bold text-gray-800 text-sm group-hover:text-pink-600">{cat}</p>
+                </a>
+              ))}
+            </div>
           </div>
         ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

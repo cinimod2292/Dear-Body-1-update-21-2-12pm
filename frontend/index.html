@@ -32,8 +32,69 @@
       <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>" />
     </head>
 
+    <!-- Pre-rendered shop page content for search engine crawlers.
+         React replaces this on mount; bots see it before JavaScript runs. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "Shop All Products | Dear Body",
+      "description": "Browse Dear Body's complete range of perfumed body sprays, body lotions, scrubs, butters and skincare. Premium South African beauty delivered to your door.",
+      "url": "https://mydearbody.co.za/shop",
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "Dear Body",
+        "url": "https://mydearbody.co.za"
+      }
+    }
+    </script>
     <body>
-      <div id="root"></div>
+      <div id="root">
+        <div style="font-family:'Montserrat',sans-serif;background:#f9fafb;min-height:100vh">
+          <div style="background:linear-gradient(135deg,#ec4899 0%,#ef4444 50%,#f97316 100%);padding:80px 16px 60px;text-align:center;color:#fff">
+            <a href="/" style="display:inline-block;font-size:1.75rem;font-weight:900;color:#fff;text-decoration:none;letter-spacing:-.5px;margin-bottom:24px">Dear Body</a>
+            <h1 style="font-size:2.5rem;font-weight:900;margin:0 0 12px;line-height:1.1">Shop All Products</h1>
+            <p style="font-size:1.125rem;opacity:.85;margin:0;max-width:600px;margin-left:auto;margin-right:auto">
+              Premium South African beauty &amp; fragrance — delivered to your door
+            </p>
+          </div>
+          <nav aria-label="Product categories" style="max-width:1200px;margin:32px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:10px;justify-content:center">
+            <a href="/shop" style="padding:9px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:9999px;color:#374151;text-decoration:none;font-weight:700;font-size:.875rem">All Products</a>
+            <a href="/shop?category=Body+Spray" style="padding:9px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:9999px;color:#374151;text-decoration:none;font-weight:700;font-size:.875rem">Body Sprays</a>
+            <a href="/shop?category=Body+Lotion" style="padding:9px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:9999px;color:#374151;text-decoration:none;font-weight:700;font-size:.875rem">Body Lotions</a>
+            <a href="/shop?category=Body+Scrub" style="padding:9px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:9999px;color:#374151;text-decoration:none;font-weight:700;font-size:.875rem">Body Scrubs</a>
+            <a href="/shop?category=Body+Butter" style="padding:9px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:9999px;color:#374151;text-decoration:none;font-weight:700;font-size:.875rem">Body Butters</a>
+          </nav>
+          <main style="max-width:1200px;margin:32px auto 0;padding:0 16px 64px">
+            <p style="color:#6b7280;font-size:1rem;line-height:1.75;max-width:720px;margin:0 0 32px">
+              Discover Dear Body's luxurious range of perfumed body sprays, body lotions, scrubs, butters and skincare.
+              Shop our full collection of premium South African beauty products, available for nationwide delivery.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:24px" aria-label="Loading products">
+              <div style="background:#fff;border-radius:16px;height:320px;border:1px solid #f3f4f6"></div>
+              <div style="background:#fff;border-radius:16px;height:320px;border:1px solid #f3f4f6"></div>
+              <div style="background:#fff;border-radius:16px;height:320px;border:1px solid #f3f4f6"></div>
+              <div style="background:#fff;border-radius:16px;height:320px;border:1px solid #f3f4f6"></div>
+            </div>
+          </main>
+        </div>
+      </div>
+      <noscript>
+        <div style="font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 16px">
+          <h1>Shop All Products — Dear Body</h1>
+          <p>Browse Dear Body's complete range of perfumed body sprays, body lotions, scrubs, butters and skincare. Premium South African beauty, delivered to your door.</p>
+          <nav>
+            <ul>
+              <li><a href="/shop">All Products</a></li>
+              <li><a href="/shop?category=Body+Spray">Body Sprays</a></li>
+              <li><a href="/shop?category=Body+Lotion">Body Lotions</a></li>
+              <li><a href="/shop?category=Body+Scrub">Body Scrubs</a></li>
+              <li><a href="/shop?category=Body+Butter">Body Butters</a></li>
+            </ul>
+          </nav>
+          <p>JavaScript is required to view products. Please enable JavaScript in your browser.</p>
+        </div>
+      </noscript>
       <script type="module" src="/src/main.tsx"></script>
     </body>
   </html>

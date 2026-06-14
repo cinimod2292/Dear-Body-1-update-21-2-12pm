@@ -13,6 +13,10 @@ try {
     preconnect.href = apiOrigin;
     preconnect.crossOrigin = "anonymous";
     document.head.appendChild(preconnect);
+
+    // Wake the backend from cold start (Render free tier sleeps after inactivity).
+    // Fire-and-forget: errors are intentionally ignored.
+    fetch(`${API_BASE}/ping`).catch(() => {});
   }
 } catch {
   // no-op: invalid API base URL should not block app bootstrap

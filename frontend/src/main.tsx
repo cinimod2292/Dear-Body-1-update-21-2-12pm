@@ -24,8 +24,12 @@ try {
 
 logBuildMarker("main-bootstrap");
 
-// Initialise analytics (GA4 + Meta Pixel) early so first page view is captured
-initAnalytics();
+// Defer analytics until after first paint so it doesn't block FCP
+if (typeof requestIdleCallback !== "undefined") {
+  requestIdleCallback(() => initAnalytics(), { timeout: 3000 });
+} else {
+  setTimeout(() => initAnalytics(), 200);
+}
 
 window.addEventListener("error", (event) => {
   console.error("[global-error]", {

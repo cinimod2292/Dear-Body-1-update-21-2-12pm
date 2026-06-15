@@ -23,10 +23,11 @@
       <meta name="twitter:title" content="Dear Body | South African Beauty & Fragrance" />
       <meta name="twitter:description" content="Discover Dear Body's luxurious range of perfumed body sprays, body lotions, scrubs and skincare. Premium South African beauty, delivered to your door." />
 
-      <!-- Fonts -->
+      <!-- Fonts — loaded asynchronously to avoid render-blocking -->
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" />
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" media="print" onload="this.media='all'" />
+      <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" /></noscript>
 
       <!-- Favicon fallbacks (branding sets actual favicon via JS) -->
       <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>" />

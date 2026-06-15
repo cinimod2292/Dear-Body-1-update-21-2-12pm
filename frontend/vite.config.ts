@@ -24,11 +24,27 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-popover', '@radix-ui/react-tooltip', '@radix-ui/react-dropdown-menu'],
-          builder: ['@craftjs/core'],
-          charts: ['recharts'],
+        manualChunks(id) {
+          // Core React runtime — always needed
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/react-router/') || id.includes('node_modules/scheduler/')) {
+            return 'vendor';
+          }
+          // Icon library — large but widely used; split so it can cache independently
+          if (id.includes('node_modules/lucide-react/')) {
+            return 'icons';
+          }
+          // Radix UI primitives — used across storefront and admin
+          if (id.includes('node_modules/@radix-ui/')) {
+            return 'ui';
+          }
+          // Admin-only: page builder (only loads when /admin/builder is visited)
+          if (id.includes('node_modules/@craftjs/')) {
+            return 'builder';
+          }
+          // Admin-only: charts (only loads when /admin/analytics is visited)
+          if (id.includes('node_modules/recharts/') || id.includes('node_modules/d3-') || id.includes('node_modules/victory-')) {
+            return 'charts';
+          }
         },
       },
     },

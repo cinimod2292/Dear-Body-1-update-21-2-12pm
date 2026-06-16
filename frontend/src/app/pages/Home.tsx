@@ -202,10 +202,28 @@ const HOME_SCHEMA = [
   },
 ];
 
+const HOME_BUILDER_CACHE_KEY = "db:home-builder-v1";
+
+function readBuilderCache(): BuilderPageContent | null {
+  try {
+    const raw = sessionStorage.getItem(HOME_BUILDER_CACHE_KEY);
+    if (raw) return JSON.parse(raw) as BuilderPageContent;
+  } catch {}
+  return null;
+}
+
+function writeBuilderCache(content: BuilderPageContent | null) {
+  try {
+    if (content) sessionStorage.setItem(HOME_BUILDER_CACHE_KEY, JSON.stringify(content));
+    else sessionStorage.removeItem(HOME_BUILDER_CACHE_KEY);
+  } catch {}
+}
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(null);
-  const [builderResolved, setBuilderResolved] = useState(false);
+  // Seed from sessionStorage cache so returning visitors see content immediately
+  const [builderContent, setBuilderContent] = useState<BuilderPageContent | null>(() => readBuilderCache());
+  const [builderResolved, setBuilderResolved] = useState(() => readBuilderCache() !== null);
   const [searchParams] = useSearchParams();
 
   useSEO({
@@ -252,17 +270,14 @@ export default function Home() {
     fetchStoreBuilderPage("home")
       .then((page) => {
         if (cancelled) return;
-        if (!page?.content?.sections?.length) {
-          setBuilderContent(null);
-          setBuilderResolved(true);
-          return;
-        }
-        setBuilderContent(page.content);
+        const content = page?.content?.sections?.length ? page.content : null;
+        writeBuilderCache(content);
+        setBuilderContent(content);
         setBuilderResolved(true);
       })
       .catch(() => {
         if (cancelled) return;
-        setBuilderContent(null);
+        // Keep cached content visible on network failure; just mark resolved
         setBuilderResolved(true);
       });
     return () => { cancelled = true; };

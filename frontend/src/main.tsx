@@ -22,6 +22,35 @@ try {
   // no-op: invalid API base URL should not block app bootstrap
 }
 
+// Preload the homepage hero image from the sessionStorage builder cache so the
+// browser can start fetching it before React mounts and the API call completes.
+// This eliminates the "LCP resource load delay" on all repeat visits.
+try {
+  if (window.location.pathname === "/" || window.location.pathname === "") {
+    const cached = sessionStorage.getItem("db:home-builder-v1");
+    if (cached) {
+      const content = JSON.parse(cached);
+      const sections = Array.isArray(content?.sections) ? content.sections : [];
+      const hero = sections.find((s: any) => s.type === "hero_banner" && s.enabled !== false);
+      const imageUrl: string = (hero?.props?.imageUrl ?? "").trim();
+      if (imageUrl) {
+        const mobileUrl: string = (hero?.props?.imageMobileUrl ?? "").trim();
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.href = imageUrl;
+        link.setAttribute("imagesizes", "100vw");
+        if (mobileUrl && mobileUrl !== imageUrl) {
+          link.setAttribute("imagesrcset", `${mobileUrl} 768w, ${imageUrl} 1920w`);
+        }
+        document.head.appendChild(link);
+      }
+    }
+  }
+} catch {
+  // no-op: cache read failure must never block bootstrap
+}
+
 logBuildMarker("main-bootstrap");
 
 // Defer analytics until after first paint so it doesn't block FCP

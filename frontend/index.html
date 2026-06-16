@@ -29,6 +29,39 @@
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" media="print" onload="this.media='all'" />
       <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" /></noscript>
 
+      <!--
+        Optional performance hints — set these env vars in Vercel to activate:
+          VITE_MEDIA_CDN_URL  – Cloudflare R2 / S3 origin (e.g. https://my-dear-body.r2.cloudflarestorage.com)
+          VITE_HERO_IMAGE_URL – Full URL of the homepage hero image for LCP preload
+          VITE_HERO_MOBILE_IMAGE_URL – Mobile variant of the hero image (optional)
+        If the env var is not set the placeholder is left as-is and the browser ignores the invalid URL.
+      -->
+      <script>
+        // Inject performance hints from env vars at build time.
+        // Using a script block lets us do conditional injection without broken link tags.
+        (function () {
+          var cdn = "%VITE_MEDIA_CDN_URL%";
+          var hero = "%VITE_HERO_IMAGE_URL%";
+          var heroMobile = "%VITE_HERO_MOBILE_IMAGE_URL%";
+          var head = document.head;
+          function validUrl(u) { return u && !u.startsWith("%VITE_"); }
+          if (validUrl(cdn)) {
+            var pc = document.createElement("link");
+            pc.rel = "preconnect"; pc.href = cdn; pc.crossOrigin = "anonymous";
+            head.appendChild(pc);
+          }
+          if (validUrl(hero)) {
+            var pl = document.createElement("link");
+            pl.rel = "preload"; pl.as = "image"; pl.href = hero;
+            pl.setAttribute("imagesizes", "100vw");
+            if (validUrl(heroMobile) && heroMobile !== hero) {
+              pl.setAttribute("imagesrcset", heroMobile + " 768w, " + hero + " 1920w");
+            }
+            head.appendChild(pl);
+          }
+        })();
+      </script>
+
       <!-- Favicon fallbacks (branding sets actual favicon via JS) -->
       <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>" />
     </head>

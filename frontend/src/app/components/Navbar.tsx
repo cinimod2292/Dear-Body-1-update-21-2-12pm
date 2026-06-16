@@ -68,6 +68,8 @@ export function Navbar() {
               src={logoUrl || logoImage}
               srcSet={logo2xUrl ? `${logoUrl || logoImage} 1x, ${logo2xUrl} 2x` : undefined}
               alt="Dear Body"
+              width={214}
+              height={40}
               className="h-10 w-auto object-contain"
             />
           </Link>

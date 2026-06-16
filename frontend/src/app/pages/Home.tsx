@@ -1,16 +1,21 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ArrowRight } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, Product } from "../data/products";
 import { fetchCmsBootstrap } from "../lib/cms";
 import { resolveHeroImageConfig } from "../lib/hero-image-config";
-import { BuilderPageRenderer } from "../builder/BuilderPageRenderer";
 import { fetchAdminBuilderPage, fetchStoreBuilderPage } from "../builder/api";
 import { BuilderPageContent } from "../builder/types";
-import { getBuilderHeroUrls, getBuilderHeroImageUrl, heroPreloadDescriptor } from "../builder/hero-preload";
+import { getBuilderHeroUrls, heroPreloadDescriptor } from "../builder/hero-preload";
 import { sanitizeBuilderImageUrl } from "../builder/media-url";
 import { useSEO, buildCanonical } from "../lib/seo";
+
+// Lazy-load the builder renderer so the registry/charts/craftjs chunks only
+// download when a page with builder content is actually displayed
+const BuilderPageRenderer = lazy(() =>
+  import("../builder/BuilderPageRenderer").then((m) => ({ default: m.BuilderPageRenderer })),
+);
 
 interface HomeSection {
   id: string;
@@ -337,7 +342,7 @@ export default function Home() {
       {!builderResolved
         ? null
         : builderContent
-        ? <BuilderPageRenderer content={builderContent} products={products} />
+        ? <Suspense fallback={null}><BuilderPageRenderer content={builderContent} products={products} /></Suspense>
         : <LegacyHomeContent products={products} />}
     </div>
   );

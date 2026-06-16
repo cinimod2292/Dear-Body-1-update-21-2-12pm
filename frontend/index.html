@@ -47,12 +47,15 @@
           function validUrl(u) { return u && !u.startsWith("%VITE_"); }
           if (validUrl(cdn)) {
             var pc = document.createElement("link");
-            pc.rel = "preconnect"; pc.href = cdn; pc.crossOrigin = "anonymous";
+            // No crossOrigin — image requests don't use CORS so a crossorigin
+            // preconnect socket can't be reused for <img> fetches.
+            pc.rel = "preconnect"; pc.href = cdn;
             head.appendChild(pc);
           }
           if (validUrl(hero)) {
             var pl = document.createElement("link");
             pl.rel = "preload"; pl.as = "image"; pl.href = hero;
+            pl.setAttribute("fetchpriority", "high");
             pl.setAttribute("imagesizes", "100vw");
             if (validUrl(heroMobile) && heroMobile !== hero) {
               pl.setAttribute("imagesrcset", heroMobile + " 768w, " + hero + " 1920w");

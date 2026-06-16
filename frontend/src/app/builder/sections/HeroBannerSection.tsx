@@ -25,6 +25,9 @@ export function HeroBannerSection(props: HeroBannerProps) {
       : "";
   const imageUrl = sanitizeBuilderImageUrl(props.imageUrl, { isHero: true }) ?? "";
   const mobileImageUrl = sanitizeBuilderImageUrl(props.imageMobileUrl, { isHero: true }) ?? "";
+  // Guard against the imageAlt field being accidentally populated with a URL
+  // (a known data issue where the mobile image URL was stored in imageAlt).
+  const imageAlt = props.imageAlt && !props.imageAlt.startsWith("http") ? props.imageAlt : props.title;
   const overlayClass = props.tone === "clean"
     ? "bg-gradient-to-r from-gray-900/80 via-gray-900/40 to-transparent"
     : props.tone === "warm"
@@ -37,7 +40,7 @@ export function HeroBannerSection(props: HeroBannerProps) {
     <section className="relative min-h-[80vh] flex items-center overflow-hidden bg-gray-900">
       <div className="absolute inset-0">
         {imageUrl
-          ? <img src={imageUrl} srcSet={mobileImageUrl ? `${mobileImageUrl} 768w, ${imageUrl} 1920w` : undefined} alt={props.imageAlt || props.title} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" sizes="100vw" width={1217} height={797} onError={(e) => { const img = e.currentTarget; if (img.srcset) { img.srcset = ""; img.src = imageUrl; } }} />
+          ? <img src={imageUrl} srcSet={mobileImageUrl ? `${mobileImageUrl} 768w, ${imageUrl} 1920w` : undefined} alt={imageAlt} className="w-full h-full object-cover opacity-60" fetchPriority="high" loading="eager" decoding="async" sizes="100vw" width={1217} height={797} onError={(e) => { const img = e.currentTarget; if (img.srcset) { img.srcset = ""; img.src = imageUrl; } }} />
           : null}
         <div className={`absolute inset-0 ${overlayClass}`} />
       </div>

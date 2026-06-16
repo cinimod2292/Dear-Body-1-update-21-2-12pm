@@ -39,6 +39,7 @@ try {
         link.rel = "preload";
         link.as = "image";
         link.href = imageUrl;
+        link.setAttribute("fetchpriority", "high");
         link.setAttribute("imagesizes", "100vw");
         if (mobileUrl && mobileUrl !== imageUrl) {
           link.setAttribute("imagesrcset", `${mobileUrl} 768w, ${imageUrl} 1920w`);

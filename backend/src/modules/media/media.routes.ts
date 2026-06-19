@@ -744,7 +744,10 @@ export async function mediaRoutes(app: FastifyInstance) {
     { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
     async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
-      return reply.redirect(`/admin/media/assets/${mediaId}/regenerate-variants`, 307);
+      // Routes are registered under env.API_PREFIX, so the redirect target must
+      // include it; otherwise the browser follows Location to a prefix-less path
+      // that does not exist and gets a 404.
+      return reply.redirect(`${env.API_PREFIX}/admin/media/assets/${mediaId}/regenerate-variants`, 307);
     },
   );
 

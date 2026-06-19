@@ -414,7 +414,13 @@ export async function mediaRoutes(app: FastifyInstance) {
 
   app.put(
     "/admin/media/uploads/proxy",
-    { preHandler: [app.verifyAdmin, app.requirePermission("media:write")] },
+    {
+      preHandler: [app.verifyAdmin, app.requirePermission("media:write")],
+      // Raw binary uploads bypass @fastify/multipart, so the default 1 MiB body
+      // limit applies here. Align it with the 50 MB cap enforced by
+      // createUploadSchema and the multipart config.
+      bodyLimit: 50 * 1024 * 1024,
+    },
     async (request, reply) => {
       const { storageKey: rawKey } = request.query as { storageKey?: string };
       if (!rawKey) throw new AppError(400, "Missing storageKey query parameter", "MISSING_STORAGE_KEY");

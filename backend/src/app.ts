@@ -156,7 +156,7 @@ export async function buildApp() {
     return resolved;
   };
 
-  app.put("/local-upload/*", async (request, reply) => {
+  app.put("/local-upload/*", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
     if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
 

@@ -940,9 +940,11 @@ export default function AdminMedia() {
 
         let uploadResponse: Response;
         try {
+          const uploadHeaders: Record<string, string> = { ...prep.data.headers };
+          if (session.accessToken) uploadHeaders["Authorization"] = `Bearer ${session.accessToken}`;
           uploadResponse = await fetch(prep.data.uploadUrl, {
             method: prep.data.method,
-            headers: prep.data.headers,
+            headers: uploadHeaders,
             body: file,
           });
         } catch (error) {
@@ -1031,9 +1033,11 @@ export default function AdminMedia() {
           session.accessToken,
         );
 
+        const uploadHeaders: Record<string, string> = { ...prep.data.headers };
+        if (session.accessToken) uploadHeaders["Authorization"] = `Bearer ${session.accessToken}`;
         const uploadResponse = await fetch(prep.data.uploadUrl, {
           method: prep.data.method,
-          headers: prep.data.headers,
+          headers: uploadHeaders,
           body: file,
         });
         if (!uploadResponse.ok) throw new Error(`Upload failed for ${file.name} (${uploadResponse.status})`);

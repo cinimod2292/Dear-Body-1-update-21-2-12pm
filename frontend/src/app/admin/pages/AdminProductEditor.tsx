@@ -289,9 +289,11 @@ export default function AdminProductEditor() {
 
         let uploadResponse: Response;
         try {
+          const uploadHeaders: Record<string, string> = { ...prep.data.headers };
+          if (session.accessToken) uploadHeaders["Authorization"] = `Bearer ${session.accessToken}`;
           uploadResponse = await fetch(prep.data.uploadUrl, {
             method: prep.data.method,
-            headers: prep.data.headers,
+            headers: uploadHeaders,
             body: file,
           });
         } catch (error) {

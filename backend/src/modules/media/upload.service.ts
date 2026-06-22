@@ -218,6 +218,15 @@ export function resolveLocalPublicBaseUrl(): string {
   throw new Error("PUBLIC_BASE_URL is required for local uploads outside development/test environments");
 }
 
+// Storage-key prefix used by the bulk image importer for assets whose bytes live
+// on an external host (the real URL is stored in MediaAsset.publicUrl). These keys
+// do NOT correspond to objects in our bucket, so URLs must come from publicUrl.
+export const REMOTE_IMPORT_STORAGE_PREFIX = "remote-import/";
+
+export function isRemoteImportStorageKey(storageKey?: string | null): boolean {
+  return typeof storageKey === "string" && storageKey.startsWith(REMOTE_IMPORT_STORAGE_PREFIX);
+}
+
 export function resolvePublicUrlForStorageKey(storageKey: string, cfg: UploadConfig): string {
   if (cfg.provider === "s3" || cfg.provider === "cloudflare-r2") {
     const normalizedStorageKey = sanitizeStorageKey(storageKey);

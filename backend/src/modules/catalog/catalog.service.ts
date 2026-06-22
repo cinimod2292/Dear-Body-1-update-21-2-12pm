@@ -15,7 +15,7 @@ import {
   updateVariantSchema,
 } from "./catalog.schemas.js";
 import { toPaginatedResponse } from "../../lib/pagination.js";
-import { resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
+import { isRemoteImportStorageKey, resolvePublicUrlForStorageKey, resolveUploadConfig } from "../media/upload.service.js";
 import { normalizeHoverImageId, withResolvedProductMediaUrls } from "./product-images.js";
 import { extractLegacyImageUrls, planLegacyImageMigration } from "./legacy-image-migration.js";
 
@@ -960,11 +960,18 @@ export async function listProducts(rawQuery: unknown) {
     const cardVariant = media?.variants.find((variant) => variant.key === "card");
     const card2xVariant = media?.variants.find((variant) => variant.key === "card_2x");
     const thumbVariant = media?.variants.find((variant) => variant.key === "thumb");
+    // Fallback for assets without generated variants (e.g. bulk-imported images):
+    // use the original media URL — the external publicUrl for remote imports.
+    const mediaOriginalUrl = media
+      ? (isRemoteImportStorageKey(media.storageKey) && media.publicUrl
+          ? media.publicUrl
+          : media.storageKey ? resolvePublicUrlForStorageKey(media.storageKey, cfg) : media.publicUrl ?? null)
+      : null;
     const thumbnailUrl = cardVariant?.storageKey
       ? resolvePublicUrlForStorageKey(cardVariant.storageKey, cfg)
       : thumbVariant?.storageKey
         ? resolvePublicUrlForStorageKey(thumbVariant.storageKey, cfg)
-        : cardVariant?.publicUrl ?? thumbVariant?.publicUrl ?? null;
+        : cardVariant?.publicUrl ?? thumbVariant?.publicUrl ?? mediaOriginalUrl;
     const thumbnail2xUrl = card2xVariant?.storageKey
       ? resolvePublicUrlForStorageKey(card2xVariant.storageKey, cfg)
       : card2xVariant?.publicUrl ?? null;

@@ -78,6 +78,25 @@ test("prefers generated cloudflare delivery URLs over raw legacy jpg rows", () =
   assert.match(contract.variants.original.url, /uploads\//);
 });
 
+test("remote-import asset serves its external publicUrl instead of a bucket redirect", () => {
+  const contract = toMediaAssetContract({
+    id: "m6",
+    kind: "IMAGE",
+    storageKey: "remote-import/2026-02-03/abc-05eb6380-hf_image.png",
+    mimeType: "image/png",
+    publicUrl: "https://legacy-cdn.example.com/05eb6380-hf_image.png",
+    variants: [],
+  }, { provider: "cloudflare-r2", publicBaseUrl: "https://media.dearbody.co.za", signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any);
+
+  assert.equal(contract.originalUrl, "https://legacy-cdn.example.com/05eb6380-hf_image.png");
+  assert.equal(contract.publicUrl, "https://legacy-cdn.example.com/05eb6380-hf_image.png");
+  // No CDN resize wrapping — the external host isn't behind our delivery pipeline.
+  assert.equal(contract.variants.thumbnail.url, "https://legacy-cdn.example.com/05eb6380-hf_image.png");
+  assert.equal(contract.variants.card.url, "https://legacy-cdn.example.com/05eb6380-hf_image.png");
+  assert.doesNotMatch(contract.variants.thumbnail.url, /cdn-cgi\/image\//);
+  assert.doesNotMatch(contract.originalUrl, /media\/public\/remote-import/);
+});
+
 test("media full contract shape returns delivery variants and original url", () => {
   const responseLike = { data: toMediaAssetContract({
     id: "m5",

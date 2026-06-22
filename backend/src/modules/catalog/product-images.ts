@@ -43,6 +43,14 @@ type Media = {
   variants?: Array<{ key?: string; storageKey?: string; publicUrl?: string | null; width?: number; height?: number; mimeType?: string }>;
 };
 
+// Mirrors REMOTE_IMPORT_STORAGE_PREFIX in the media module. Kept inline so this
+// file stays free of the env-loading upload.service dependency.
+const REMOTE_IMPORT_STORAGE_PREFIX = "remote-import/";
+
+function isRemoteImportStorageKey(storageKey?: string | null): boolean {
+  return typeof storageKey === "string" && storageKey.startsWith(REMOTE_IMPORT_STORAGE_PREFIX);
+}
+
 function variantObjectFromArray(media: Media, publicUrlForStorageKey: (storageKey: string) => string) {
   const byKey = new Map((media.variants ?? []).map((variant) => [String(variant.key ?? ""), variant]));
   const fromKey = (...keys: string[]) => {
@@ -59,7 +67,9 @@ function variantObjectFromArray(media: Media, publicUrlForStorageKey: (storageKe
     return null;
   };
 
-  const originalUrl = media.storageKey ? publicUrlForStorageKey(media.storageKey) : String(media.publicUrl ?? "");
+  const originalUrl = isRemoteImportStorageKey(media.storageKey) && media.publicUrl
+    ? String(media.publicUrl)
+    : media.storageKey ? publicUrlForStorageKey(media.storageKey) : String(media.publicUrl ?? "");
   return {
     thumbnail: fromKey("thumbnail", "thumb", "gallery_thumb") ?? { url: originalUrl },
     card: fromKey("card", "card_2x") ?? { url: originalUrl },
@@ -79,7 +89,11 @@ export function withResolvedProductMediaUrls<T extends {
 ): T {
   const resolveMedia = (media?: Media | null) => {
     if (!media?.storageKey) return media;
-    const originalUrl = publicUrlForStorageKey(media.storageKey);
+    // Remote-import assets live at their stored external publicUrl, not in our
+    // bucket, so don't rewrite their URL to a /media/public/remote-import/... key.
+    const originalUrl = isRemoteImportStorageKey(media.storageKey) && media.publicUrl
+      ? String(media.publicUrl)
+      : publicUrlForStorageKey(media.storageKey);
     return {
       ...media,
       publicUrl: originalUrl,

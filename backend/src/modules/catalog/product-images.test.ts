@@ -58,3 +58,24 @@ test("withResolvedProductMediaUrls resolves both gallery and hover URLs", () => 
   assert.equal((resolved.galleries?.[0]?.mediaAsset as any)?.publicUrl, "https://cdn.example/gallery-key");
   assert.equal((resolved.hoverImage as any)?.publicUrl, "https://cdn.example/hover-key");
 });
+
+test("withResolvedProductMediaUrls keeps the external publicUrl for remote-import assets", () => {
+  const resolved = withResolvedProductMediaUrls({
+    galleries: [{
+      mediaAsset: {
+        id: "img_1",
+        filename: "imported.png",
+        mimeType: "image/png",
+        storageKey: "remote-import/2026-02-03/abc-imported.png",
+        publicUrl: "https://legacy-cdn.example.com/imported.png",
+      },
+    }],
+    hoverImage: null,
+  }, (key) => `https://cdn.example/${key}`);
+
+  const asset = resolved.galleries?.[0]?.mediaAsset as any;
+  // Must not be rewritten to the bucket key (which 404s and trips ORB on <img>).
+  assert.equal(asset?.publicUrl, "https://legacy-cdn.example.com/imported.png");
+  assert.equal(asset?.variants?.original?.url, "https://legacy-cdn.example.com/imported.png");
+  assert.equal(asset?.variants?.card?.url, "https://legacy-cdn.example.com/imported.png");
+});

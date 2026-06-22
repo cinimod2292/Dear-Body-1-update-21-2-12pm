@@ -1,4 +1,4 @@
-import { resolvePublicUrlForStorageKey, type UploadConfig } from "./upload.service.js";
+import { isRemoteImportStorageKey, resolvePublicUrlForStorageKey, type UploadConfig } from "./upload.service.js";
 
 export type MediaVariantContractItem = {
   url: string;
@@ -57,6 +57,12 @@ function inferStorageProvider(asset: MediaLike, cfg: UploadConfig): "local" | "s
 }
 
 function resolveOriginalUrl(asset: MediaLike, cfg: UploadConfig) {
+  // Remote-import assets aren't in our bucket; their bytes live at the stored
+  // external publicUrl. Resolving from the synthetic storageKey would yield a
+  // /media/public/remote-import/... redirect that 404s (and trips ORB on <img>).
+  if (isRemoteImportStorageKey(asset.storageKey) && asset.publicUrl) {
+    return String(asset.publicUrl);
+  }
   return resolvePublicUrlForStorageKey(asset.storageKey, cfg);
 }
 
@@ -99,12 +105,18 @@ export function toMediaAssetContract(asset: MediaLike, cfg: UploadConfig) {
   const storageProvider = inferStorageProvider(asset, cfg);
   const originalUrl = resolveOriginalUrl(asset, cfg);
   const variants = Array.isArray(asset.variants) ? asset.variants : [];
+  const remoteImport = isRemoteImportStorageKey(asset.storageKey);
 
-  const shouldGenerateDeliveryVariants = storageProvider === "cloudflare-r2" || Boolean(String(cfg.publicBaseUrl ?? "").trim());
+  // Remote-import assets have no generated variants and live on an external host,
+  // so CDN resize wrapping (/cdn-cgi/image/...) won't apply — serve the original.
+  const shouldGenerateDeliveryVariants = !remoteImport && (storageProvider === "cloudflare-r2" || Boolean(String(cfg.publicBaseUrl ?? "").trim()));
   const v = (key: keyof typeof CLOUD_FLARE_SPECS): MediaVariantContractItem => {
+    const spec = CLOUD_FLARE_SPECS[key];
+    if (remoteImport) {
+      return { url: originalUrl, width: spec.width, height: spec.height, format: "auto" };
+    }
     const legacyVariant = pickLegacyVariant(variants, LEGACY_KEYS[key]);
     const legacyUrl = toVariantUrl(legacyVariant, cfg);
-    const spec = CLOUD_FLARE_SPECS[key];
     const generatedUrl = resolveCloudflareResizedUrl(originalUrl, key, cfg);
     const url = shouldGenerateDeliveryVariants
       ? generatedUrl

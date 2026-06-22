@@ -6,7 +6,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { assignMediaToProductSchema, createUploadSchema, finalizeUploadSchema, mediaByIdsSchema, mediaListQuerySchema, regenerateVariantsBatchSchema, runMediaBackfillSchema, unlinkMediaFromProductSchema, updateMediaAssetSchema } from "./media.schemas.js";
-import { assertS3ObjectExists, createS3DownloadUrl, prepareUpload, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig, sanitizeStorageKey, writeStorageObjectBuffer } from "./upload.service.js";
+import { assertS3ObjectExists, createS3DownloadUrl, inferContentTypeFromStorageKey, prepareUpload, readStorageObjectBuffer, resolveLocalPublicBaseUrl, resolveLocalUploadPath, resolvePublicUrlForStorageKey, resolveUploadConfig, sanitizeStorageKey, writeStorageObjectBuffer } from "./upload.service.js";
 import { toPaginatedResponse, toPrismaPagination } from "../../lib/pagination.js";
 import { generateMediaVariantsForAsset } from "./media-variants.js";
 import { runMediaVariantsBackfill } from "./media-variants-backfill.service.js";
@@ -252,13 +252,37 @@ export async function mediaRoutes(app: FastifyInstance) {
   app.get("/media/public/*", async (request, reply) => {
     const storageKey = String((request.params as Record<string, string>)["*"] ?? "").trim();
     if (!storageKey) return reply.status(400).send({ error: { message: "Missing storage key" } });
-    reply.header("Cache-Control", "public, max-age=31536000, immutable");
     const cfg = await resolveUploadConfig();
+
     if (cfg.provider === "local") {
-      return reply.redirect(`${resolveLocalPublicBaseUrl()}/local-upload/${storageKey}`);
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+      return reply.redirect(`${resolveLocalPublicBaseUrl()}/local-upload/${sanitizeStorageKey(storageKey)}`);
     }
-    const downloadUrl = await createS3DownloadUrl(storageKey, cfg);
-    return reply.redirect(downloadUrl);
+
+    // With a stable public delivery domain configured, redirect to it: the target
+    // URL never changes, so it is safe to cache and the browser/CDN serves it
+    // directly (no ORB, no expiry).
+    if (cfg.publicBaseUrl) {
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+      return reply.redirect(await createS3DownloadUrl(storageKey, cfg));
+    }
+
+    // No public domain: stream the bytes through the API instead of redirecting to
+    // a presigned URL. Redirecting is unsafe here because this response is cached
+    // (immutable) while the presigned target expires (default 15m) — the browser
+    // then reuses an expired URL, S3/R2 returns an XML error, and the <img> load is
+    // blocked with net::ERR_BLOCKED_BY_ORB. Streaming serves stable, cacheable
+    // image bytes with a correct same-API Content-Type.
+    try {
+      const buffer = await readStorageObjectBuffer(storageKey, cfg);
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+      reply.header("Cross-Origin-Resource-Policy", "cross-origin");
+      reply.type(inferContentTypeFromStorageKey(storageKey));
+      return reply.send(buffer);
+    } catch (error) {
+      request.log.warn({ storageKey, err: error }, "Failed to serve media public object");
+      return reply.status(404).send({ error: { message: "Media object not found" } });
+    }
   });
 
   app.post(

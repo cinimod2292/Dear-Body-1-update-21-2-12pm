@@ -288,6 +288,27 @@ export function resolveStorageObjectCacheControl(storageKey: string): string | n
     : null;
 }
 
+const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  pdf: "application/pdf",
+};
+
+export function inferContentTypeFromStorageKey(storageKey: string): string {
+  const extension = storageKey.split(".").pop()?.toLowerCase() ?? "";
+  return CONTENT_TYPE_BY_EXTENSION[extension] ?? "application/octet-stream";
+}
+
 export async function assertS3ObjectExists(storageKey: string, configOverride?: UploadConfig): Promise<void> {
   const cfg = configOverride ?? await resolveUploadConfig();
   const headUrl = createS3PresignedUrl("HEAD", storageKey, 60, cfg);

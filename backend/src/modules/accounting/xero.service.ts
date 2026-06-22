@@ -155,15 +155,7 @@ async function tokenRequest(form: URLSearchParams) {
   return payload as Record<string, unknown>;
 }
 
-async function refreshTokenIfNeeded() {
-  const config = requireConfig(await getXeroConfigStored());
-  const token = await getXeroTokenStored();
-  if (!token) throw new AppError(400, "Xero is not connected", "XERO_NOT_CONNECTED");
-  if (!isExpired(token.expiresAt)) return token;
-  if (!refreshTokenIsValid(token)) {
-    throw new AppError(400, "Xero refresh token has expired — reconnect Xero", "XERO_REFRESH_EXPIRED");
-  }
-
+async function performTokenRefresh(token: XeroTokenStored, config: XeroConfigStored) {
   const form = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: decryptSecret(token.refreshToken),
@@ -181,6 +173,39 @@ async function refreshTokenIfNeeded() {
   });
 
   return next;
+}
+
+async function refreshTokenIfNeeded() {
+  const config = requireConfig(await getXeroConfigStored());
+  const token = await getXeroTokenStored();
+  if (!token) throw new AppError(400, "Xero is not connected", "XERO_NOT_CONNECTED");
+  if (!isExpired(token.expiresAt)) return token;
+  if (!refreshTokenIsValid(token)) {
+    throw new AppError(400, "Xero refresh token has expired — reconnect Xero", "XERO_REFRESH_EXPIRED");
+  }
+
+  return performTokenRefresh(token, config);
+}
+
+// Background keep-alive. Refreshes the Xero access token before it expires so the
+// integration stays connected and the rolling 60-day refresh-token window keeps
+// resetting — even during periods with no admin activity or order syncs. No-op when
+// Xero is disconnected, disabled, or the refresh window has already lapsed. Never throws.
+export async function keepXeroTokenAlive() {
+  const cfg = await getXeroConfigStored();
+  if (!cfg?.enabled) return { refreshed: false, reason: "disabled" as const };
+  const token = await getXeroTokenStored();
+  if (!token) return { refreshed: false, reason: "not_connected" as const };
+  if (!refreshTokenIsValid(token)) return { refreshed: false, reason: "refresh_expired" as const };
+
+  // Refresh once the access token is within 20 minutes of expiry — comfortably ahead
+  // of the 15-minute scheduler tick so it never lapses between runs.
+  if (new Date(token.expiresAt).getTime() > Date.now() + 20 * 60_000) {
+    return { refreshed: false, reason: "fresh" as const };
+  }
+
+  await performTokenRefresh(token, cfg);
+  return { refreshed: true, reason: "refreshed" as const };
 }
 
 async function xeroApiRequest(path: string, init: RequestInit = {}) {

@@ -103,8 +103,21 @@ async function tokenRequest(form: URLSearchParams) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = typeof payload?.error_description === "string" ? payload.error_description : "Xero token exchange failed";
-    throw new AppError(400, message, "XERO_TOKEN_EXCHANGE_FAILED", payload);
+    const errCode = typeof payload?.error === "string" ? payload.error : undefined;
+    const errDesc = typeof payload?.error_description === "string" ? payload.error_description : undefined;
+    const message = errDesc
+      ? `Xero token exchange failed: ${errDesc}`
+      : errCode
+        ? `Xero token exchange failed: ${errCode}`
+        : "Xero token exchange failed";
+    // Surface the real reason in the Render logs — Xero returns error/error_description
+    // (e.g. invalid_grant, invalid_client, unauthorized_client) which pinpoints the cause.
+    console.error("[XERO] token request failed", {
+      status: response.status,
+      error: errCode,
+      error_description: errDesc,
+    });
+    throw new AppError(400, message, "XERO_TOKEN_EXCHANGE_FAILED", { error: errCode, error_description: errDesc });
   }
 
   return payload as Record<string, unknown>;

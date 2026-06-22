@@ -50,6 +50,7 @@ interface XeroSettings {
   scopes: string[];
   connectionStatus: "connected" | "disconnected" | "expired";
   tokenExpiresAt: string | null;
+  refreshTokenExpiresAt?: string | null;
 }
 
 interface XeroSyncRecord {
@@ -140,6 +141,7 @@ export default function AdminSettings() {
   const [xeroScopes, setXeroScopes] = useState("openid profile email accounting.contacts accounting.transactions");
   const [xeroConnectionStatus, setXeroConnectionStatus] = useState<"connected" | "disconnected" | "expired">("disconnected");
   const [xeroTokenExpiresAt, setXeroTokenExpiresAt] = useState<string | null>(null);
+  const [xeroRefreshTokenExpiresAt, setXeroRefreshTokenExpiresAt] = useState<string | null>(null);
   const [xeroSecretConfigured, setXeroSecretConfigured] = useState(false);
   const [xeroSyncRecords, setXeroSyncRecords] = useState<XeroSyncRecord[]>([]);
   const [abandonedConfig, setAbandonedConfig] = useState<AbandonedCartConfig>({
@@ -250,6 +252,7 @@ export default function AdminSettings() {
         setXeroScopes((xeroSettingsRes.value.data.scopes || []).join(" "));
         setXeroConnectionStatus(xeroSettingsRes.value.data.connectionStatus);
         setXeroTokenExpiresAt(xeroSettingsRes.value.data.tokenExpiresAt);
+        setXeroRefreshTokenExpiresAt(xeroSettingsRes.value.data.refreshTokenExpiresAt ?? null);
         setXeroSecretConfigured(xeroSettingsRes.value.data.clientSecretConfigured);
       }
       if (xeroSyncRes.status === "fulfilled") setXeroSyncRecords(xeroSyncRes.value.data.items);
@@ -374,6 +377,7 @@ export default function AdminSettings() {
       setXeroSecretConfigured(res.data.clientSecretConfigured);
       setXeroConnectionStatus(res.data.connectionStatus);
       setXeroTokenExpiresAt(res.data.tokenExpiresAt);
+      setXeroRefreshTokenExpiresAt(res.data.refreshTokenExpiresAt ?? null);
       toast.success("Xero settings saved");
       await load();
     } catch (err) {
@@ -1025,7 +1029,8 @@ export default function AdminSettings() {
                 Scopes <span className="font-normal text-gray-500">(space separated)</span>
                 <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" value={xeroScopes} onChange={(e) => setXeroScopes(e.target.value)} />
               </label>
-              <p className="text-xs text-gray-500">Token expiry: {xeroTokenExpiresAt ? new Date(xeroTokenExpiresAt).toLocaleString() : "Not connected"}</p>
+              <p className="text-xs text-gray-500">Access token refreshes automatically{xeroTokenExpiresAt ? ` (next renewal ~${new Date(xeroTokenExpiresAt).toLocaleString()})` : ""}.</p>
+              <p className="text-xs text-gray-500">Reconnect needed by: {xeroRefreshTokenExpiresAt ? new Date(xeroRefreshTokenExpiresAt).toLocaleString() : "Not connected"}</p>
               <button type="button" onClick={connectXero} className="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm">Connect / Reconnect Xero</button>
             </div>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-70">{saving ? "Saving..." : "Save Xero Settings"}</button>

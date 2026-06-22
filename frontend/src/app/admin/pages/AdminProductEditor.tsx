@@ -5,7 +5,8 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/AdminState";
 import { toast } from "sonner";
 import { formatRand } from "../../lib/currency";
-import { resolveSelectedEditorMediaAssets, type EditorGalleryEntry, type EditorMediaAsset } from "../lib/product-editor-media";
+import { resolveBestMediaPreviewUrl, resolveSelectedEditorMediaAssets, type EditorGalleryEntry, type EditorMediaAsset } from "../lib/product-editor-media";
+import { resolveVariantAddGate } from "../lib/variant-add-state";
 
 interface Brand { id: string; name: string }
 interface Category { id: string; name: string }
@@ -30,6 +31,8 @@ interface Product {
   slug: string;
   description?: string;
   shortDescription?: string;
+  ingredients?: string;
+  howToUse?: string;
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   visibility: "PUBLIC" | "HIDDEN" | "PRIVATE";
   featured: boolean;
@@ -57,7 +60,13 @@ export default function AdminProductEditor() {
   const { session } = useAdminAuth();
   const { productId } = useParams();
   const navigate = useNavigate();
-  const isNew = productId === "new";
+  // The editor is reached via two routes: the static `products/new` (which has
+  // no :productId param, so useParams returns undefined) and `products/:productId`.
+  // Treat both a missing param and the literal "new" as a create flow, otherwise
+  // saving a new product wrongly takes the update branch and PATCHes
+  // /admin/products/undefined, which 404s with "Product not found".
+  const isNew = !productId || productId === "new";
+  const variantGate = resolveVariantAddGate({ isNew, productId });
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +89,8 @@ export default function AdminProductEditor() {
     slug: "",
     description: "",
     shortDescription: "",
+    ingredients: "",
+    howToUse: "",
     status: "DRAFT",
     visibility: "PUBLIC",
     featured: false,
@@ -368,6 +379,8 @@ export default function AdminProductEditor() {
       slug: product.slug,
       description: normalizeOptionalText(product.description),
       shortDescription: normalizeOptionalText(product.shortDescription),
+      ingredients: normalizeOptionalText(product.ingredients),
+      howToUse: normalizeOptionalText(product.howToUse),
       status: product.status,
       visibility: product.visibility,
       featured: product.featured,
@@ -399,7 +412,11 @@ export default function AdminProductEditor() {
 
   const addVariant = async (e: FormEvent) => {
     e.preventDefault();
-    if (!session?.accessToken || isNew || !productId) return;
+    if (!session?.accessToken) return;
+    if (!variantGate.canManageVariants || !productId) {
+      toast.error(variantGate.disabledReason ?? "Save the product first, then add a variant.");
+      return;
+    }
 
     const attrs = Object.entries(newVariant.selectedAttributeValues)
       .filter(([, optionId]) => optionId)
@@ -535,6 +552,16 @@ export default function AdminProductEditor() {
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">Description</label>
             <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.description ?? ""} onChange={(e) => setProduct((p) => ({ ...p, description: e.target.value }))} />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">Ingredients</label>
+            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.ingredients ?? ""} onChange={(e) => setProduct((p) => ({ ...p, ingredients: e.target.value }))} placeholder="Full ingredient list shown on the product page" />
+            <p className="mt-1 text-xs text-gray-500">Leave blank to hide the Ingredients tab on the product page.</p>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">How To Use</label>
+            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.howToUse ?? ""} onChange={(e) => setProduct((p) => ({ ...p, howToUse: e.target.value }))} placeholder="Usage directions shown on the product page" />
+            <p className="mt-1 text-xs text-gray-500">Leave blank to hide the How To Use tab on the product page.</p>
           </div>
         </section>
 
@@ -679,6 +706,7 @@ export default function AdminProductEditor() {
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {mediaAssets.map((m) => {
                   const selected = selectedMediaIds.includes(m.id);
+                  const previewUrl = resolveBestMediaPreviewUrl(m);
                   return (
                     <button
                       key={m.id}
@@ -687,7 +715,7 @@ export default function AdminProductEditor() {
                       className={`border rounded-lg p-2 text-left ${selected ? "border-pink-400 bg-pink-50" : "border-gray-200"}`}
                     >
                       <div className="aspect-square bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                        {canRenderImagePreview(m.publicUrl, m.mimeType) ? <img src={m.publicUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType ?? "No preview"}</span>}
+                        {canRenderImagePreview(previewUrl, m.mimeType) ? <img src={previewUrl} alt={m.filename} className="w-full h-full object-cover" /> : <span className="text-[10px] text-gray-500">{m.mimeType ?? "No preview"}</span>}
                       </div>
                       <p className="mt-1 text-[11px] truncate">{m.filename}</p>
                     </button>
@@ -722,11 +750,18 @@ export default function AdminProductEditor() {
         </div>
       </form>
 
-      {!isNew && (
-        <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
           <h3 className="font-bold">Variants, Pricing & Inventory</h3>
 
-          {(product.variants ?? []).length === 0 ? <EmptyState label="No variants yet. Add your first variant below." /> : (
+          {!variantGate.canManageVariants && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {variantGate.disabledReason}
+            </div>
+          )}
+
+          {(product.variants ?? []).length === 0 ? (
+            <EmptyState label={variantGate.canManageVariants ? "No variants yet. Add your first variant below." : "Save the product to start adding variants, pricing, and inventory."} />
+          ) : (
             <div className="space-y-3">
               {(product.variants ?? []).map((v) => (
                 <div key={v.id} className="rounded-lg border border-gray-100 p-3">
@@ -777,6 +812,7 @@ export default function AdminProductEditor() {
 
           <form onSubmit={addVariant} className="rounded-lg border border-dashed border-gray-300 p-4 space-y-3">
             <h4 className="font-semibold text-sm">Add Variant</h4>
+            <fieldset disabled={!variantGate.canManageVariants} className="space-y-3 disabled:opacity-60">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="Title" value={newVariant.title} onChange={(e) => setNewVariant((v) => ({ ...v, title: e.target.value }))} />
               <input className="rounded-lg border border-gray-200 px-3 py-2" placeholder="SKU" value={newVariant.sku} onChange={(e) => setNewVariant((v) => ({ ...v, sku: e.target.value }))} required />
@@ -803,10 +839,17 @@ export default function AdminProductEditor() {
               </div>
             )}
 
-            <button className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm">Add Variant</button>
+            <button
+              type="submit"
+              disabled={!variantGate.canManageVariants}
+              title={variantGate.disabledReason}
+              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Variant
+            </button>
+            </fieldset>
           </form>
-        </section>
-      )}
+      </section>
     </div>
   );
 }

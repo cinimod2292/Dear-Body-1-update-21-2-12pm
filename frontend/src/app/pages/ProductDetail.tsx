@@ -13,6 +13,7 @@ import { useSEO, buildCanonical } from "../lib/seo";
 import { trackViewItem, trackAddToCart } from "../lib/analytics";
 import { ProductReviews } from "../components/ProductReviews";
 import { ProductFaqSection } from "../components/ProductFaqSection";
+import { resolveProductDetailTabs } from "../lib/product-detail-tabs";
 
 function buildProductSchema(product: Product, canonicalUrl: string) {
   const firstImage = product.galleryImages?.[0]?.url || product.image;
@@ -255,6 +256,11 @@ export default function ProductDetail() {
     );
   }
 
+  // Only surface detail tabs that actually have content, so incomplete products
+  // don't render empty "Ingredients" / "How To Use" sections on the storefront.
+  const detailTabs = resolveProductDetailTabs(product);
+  const activeDetailTab = detailTabs.find((tab) => tab.key === activeTab) ?? detailTabs[0];
+
   return (
     <div className="min-h-screen bg-white">
       {/* Breadcrumb */}
@@ -471,29 +477,28 @@ export default function ProductDetail() {
             </div>
 
             {/* Tabs */}
-            <div>
-              <div className="flex gap-0 border-b border-gray-200 mb-5">
-                {(["description", "ingredients", "howToUse"] as const).map(tab => {
-                  const labels = { description: "Description", ingredients: "Ingredients", howToUse: "How To Use" };
-                  return (
+            {detailTabs.length > 0 && (
+              <div>
+                <div className="flex gap-0 border-b border-gray-200 mb-5">
+                  {detailTabs.map(tab => (
                     <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
                       className={`px-5 py-3 text-sm font-bold transition-colors border-b-2 -mb-px ${
-                        activeTab === tab
+                        activeDetailTab?.key === tab.key
                           ? "border-pink-500 text-pink-500"
                           : "border-transparent text-gray-400 hover:text-gray-700"
                       }`}
                     >
-                      {labels[tab]}
+                      {tab.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+                <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+                  {activeDetailTab?.content}
+                </p>
               </div>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                {product[activeTab]}
-              </p>
-            </div>
+            )}
           </div>
         </div>
 

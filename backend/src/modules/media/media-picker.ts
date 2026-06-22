@@ -22,6 +22,7 @@ export function toPickerMediaItem(asset: MediaLike, cfg: UploadConfig) {
     kind: asset.kind,
     filename: asset.filename,
     altText: asset.altText ?? null,
+    mimeType: asset.mimeType ?? null,
     createdAt: asset.createdAt,
     thumbnailUrl: contract.variants.thumbnail.url,
     displayUrl: contract.originalUrl,

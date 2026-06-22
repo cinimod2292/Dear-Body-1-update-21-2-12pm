@@ -109,7 +109,12 @@ export function toMediaAssetContract(asset: MediaLike, cfg: UploadConfig) {
 
   // Remote-import assets have no generated variants and live on an external host,
   // so CDN resize wrapping (/cdn-cgi/image/...) won't apply — serve the original.
-  const shouldGenerateDeliveryVariants = !remoteImport && (storageProvider === "cloudflare-r2" || Boolean(String(cfg.publicBaseUrl ?? "").trim()));
+  // Cloudflare image resizing (/cdn-cgi/image/...) only works when the request is
+  // served through a transform-capable public delivery domain. Without one, those
+  // URLs resolve against the API host (which has no /cdn-cgi/image) and 404 — so
+  // only generate delivery variants when a public delivery base URL is configured.
+  const hasDeliveryDomain = Boolean(String(cfg.publicBaseUrl ?? "").trim());
+  const shouldGenerateDeliveryVariants = !remoteImport && hasDeliveryDomain;
   const v = (key: keyof typeof CLOUD_FLARE_SPECS): MediaVariantContractItem => {
     const spec = CLOUD_FLARE_SPECS[key];
     if (remoteImport) {
@@ -117,10 +122,12 @@ export function toMediaAssetContract(asset: MediaLike, cfg: UploadConfig) {
     }
     const legacyVariant = pickLegacyVariant(variants, LEGACY_KEYS[key]);
     const legacyUrl = toVariantUrl(legacyVariant, cfg);
-    const generatedUrl = resolveCloudflareResizedUrl(originalUrl, key, cfg);
+    // With a delivery domain: emit a resized /cdn-cgi/image URL. Without one: prefer a
+    // pre-generated variant object if we have one, otherwise serve the original (both
+    // load reliably through /media/public/*) rather than a broken /cdn-cgi URL.
     const url = shouldGenerateDeliveryVariants
-      ? generatedUrl
-      : (isOptimizedUrl(legacyUrl) ? String(legacyUrl) : generatedUrl);
+      ? resolveCloudflareResizedUrl(originalUrl, key, cfg)
+      : (isOptimizedUrl(legacyUrl) ? String(legacyUrl) : originalUrl);
     return {
       url,
       width: legacyVariant?.width ?? spec.width,

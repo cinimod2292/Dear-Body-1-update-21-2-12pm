@@ -320,6 +320,8 @@ model Product {
   slug             String             @unique
   description      String?
   shortDescription String?
+  ingredients      String?
+  howToUse         String?
   status           ProductStatus      @default(DRAFT)
   visibility       ProductVisibility  @default(PUBLIC)
   featured         Boolean            @default(false)

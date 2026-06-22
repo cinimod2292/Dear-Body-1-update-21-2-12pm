@@ -31,6 +31,8 @@ interface Product {
   slug: string;
   description?: string;
   shortDescription?: string;
+  ingredients?: string;
+  howToUse?: string;
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   visibility: "PUBLIC" | "HIDDEN" | "PRIVATE";
   featured: boolean;
@@ -58,7 +60,12 @@ export default function AdminProductEditor() {
   const { session } = useAdminAuth();
   const { productId } = useParams();
   const navigate = useNavigate();
-  const isNew = productId === "new";
+  // The editor is reached via two routes: the static `products/new` (which has
+  // no :productId param, so useParams returns undefined) and `products/:productId`.
+  // Treat both a missing param and the literal "new" as a create flow, otherwise
+  // saving a new product wrongly takes the update branch and PATCHes
+  // /admin/products/undefined, which 404s with "Product not found".
+  const isNew = !productId || productId === "new";
   const variantGate = resolveVariantAddGate({ isNew, productId });
 
   const [loading, setLoading] = useState(true);
@@ -82,6 +89,8 @@ export default function AdminProductEditor() {
     slug: "",
     description: "",
     shortDescription: "",
+    ingredients: "",
+    howToUse: "",
     status: "DRAFT",
     visibility: "PUBLIC",
     featured: false,
@@ -370,6 +379,8 @@ export default function AdminProductEditor() {
       slug: product.slug,
       description: normalizeOptionalText(product.description),
       shortDescription: normalizeOptionalText(product.shortDescription),
+      ingredients: normalizeOptionalText(product.ingredients),
+      howToUse: normalizeOptionalText(product.howToUse),
       status: product.status,
       visibility: product.visibility,
       featured: product.featured,
@@ -541,6 +552,16 @@ export default function AdminProductEditor() {
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">Description</label>
             <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.description ?? ""} onChange={(e) => setProduct((p) => ({ ...p, description: e.target.value }))} />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">Ingredients</label>
+            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.ingredients ?? ""} onChange={(e) => setProduct((p) => ({ ...p, ingredients: e.target.value }))} placeholder="Full ingredient list shown on the product page" />
+            <p className="mt-1 text-xs text-gray-500">Leave blank to hide the Ingredients tab on the product page.</p>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">How To Use</label>
+            <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 min-h-28" value={product.howToUse ?? ""} onChange={(e) => setProduct((p) => ({ ...p, howToUse: e.target.value }))} placeholder="Usage directions shown on the product page" />
+            <p className="mt-1 text-xs text-gray-500">Leave blank to hide the How To Use tab on the product page.</p>
           </div>
         </section>
 

@@ -56,6 +56,8 @@ type StorefrontProductApi = {
   name: string;
   description?: string | null;
   shortDescription?: string | null;
+  ingredients?: string | null;
+  howToUse?: string | null;
   category?: { id: string; name: string } | null;
   brand?: { id: string; name: string; slug: string } | null;
   seoMetadata?: {
@@ -191,8 +193,8 @@ function toProduct(api: StorefrontProductApi, index: number): Product {
     images: galleryImages.map((entry) => entry.url),
     galleryImages: galleryImages.map((entry) => mapGallerySurfaceImages(entry)),
     description: api.description ?? "",
-    ingredients: tagDetails?.ingredients ?? "",
-    howToUse: tagDetails?.howToUse ?? "",
+    ingredients: api.ingredients ?? tagDetails?.ingredients ?? "",
+    howToUse: api.howToUse ?? tagDetails?.howToUse ?? "",
     size: tagDetails?.size ?? "",
     rating: api.reviewSummary?.averageRating ?? 0,
     reviews: api.reviewSummary?.totalReviews ?? 0,

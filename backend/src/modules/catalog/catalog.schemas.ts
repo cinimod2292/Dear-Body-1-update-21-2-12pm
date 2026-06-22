@@ -20,6 +20,8 @@ export const createProductSchema = z.object({
   slug: z.string().min(2),
   description: z.string().optional(),
   shortDescription: z.string().optional(),
+  ingredients: z.string().optional(),
+  howToUse: z.string().optional(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).default("DRAFT"),
   visibility: z.enum(["PUBLIC", "HIDDEN", "PRIVATE"]).default("PUBLIC"),
   featured: z.boolean().default(false),

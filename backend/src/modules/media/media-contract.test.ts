@@ -78,6 +78,37 @@ test("prefers generated cloudflare delivery URLs over raw legacy jpg rows", () =
   assert.match(contract.variants.original.url, /uploads\//);
 });
 
+test("without a delivery domain, variants fall back to the original instead of broken /cdn-cgi URLs", () => {
+  const contract = toMediaAssetContract({
+    id: "m7",
+    kind: "IMAGE",
+    storageKey: "uploads/2026-06-22/abc-hf_image.png",
+    mimeType: "image/png",
+    metadata: { storageProvider: "cloudflare-r2" },
+    variants: [],
+  }, { provider: "cloudflare-r2", publicBaseUrl: undefined, signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any);
+
+  assert.doesNotMatch(contract.variants.heroDesktop.url, /cdn-cgi\/image\//);
+  assert.doesNotMatch(contract.variants.card.url, /cdn-cgi\/image\//);
+  assert.equal(contract.variants.heroDesktop.url, contract.originalUrl);
+  assert.equal(contract.variants.card.url, contract.originalUrl);
+  assert.match(contract.originalUrl, /\/media\/public\/uploads\//);
+});
+
+test("without a delivery domain, a pre-generated variant object is still used for resizing", () => {
+  const contract = toMediaAssetContract({
+    id: "m8",
+    kind: "IMAGE",
+    storageKey: "uploads/legacy/source.jpg",
+    mimeType: "image/jpeg",
+    metadata: { storageProvider: "cloudflare-r2" },
+    variants: [{ key: "card", storageKey: "variants/m8/card.webp", width: 600, height: 600, mimeType: "image/webp" }],
+  }, { provider: "cloudflare-r2", publicBaseUrl: undefined, signedUrlTtlSeconds: 900, forcePathStyle: false, region: "auto" } as any);
+
+  assert.match(contract.variants.card.url, /variants\/m8\/card\.webp/);
+  assert.doesNotMatch(contract.variants.card.url, /cdn-cgi\/image\//);
+});
+
 test("remote-import asset serves its external publicUrl instead of a bucket redirect", () => {
   const contract = toMediaAssetContract({
     id: "m6",

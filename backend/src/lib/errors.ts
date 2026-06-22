@@ -26,6 +26,20 @@ export function registerErrorHandler(app: { setErrorHandler: Function }) {
       return reply.status(413).send({ error: "Hero image is too large. Max size is 15 MB." });
     }
 
+    // AppError must be handled before the generic statusCode/message branch below,
+    // otherwise its `details` payload (e.g. the upstream provider's error response)
+    // is silently dropped from the response.
+    if (error instanceof AppError) {
+      return reply.status(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          requestId: request.id,
+        },
+      });
+    }
+
     if (
       typeof error === "object"
       && error !== null
@@ -44,17 +58,6 @@ export function registerErrorHandler(app: { setErrorHandler: Function }) {
           },
         });
       }
-    }
-
-    if (error instanceof AppError) {
-      return reply.status(error.statusCode).send({
-        error: {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          requestId: request.id,
-        },
-      });
     }
 
     if (error instanceof ZodError) {

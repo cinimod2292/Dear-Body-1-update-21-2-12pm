@@ -25,6 +25,7 @@ import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { emailTemplateRoutes } from "./modules/email-templates/email-template.routes.js";
 import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { xeroRoutes } from "./modules/accounting/xero.routes.js";
+import { keepXeroTokenAlive } from "./modules/accounting/xero.service.js";
 import { cmsRoutes } from "./modules/cms/cms.routes.js";
 import { opsRoutes } from "./modules/ops/ops.routes.js";
 import { pudoRoutes } from "./modules/pudo/pudo.routes.js";
@@ -278,6 +279,15 @@ export async function buildApp() {
     });
   }, 30 * 60_000);
   pudoTrackingInterval.unref();
+
+  // Keep the Xero access token alive every 15 minutes so the integration stays
+  // connected without manual re-authorisation (access tokens expire after ~30 min).
+  const xeroTokenInterval = setInterval(() => {
+    keepXeroTokenAlive().catch((error) => {
+      app.log.warn({ err: error }, "Xero token keep-alive failed");
+    });
+  }, 15 * 60_000);
+  xeroTokenInterval.unref();
 
   // SLA warning check every 15 minutes
   const slaCheckInterval = setInterval(async () => {

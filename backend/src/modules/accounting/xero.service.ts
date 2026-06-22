@@ -48,7 +48,14 @@ interface XeroTokenStored {
   refreshToken: string;
   expiresAt: string;
   obtainedAt: string;
+  // When the refresh token itself stops working. Xero refresh tokens are valid for
+  // 60 days and the window resets on every successful refresh. Optional for tokens
+  // persisted before this field was introduced.
+  refreshTokenExpiresAt?: string;
 }
+
+// Xero access tokens live ~30 minutes; refresh tokens are valid for 60 days (rolling).
+const XERO_REFRESH_TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000;
 
 function xeroBaseUrl() {
   return "https://api.xero.com";
@@ -94,6 +101,31 @@ function isExpired(expiresAtIso: string) {
   return new Date(expiresAtIso).getTime() <= Date.now() + 30_000;
 }
 
+// True while the stored refresh token can still be exchanged for a new access token.
+// This — not the short-lived access token — determines whether Xero is "connected".
+function refreshTokenIsValid(token: XeroTokenStored) {
+  if (!token.refreshToken) return false;
+  // Legacy tokens persisted without refreshTokenExpiresAt are assumed still usable;
+  // a failed refresh will surface the real state.
+  if (!token.refreshTokenExpiresAt) return true;
+  return new Date(token.refreshTokenExpiresAt).getTime() > Date.now();
+}
+
+// Build the stored token record from a Xero token-grant response. Xero rotates the
+// refresh token on every grant, so a new one is expected — but if Xero ever omits it,
+// keep the previous one rather than persisting an (encrypted) empty string, which would
+// permanently break the next refresh.
+function buildStoredToken(grant: Record<string, unknown>, previous?: XeroTokenStored | null): XeroTokenStored {
+  const refreshTokenPlain = String(grant.refresh_token ?? "");
+  return {
+    accessToken: encryptSecret(String(grant.access_token ?? "")),
+    refreshToken: refreshTokenPlain ? encryptSecret(refreshTokenPlain) : (previous?.refreshToken ?? ""),
+    expiresAt: new Date(Date.now() + Number(grant.expires_in ?? 1800) * 1000).toISOString(),
+    refreshTokenExpiresAt: new Date(Date.now() + XERO_REFRESH_TOKEN_TTL_MS).toISOString(),
+    obtainedAt: new Date().toISOString(),
+  };
+}
+
 async function tokenRequest(form: URLSearchParams) {
   const response = await fetch(`${xeroAuthBaseUrl()}/identity/connect/token`, {
     method: "POST",
@@ -123,12 +155,7 @@ async function tokenRequest(form: URLSearchParams) {
   return payload as Record<string, unknown>;
 }
 
-async function refreshTokenIfNeeded() {
-  const config = requireConfig(await getXeroConfigStored());
-  const token = await getXeroTokenStored();
-  if (!token) throw new AppError(400, "Xero is not connected", "XERO_NOT_CONNECTED");
-  if (!isExpired(token.expiresAt)) return token;
-
+async function performTokenRefresh(token: XeroTokenStored, config: XeroConfigStored) {
   const form = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: decryptSecret(token.refreshToken),
@@ -137,12 +164,7 @@ async function refreshTokenIfNeeded() {
   });
 
   const refreshed = await tokenRequest(form);
-  const next: XeroTokenStored = {
-    accessToken: encryptSecret(String(refreshed.access_token ?? "")),
-    refreshToken: encryptSecret(String(refreshed.refresh_token ?? "")),
-    expiresAt: new Date(Date.now() + Number(refreshed.expires_in ?? 1800) * 1000).toISOString(),
-    obtainedAt: new Date().toISOString(),
-  };
+  const next = buildStoredToken(refreshed, token);
 
   await prisma.setting.upsert({
     where: { scope_key: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY } },
@@ -151,6 +173,39 @@ async function refreshTokenIfNeeded() {
   });
 
   return next;
+}
+
+async function refreshTokenIfNeeded() {
+  const config = requireConfig(await getXeroConfigStored());
+  const token = await getXeroTokenStored();
+  if (!token) throw new AppError(400, "Xero is not connected", "XERO_NOT_CONNECTED");
+  if (!isExpired(token.expiresAt)) return token;
+  if (!refreshTokenIsValid(token)) {
+    throw new AppError(400, "Xero refresh token has expired — reconnect Xero", "XERO_REFRESH_EXPIRED");
+  }
+
+  return performTokenRefresh(token, config);
+}
+
+// Background keep-alive. Refreshes the Xero access token before it expires so the
+// integration stays connected and the rolling 60-day refresh-token window keeps
+// resetting — even during periods with no admin activity or order syncs. No-op when
+// Xero is disconnected, disabled, or the refresh window has already lapsed. Never throws.
+export async function keepXeroTokenAlive() {
+  const cfg = await getXeroConfigStored();
+  if (!cfg?.enabled) return { refreshed: false, reason: "disabled" as const };
+  const token = await getXeroTokenStored();
+  if (!token) return { refreshed: false, reason: "not_connected" as const };
+  if (!refreshTokenIsValid(token)) return { refreshed: false, reason: "refresh_expired" as const };
+
+  // Refresh once the access token is within 20 minutes of expiry — comfortably ahead
+  // of the 15-minute scheduler tick so it never lapses between runs.
+  if (new Date(token.expiresAt).getTime() > Date.now() + 20 * 60_000) {
+    return { refreshed: false, reason: "fresh" as const };
+  }
+
+  await performTokenRefresh(token, cfg);
+  return { refreshed: true, reason: "refreshed" as const };
 }
 
 async function xeroApiRequest(path: string, init: RequestInit = {}) {
@@ -227,7 +282,24 @@ async function findXeroInvoiceId(orderId: string): Promise<string | null> {
 
 export async function getXeroSettings() {
   const cfg = await getXeroConfigStored();
-  const token = await getXeroTokenStored();
+  let token = await getXeroTokenStored();
+
+  // The access token only lives ~30 minutes, but the refresh token is valid for 60 days.
+  // Proactively refresh an expired access token so the admin UI reports "connected"
+  // instead of prompting a full re-authorisation while a usable refresh token exists.
+  if (token && isExpired(token.expiresAt) && refreshTokenIsValid(token) && cfg?.enabled) {
+    try {
+      token = await refreshTokenIfNeeded();
+    } catch (err) {
+      console.error("[XERO] proactive token refresh failed", err instanceof Error ? err.message : err);
+    }
+  }
+
+  const connectionStatus = !token
+    ? "disconnected"
+    : refreshTokenIsValid(token)
+      ? "connected"
+      : "expired";
 
   return {
     enabled: cfg?.enabled ?? false,
@@ -236,8 +308,9 @@ export async function getXeroSettings() {
     redirectUri: cfg?.redirectUri ?? "",
     tenantId: cfg?.tenantId ?? "",
     scopes: cfg ? migrateScopes(cfg.scopes ?? []) : XERO_DEFAULT_SCOPES,
-    connectionStatus: token ? (isExpired(token.expiresAt) ? "expired" : "connected") : "disconnected",
+    connectionStatus,
     tokenExpiresAt: token?.expiresAt ?? null,
+    refreshTokenExpiresAt: token?.refreshTokenExpiresAt ?? null,
   };
 }
 
@@ -294,12 +367,7 @@ export async function handleXeroCallback(code: string, state: string) {
   });
 
   const exchanged = await tokenRequest(form);
-  const tokens: XeroTokenStored = {
-    accessToken: encryptSecret(String(exchanged.access_token ?? "")),
-    refreshToken: encryptSecret(String(exchanged.refresh_token ?? "")),
-    expiresAt: new Date(Date.now() + Number(exchanged.expires_in ?? 1800) * 1000).toISOString(),
-    obtainedAt: new Date().toISOString(),
-  };
+  const tokens = buildStoredToken(exchanged);
 
   await prisma.setting.upsert({
     where: { scope_key: { scope: XERO_SCOPE, key: XERO_TOKEN_KEY } },

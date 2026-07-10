@@ -235,8 +235,13 @@ export async function quoteCart(rawBody: unknown) {
     return { unitPrice: Number(variant.price), salePrice: variant.salePrice ? Number(variant.salePrice) : null, quantity: item.quantity };
   });
   const shippingMethod = body.shippingMethodId ? await prisma.shippingMethod.findUnique({ where: { id: body.shippingMethodId } }) : null;
+  const couponCode = body.couponCode?.trim();
+  const coupon = couponCode ? await prisma.coupon.findUnique({ where: { code: couponCode } }) : null;
   const pricing = await calculatePricing({
     items: resolvedItems,
+    coupon: coupon
+      ? { isActive: coupon.isActive, minimumAmount: Number(coupon.minimumAmount ?? 0), discountType: coupon.discountType, discountValue: Number(coupon.discountValue) }
+      : null,
     shippingMethod: shippingMethod ? { id: shippingMethod.id, isActive: shippingMethod.isActive, price: Number(shippingMethod.price) } : null,
     destination: shippingMethod?.type === "COLLECTION"
       ? asCollectionAddress(shippingMethod.collectionAddress)
@@ -487,11 +492,15 @@ export async function checkoutCart(cartId: string, rawBody: unknown, authenticat
     incomingShippingAddressId: shippingAddress?.id ?? null,
     incomingShippingMethodId: body.shippingMethodId ?? null,
   });
+  const couponCode = body.couponCode?.trim();
+  const coupon = couponCode ? await prisma.coupon.findUnique({ where: { code: couponCode } }) : null;
+
   await prisma.cart.update({
     where: { id: cartId },
     data: {
       shippingAddressId: isCollection ? null : shippingAddress?.id ?? existingCart.shippingAddressId,
       shippingMethodId: body.shippingMethodId ?? existingCart.shippingMethodId,
+      couponId: coupon?.isActive ? coupon.id : existingCart.couponId,
     },
   });
   const cart = await recalcCart(cartId);

@@ -15,6 +15,7 @@ import {
   getShippingRules,
   importNewsletterSubscribers,
   listCoupons,
+  listCouponSalesReport,
   listInquiries,
   listAdminShippingMethods,
   listNewsletterSubscribers,
@@ -42,6 +43,7 @@ export async function opsRoutes(app: FastifyInstance) {
   app.get("/admin/reports/recent-activity", { preHandler: [app.verifyAdmin, app.requirePermission("dashboard:read")] }, async (_request, reply) => reply.send({ data: await getRecentActivity() }));
 
   app.get("/admin/ops/coupons", { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] }, async (_request, reply) => reply.send({ data: await listCoupons() }));
+  app.get("/admin/ops/coupons/sales", { preHandler: [app.verifyAdmin, app.requirePermission("orders:read")] }, async (_request, reply) => reply.send({ data: await listCouponSalesReport() }));
   app.put("/admin/ops/coupons", { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] }, async (request, reply) => reply.send({ data: await upsertCoupon(request.body) }));
   app.post("/admin/ops/coupons/bulk", { preHandler: [app.verifyAdmin, app.requirePermission("orders:write")] }, async (request, reply) => reply.send({ data: await bulkCouponAction(request.body) }));
 

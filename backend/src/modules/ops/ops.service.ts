@@ -253,6 +253,59 @@ export async function listCoupons() {
   return prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
 }
 
+export async function listCouponSalesReport() {
+  const coupons = await prisma.coupon.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      orders: {
+        orderBy: { placedAt: "desc" },
+        include: {
+          customer: { select: { email: true, firstName: true, lastName: true } },
+          items: { select: { productName: true, variantTitle: true, sku: true, quantity: true, lineTotal: true } },
+        },
+      },
+    },
+  });
+
+  return coupons.map((coupon) => {
+    const productMap = new Map<string, { productName: string; sku: string; quantity: number; revenue: number }>();
+    for (const order of coupon.orders) {
+      for (const item of order.items) {
+        const key = `${item.productName}::${item.sku}`;
+        const existing = productMap.get(key) ?? { productName: item.productName, sku: item.sku, quantity: 0, revenue: 0 };
+        existing.quantity += item.quantity;
+        existing.revenue += Number(item.lineTotal);
+        productMap.set(key, existing);
+      }
+    }
+
+    return {
+      couponId: coupon.id,
+      code: coupon.code,
+      orderCount: coupon.orders.length,
+      totalDiscount: coupon.orders.reduce((sum, order) => sum + Number(order.discountAmount), 0),
+      totalRevenue: coupon.orders.reduce((sum, order) => sum + Number(order.totalAmount), 0),
+      products: [...productMap.values()].sort((a, b) => b.quantity - a.quantity),
+      orders: coupon.orders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        placedAt: order.placedAt,
+        customerName: [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(" ") || null,
+        customerEmail: order.customer?.email ?? order.guestEmail ?? null,
+        totalAmount: Number(order.totalAmount),
+        discountAmount: Number(order.discountAmount),
+        items: order.items.map((item) => ({
+          productName: item.productName,
+          variantTitle: item.variantTitle,
+          sku: item.sku,
+          quantity: item.quantity,
+          lineTotal: Number(item.lineTotal),
+        })),
+      })),
+    };
+  });
+}
+
 export async function upsertCoupon(rawBody: unknown) {
   const body = couponSchema.parse(rawBody);
   return prisma.coupon.upsert({

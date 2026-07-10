@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Check, Lock, ArrowLeft, Truck } from "lucide-react";
+import { Check, Lock, ArrowLeft, Truck, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import logoImage from "../../assets/2f83d3b5e95347ddf4ffa7687e1ec032dc27ba54.png";
 import { API_BASE } from "../admin/api/client";
@@ -126,6 +126,10 @@ export default function Checkout() {
   const [pudoLockersLoading, setPudoLockersLoading] = useState(false);
   const [selectedPudoLocker, setSelectedPudoLocker] = useState<PudoLocker | null>(null);
   const [quote, setQuote] = useState<QuoteTotals | null>(null);
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState("");
+  const [promoError, setPromoError] = useState("");
+  const [promoApplying, setPromoApplying] = useState(false);
   const deliveryMethods = methodsForDeliveryType(shippingMethods, "home");
   const collectionMethods = methodsForDeliveryType(shippingMethods, "collection");
   const visibleManualMethods = methodsForDeliveryType(shippingMethods, deliveryType);
@@ -359,6 +363,7 @@ export default function Checkout() {
         items,
         shippingMethodId: selectedShippingMethodId || undefined,
         shippingAddress: isCollection ? undefined : { country: form.country, state: form.state || undefined },
+        couponCode: appliedPromoCode || undefined,
       }),
     })
       .then((r) => r.json())
@@ -374,7 +379,7 @@ export default function Checkout() {
         else if (q.shippingMethodId && q.shippingMethodId !== selectedShippingMethodId) setSelectedShippingMethodId(q.shippingMethodId);
       })
       .catch(() => undefined);
-  }, [cartItems, selectedShippingMethodId, form.country, form.state, isCollection]);
+  }, [cartItems, selectedShippingMethodId, form.country, form.state, isCollection, appliedPromoCode]);
 
   useEffect(() => {
     if (!selectedShippingMethodId) return;
@@ -385,6 +390,52 @@ export default function Checkout() {
     }
   }, [shippingMethods, selectedShippingMethodId]);
 
+
+  const handlePromo = async (e: FormEvent) => {
+    e.preventDefault();
+    const code = promoCode.trim();
+    if (!code || promoApplying) return;
+
+    const items = cartItems
+      .filter(({ product }) => !!product.backendVariantId)
+      .map(({ product, quantity }) => ({ variantId: product.backendVariantId!, quantity }));
+    if (!items.length) return;
+
+    setPromoApplying(true);
+    setPromoError("");
+    try {
+      const res = await fetch(`${API_BASE}/store/cart/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items,
+          shippingMethodId: selectedShippingMethodId || undefined,
+          shippingAddress: isCollection ? undefined : { country: form.country, state: form.state || undefined },
+          couponCode: code,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      const q = payload?.data as QuoteTotals | undefined;
+      if (res.ok && q && Number(q.discountAmount) > 0) {
+        setAppliedPromoCode(code);
+        setPromoCode(code);
+        setQuote(q);
+      } else {
+        setAppliedPromoCode("");
+        setPromoError("Invalid, expired, or ineligible promo code.");
+      }
+    } catch {
+      setPromoError("Unable to validate promo code. Please try again.");
+    } finally {
+      setPromoApplying(false);
+    }
+  };
+
+  const removePromo = () => {
+    setAppliedPromoCode("");
+    setPromoCode("");
+    setPromoError("");
+  };
 
 
   const [guestCheckoutEnabled, setGuestCheckoutEnabled] = useState(true);
@@ -573,6 +624,7 @@ export default function Checkout() {
           pudoLockerAddress: isPudoLocker ? (formatLockerAddress(selectedPudoLocker!) || undefined) : undefined,
           pudoDeliveryType: isPudo ? (isPudoLocker ? "locker" : "door") : undefined,
           pudoShippingAmount: isPudo && pudoPrice !== null ? pudoPrice : undefined,
+          couponCode: appliedPromoCode || undefined,
           payment: {
             gateway: selectedGateway || undefined,
             returnUrl,
@@ -1143,10 +1195,44 @@ export default function Checkout() {
                   </div>
                 ))}
               </div>
+              <form onSubmit={handlePromo} className="border-t border-gray-100 pt-4 mb-4">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Promo code</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => { setPromoCode(e.target.value); setPromoError(""); }}
+                      placeholder="Enter code"
+                      className="w-full pl-9 pr-4 py-2.5 border rounded-full text-sm focus:outline-none focus:border-pink-400 border-gray-200"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={promoApplying || !promoCode.trim()}
+                    className="px-4 py-2.5 bg-gray-900 text-white rounded-full text-sm font-bold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {promoApplying ? "…" : appliedPromoCode ? "Update" : "Apply"}
+                  </button>
+                </div>
+                {promoError ? <p className="text-red-500 text-xs mt-2">{promoError}</p> : null}
+                {appliedPromoCode ? (
+                  <div className="flex items-center justify-between text-green-600 text-xs mt-2">
+                    <span>✓ {appliedPromoCode} applied</span>
+                    <button type="button" onClick={removePromo} className="text-gray-400 hover:text-gray-700">Remove</button>
+                  </div>
+                ) : null}
+              </form>
               <div className="border-t border-gray-100 pt-4 flex flex-col gap-2 text-sm">
                 <div className="flex justify-between text-gray-500">
                   <span>Subtotal</span><span>{formatRand(Number(quote?.subtotalAmount ?? cartTotal))}</span>
                 </div>
+                {discountForDisplay > 0 ? (
+                  <div className="flex justify-between text-green-600 font-medium">
+                    <span>Discount</span><span>-{formatRand(discountForDisplay)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between text-gray-500">
                   <span>Shipping</span>
                   <span>{summaryShippingDisplay === "FREE" ? <span className="text-green-500 font-medium">FREE</span> : summaryShippingDisplay}</span>

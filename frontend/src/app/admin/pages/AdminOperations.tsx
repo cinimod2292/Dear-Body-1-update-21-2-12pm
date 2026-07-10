@@ -62,7 +62,7 @@ export default function AdminOperations() {
 
   // Coupon form state
   const [couponCode, setCouponCode] = useState("");
-  const [couponDiscountType, setCouponDiscountType] = useState("PERCENT");
+  const [couponDiscountType, setCouponDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
   const [couponValue, setCouponValue] = useState("10");
   const [couponUsageLimit, setCouponUsageLimit] = useState("");
 
@@ -140,7 +140,7 @@ export default function AdminOperations() {
         "/admin/ops/coupons/bulk",
         {
           method: "POST",
-          body: JSON.stringify({ action, couponIds: [coupon.id] }),
+          body: JSON.stringify({ action, ids: [coupon.id] }),
         },
         session.accessToken
       );
@@ -148,6 +148,26 @@ export default function AdminOperations() {
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Failed to ${action} coupon`);
+    }
+  };
+
+
+  const deleteCoupon = async (coupon: Coupon) => {
+    if (!session?.accessToken) return;
+    if (!confirm(`Delete promo code ${coupon.code}? This cannot be undone.`)) return;
+    try {
+      await apiRequest(
+        "/admin/ops/coupons/bulk",
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "delete", ids: [coupon.id] }),
+        },
+        session.accessToken
+      );
+      toast.success("Promo code deleted");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete promo code");
     }
   };
 
@@ -264,10 +284,10 @@ export default function AdminOperations() {
               <select
                 className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 value={couponDiscountType}
-                onChange={(e) => setCouponDiscountType(e.target.value)}
+                onChange={(e) => setCouponDiscountType(e.target.value as "PERCENT" | "FIXED")}
               >
                 <option value="PERCENT">PERCENT</option>
-                <option value="FIXED_AMOUNT">FIXED_AMOUNT</option>
+                <option value="FIXED">FIXED</option>
               </select>
             </div>
             <div className="flex gap-2">
@@ -315,16 +335,34 @@ export default function AdminOperations() {
                     {coupon.usageLimit != null ? `/${coupon.usageLimit}` : ""}
                   </span>
                 </div>
-                <button
-                  onClick={() => toggleCouponActive(coupon)}
-                  className={`px-2 py-1 rounded border text-xs ${
-                    coupon.isActive
-                      ? "border-green-200 text-green-700"
-                      : "border-gray-200 text-gray-500"
-                  }`}
-                >
-                  {coupon.isActive ? "Active" : "Inactive"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={coupon.isActive}
+                    aria-label={`${coupon.isActive ? "Turn off" : "Turn on"} promo code ${coupon.code}`}
+                    onClick={() => toggleCouponActive(coupon)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      coupon.isActive ? "bg-green-500" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                        coupon.isActive ? "translate-x-5" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-xs ${coupon.isActive ? "text-green-700" : "text-gray-500"}`}>
+                    {coupon.isActive ? "On" : "Off"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteCoupon(coupon)}
+                    className="px-2 py-1 rounded border border-red-200 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
-import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check, MessageCircle } from "lucide-react";
+import { ShoppingBag, Heart, Star, ArrowLeft, Truck, Shield, RotateCcw, Minus, Plus, Check } from "lucide-react";
 import { fetchStoreProductById, fetchStoreProductsByQuery, Product } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
@@ -14,6 +14,8 @@ import { trackViewItem, trackAddToCart } from "../lib/analytics";
 import { ProductReviews } from "../components/ProductReviews";
 import { ProductFaqSection } from "../components/ProductFaqSection";
 import { resolveProductDetailTabs } from "../lib/product-detail-tabs";
+import { fetchCmsBootstrap } from "../lib/cms";
+import { WhatsAppCtaSection } from "../builder/sections/WhatsAppCtaSection";
 
 function buildProductSchema(product: Product, canonicalUrl: string) {
   const firstImage = product.galleryImages?.[0]?.url || product.image;
@@ -95,6 +97,25 @@ export default function ProductDetail() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [renderRelatedSection, setRenderRelatedSection] = useState(false);
   const [relatedAnchor, setRelatedAnchor] = useState<HTMLDivElement | null>(null);
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    fetchCmsBootstrap()
+      .then((bootstrap) => {
+        if (isCancelled) return;
+        setWhatsappNumber(bootstrap.siteConfig.productPage?.whatsappNumber || "");
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setWhatsappNumber("");
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -514,22 +535,8 @@ export default function ProductDetail() {
         />
 
         {/* ── WhatsApp CTA ── */}
-        <div className="mt-8 flex items-center gap-3 bg-green-50 border border-green-100 rounded-2xl p-4">
-          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shrink-0">
-            <MessageCircle size={20} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-gray-900 text-sm">Have a question about this product?</p>
-            <p className="text-gray-500 text-xs">Our team is ready to help via WhatsApp</p>
-          </div>
-          <a
-            href={`https://wa.me/${import.meta.env.VITE_WHATSAPP_NUMBER || "27000000000"}?text=${encodeURIComponent(`Hi! I have a question about: ${product.name}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-full text-sm font-bold transition-colors"
-          >
-            Chat Now
-          </a>
+        <div className="mt-8">
+          <WhatsAppCtaSection whatsappNumber={whatsappNumber} productName={product.name} layout="inline" />
         </div>
 
         {/* ── Related Products ── */}

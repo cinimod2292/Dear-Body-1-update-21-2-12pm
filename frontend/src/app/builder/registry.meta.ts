@@ -562,6 +562,32 @@ export const DEAR_BODY_SECTION_META: Record<BuilderSectionType, BuilderRegistryM
       tone: { type: "select", label: "Background", options: ["white", "dark", "soft"] },
     },
   },
+  whatsapp_cta: {
+    type: "whatsapp_cta",
+    displayName: "WhatsApp Banner",
+    description: "Product-style WhatsApp question CTA banner",
+    group: "Social",
+    icon: "💬",
+    removable: true,
+    movable: true,
+    duplicatable: true,
+    defaultProps: {
+      title: "Have a question about this product?",
+      subtitle: "Our team is ready to help via WhatsApp",
+      whatsappNumber: "",
+      buttonText: "Chat Now",
+      message: "Hi! I have a question about: {productName}",
+      tone: "green",
+    },
+    editableSchema: {
+      title: { type: "text", label: "Title", required: true },
+      subtitle: { type: "textarea", label: "Subtitle" },
+      whatsappNumber: { type: "text", label: "WhatsApp number" },
+      buttonText: { type: "text", label: "Button text" },
+      message: { type: "textarea", label: "Prefilled message" },
+      tone: { type: "select", label: "Tone", options: ["green", "soft", "dark"] },
+    },
+  },
 };
 
 export const DEAR_BODY_SECTION_META_LIST = Object.values(DEAR_BODY_SECTION_META);

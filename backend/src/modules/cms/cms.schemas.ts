@@ -68,6 +68,9 @@ export const siteConfigSchema = z.object({
     phone: z.string().optional(),
     address: z.string().optional(),
   }),
+  productPage: z.object({
+    whatsappNumber: z.string().optional(),
+  }).default({ whatsappNumber: "" }),
   siteStatus: z.object({
     maintenanceMode: z.boolean().default(false),
     comingSoon: z.boolean().default(false),

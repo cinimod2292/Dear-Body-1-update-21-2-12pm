@@ -37,6 +37,7 @@ export const BUILDER_SECTION_TYPES = [
   "ingredient_highlights",
   "contact_form",
   "social_links",
+  "whatsapp_cta",
 ] as const;
 
 const MAX_SECTIONS = 40;
@@ -316,6 +317,17 @@ const socialLinksPropsSchema = z.object({
   tone: z.enum(["white", "dark", "soft"]).default("white"),
 });
 
+const whatsappCtaPropsSchema = z.object({
+  title: safeText.optional(),
+  subtitle: safeText.optional(),
+  whatsappNumber: safeText.optional(),
+  buttonText: safeText.optional(),
+  message: safeBodyText.optional(),
+  productName: safeText.optional(),
+  tone: z.enum(["green", "soft", "dark"]).default("green"),
+  layout: z.enum(["section", "inline"]).optional(),
+});
+
 // ─── Discriminated union ─────────────────────────────────────────────────────
 
 const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
@@ -340,6 +352,7 @@ const sectionPropsByTypeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ingredient_highlights"), props: ingredientHighlightsPropsSchema }),
   z.object({ type: z.literal("contact_form"), props: contactFormPropsSchema }),
   z.object({ type: z.literal("social_links"), props: socialLinksPropsSchema }),
+  z.object({ type: z.literal("whatsapp_cta"), props: whatsappCtaPropsSchema }),
 ]);
 
 export const builderSectionSchema = z

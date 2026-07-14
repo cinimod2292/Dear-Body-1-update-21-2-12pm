@@ -112,6 +112,9 @@ const defaultSiteConfig = {
     phone: "+1 (800) DEAR-BODY",
     address: "123 Bloom Avenue, Miami, FL 33101, USA",
   },
+  productPage: {
+    whatsappNumber: "",
+  },
   siteStatus: {
     maintenanceMode: false,
     comingSoon: false,

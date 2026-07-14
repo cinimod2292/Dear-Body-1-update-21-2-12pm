@@ -60,10 +60,13 @@ export function getCanvasClass(viewport: PreviewViewport): string {
   return "max-w-[1200px]";
 }
 
-export function groupForSectionType(type: BuilderSectionType): "Hero" | "Products" | "Content" | "Trust/Benefits" | "Promotions" {
+export function groupForSectionType(type: BuilderSectionType): "Hero" | "Products" | "Content" | "Trust/Benefits" | "Promotions" | "Forms" | "Social" {
   if (type === "hero_banner") return "Hero";
   if (type === "featured_products") return "Products";
   if (type === "image_text") return "Content";
   if (type === "benefit_icons") return "Trust/Benefits";
-  return "Promotions";
+  if (type === "contact_form" || type === "newsletter_signup") return "Forms";
+  if (type === "social_links" || type === "whatsapp_cta") return "Social";
+  if (type === "promo_banner" || type === "countdown_banner" || type === "announcement_bar") return "Promotions";
+  return "Content";
 }

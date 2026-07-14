@@ -8,6 +8,7 @@ export interface CmsBootstrap {
     branding: { primaryColor?: string; secondaryColor?: string; fontFamily?: string; logoUrl?: string; logo2xUrl?: string; logoFooterUrl?: string; logoMediaAssetId?: string; faviconUrl?: string };
     seoDefaults: { title?: string; description?: string; ogImageUrl?: string };
     contactInfo: { email?: string; phone?: string; address?: string };
+    productPage?: { whatsappNumber?: string };
     siteStatus: { maintenanceMode: boolean; comingSoon: boolean };
   };
   homeSections: Array<{
@@ -32,6 +33,7 @@ const fallbackBootstrap: CmsBootstrap = {
     branding: {},
     seoDefaults: {},
     contactInfo: {},
+    productPage: { whatsappNumber: "" },
     siteStatus: { maintenanceMode: false, comingSoon: false },
   },
   homeSections: [],

@@ -57,4 +57,5 @@ test("groupForSectionType returns requested groups", () => {
   assert.equal(groupForSectionType("image_text"), "Content");
   assert.equal(groupForSectionType("benefit_icons"), "Trust/Benefits");
   assert.equal(groupForSectionType("promo_banner"), "Promotions");
+  assert.equal(groupForSectionType("whatsapp_cta"), "Social");
 });

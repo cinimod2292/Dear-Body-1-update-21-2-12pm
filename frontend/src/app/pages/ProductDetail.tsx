@@ -14,6 +14,11 @@ import { trackViewItem, trackAddToCart } from "../lib/analytics";
 import { ProductReviews } from "../components/ProductReviews";
 import { ProductFaqSection } from "../components/ProductFaqSection";
 import { resolveProductDetailTabs } from "../lib/product-detail-tabs";
+import { fetchCmsBootstrap } from "../lib/cms";
+
+function buildWhatsAppNumber(rawNumber: string | undefined) {
+  return (rawNumber || import.meta.env.VITE_WHATSAPP_NUMBER || "27000000000").replace(/\D/g, "");
+}
 
 function buildProductSchema(product: Product, canonicalUrl: string) {
   const firstImage = product.galleryImages?.[0]?.url || product.image;
@@ -95,6 +100,25 @@ export default function ProductDetail() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [renderRelatedSection, setRenderRelatedSection] = useState(false);
   const [relatedAnchor, setRelatedAnchor] = useState<HTMLDivElement | null>(null);
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    fetchCmsBootstrap()
+      .then((bootstrap) => {
+        if (isCancelled) return;
+        setWhatsappNumber(bootstrap.siteConfig.productPage?.whatsappNumber || "");
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setWhatsappNumber("");
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -523,7 +547,7 @@ export default function ProductDetail() {
             <p className="text-gray-500 text-xs">Our team is ready to help via WhatsApp</p>
           </div>
           <a
-            href={`https://wa.me/${import.meta.env.VITE_WHATSAPP_NUMBER || "27000000000"}?text=${encodeURIComponent(`Hi! I have a question about: ${product.name}`)}`}
+            href={`https://wa.me/${buildWhatsAppNumber(whatsappNumber)}?text=${encodeURIComponent(`Hi! I have a question about: ${product.name}`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-full text-sm font-bold transition-colors"

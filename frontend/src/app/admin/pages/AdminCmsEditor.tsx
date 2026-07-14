@@ -14,6 +14,7 @@ interface SiteConfig {
   branding: { primaryColor: string; secondaryColor: string; fontFamily: string; logoUrl: string; logo2xUrl: string; logoFooterUrl: string; logoMediaAssetId: string; faviconUrl: string };
   seoDefaults: { title: string; description: string; ogImageUrl: string };
   contactInfo: { email: string; phone: string; address: string };
+  productPage: { whatsappNumber: string };
 }
 
 interface HomeSection {
@@ -41,6 +42,7 @@ const emptySiteConfig: SiteConfig = {
   branding: { primaryColor: "#ec4899", secondaryColor: "#f97316", fontFamily: "Inter, sans-serif", logoUrl: "", logo2xUrl: "", logoFooterUrl: "", logoMediaAssetId: "", faviconUrl: "" },
   seoDefaults: { title: "", description: "", ogImageUrl: "" },
   contactInfo: { email: "", phone: "", address: "" },
+  productPage: { whatsappNumber: "" },
 };
 
 function parseSiteConfig(raw: unknown): SiteConfig {
@@ -52,6 +54,7 @@ function parseSiteConfig(raw: unknown): SiteConfig {
   const branding = (r.branding as Record<string, unknown> | undefined) ?? {};
   const seoDefaults = (r.seoDefaults as Record<string, unknown> | undefined) ?? {};
   const contactInfo = (r.contactInfo as Record<string, unknown> | undefined) ?? {};
+  const productPage = (r.productPage as Record<string, unknown> | undefined) ?? {};
 
   return {
     navigation: {
@@ -99,6 +102,9 @@ function parseSiteConfig(raw: unknown): SiteConfig {
       email: String(contactInfo.email ?? ""),
       phone: String(contactInfo.phone ?? ""),
       address: String(contactInfo.address ?? ""),
+    },
+    productPage: {
+      whatsappNumber: String(productPage.whatsappNumber ?? ""),
     },
   };
 }
@@ -286,6 +292,18 @@ export default function AdminCmsEditor() {
             <div className="md:col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Footer Copyright Text</label>
               <input className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={config.footer.copyrightText} onChange={(e) => setConfig((c) => ({ ...c, footer: { ...c.footer, copyrightText: e.target.value } }))} placeholder={`© ${new Date().getFullYear()} Dear Body. All rights reserved.`} />
+            </div>
+          </div>
+        </div>
+
+
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">Product Page</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">WhatsApp Banner Number</label>
+              <input type="tel" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value={config.productPage.whatsappNumber} onChange={(e) => setConfig((c) => ({ ...c, productPage: { ...c.productPage, whatsappNumber: e.target.value } }))} placeholder="+27 82 123 4567" />
+              <p className="mt-1 text-xs text-gray-400">Used by the “Have a question about this product?” WhatsApp banner below product reviews.</p>
             </div>
           </div>
         </div>

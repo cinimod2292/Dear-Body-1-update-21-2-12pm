@@ -24,6 +24,28 @@ test("builder schema accepts valid homepage sections", () => {
   assert.equal(parsed.sections[0]?.type, "hero_banner");
 });
 
+test("builder schema accepts WhatsApp CTA sections", () => {
+  const parsed = builderPageContentSchema.parse({
+    sections: [
+      {
+        id: "whatsapp-1",
+        type: "whatsapp_cta",
+        enabled: true,
+        props: {
+          title: "Have a question?",
+          subtitle: "Chat to us on WhatsApp",
+          whatsappNumber: "+27 82 123 4567",
+          buttonText: "Chat Now",
+          message: "Hi! I have a question about: {productName}",
+          tone: "green",
+        },
+      },
+    ],
+  });
+
+  assert.equal(parsed.sections[0]?.type, "whatsapp_cta");
+});
+
 test("builder schema rejects unsafe urls", () => {
   assert.throws(() => {
     updateBuilderDraftSchema.parse({

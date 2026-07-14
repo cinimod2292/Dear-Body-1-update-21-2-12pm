@@ -27,6 +27,7 @@ import { StatsBarSection } from "../../builder/sections/StatsBarSection";
 import { IngredientHighlightsSection } from "../../builder/sections/IngredientHighlightsSection";
 import { ContactFormSection } from "../../builder/sections/ContactFormSection";
 import { SocialLinksSection } from "../../builder/sections/SocialLinksSection";
+import { WhatsAppCtaSection } from "../../builder/sections/WhatsAppCtaSection";
 import { BenefitIconName, BenefitItem, FaqItem, TestimonialItem, GalleryImage, TrustBadgeIconName, TrustBadgeItem, FeatureIconName, FeatureItem, StatItem, IngredientIconName, IngredientItem, BuilderHistoryEntry, BuilderPageContent, BuilderPageKey, BuilderSection, BuilderSectionType, EditableField } from "../../builder/types";
 import { fetchStoreProducts, Product } from "../../data/products";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -273,6 +274,11 @@ function SocialLinksCraftSection(props: Record<string, unknown>) {
 }
 SocialLinksCraftSection.craft = { displayName: "Social Links" };
 
+function WhatsAppCtaCraftSection(props: Record<string, unknown>) {
+  return <SectionFrame label="WhatsApp Banner" enabled={Boolean(props.enabled ?? true)}><WhatsAppCtaSection {...props as any} /></SectionFrame>;
+}
+WhatsAppCtaCraftSection.craft = { displayName: "WhatsApp Banner" };
+
 function resolvedComponent(type: BuilderSectionType) {
   if (type === "hero_banner") return HeroCraftSection;
   if (type === "featured_products") return FeaturedProductsCraftSection;
@@ -295,6 +301,7 @@ function resolvedComponent(type: BuilderSectionType) {
   if (type === "ingredient_highlights") return IngredientHighlightsCraftSection;
   if (type === "contact_form") return ContactFormCraftSection;
   if (type === "social_links") return SocialLinksCraftSection;
+  if (type === "whatsapp_cta") return WhatsAppCtaCraftSection;
   throw new Error(`Unknown section type: ${type}`);
 }
 
@@ -1905,7 +1912,7 @@ function CraftWorkspace({ initialData, viewport, products, onSave, onPublish, on
   return (
     <CraftProductsContext.Provider value={products}>
       <Editor
-        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection, ContactFormCraftSection, SocialLinksCraftSection }}
+        resolver={{ BuilderCanvas, HeroCraftSection, FeaturedProductsCraftSection, ImageTextCraftSection, BenefitIconsCraftSection, PromoBannerCraftSection, RichTextCraftSection, FaqAccordionCraftSection, NewsletterSignupCraftSection, TestimonialsCraftSection, TrustBadgesCraftSection, CountdownBannerCraftSection, ImageGalleryCraftSection, VideoBannerCraftSection, IconFeaturesCraftSection, ContactCtaCraftSection, SpacerCraftSection, AnnouncementBarCraftSection, StatsBarCraftSection, IngredientHighlightsCraftSection, ContactFormCraftSection, SocialLinksCraftSection, WhatsAppCtaCraftSection }}
         enabled
         onNodesChange={(query) => {
           const nextNodes = query.getSerializedNodes() as SerializedNodes;

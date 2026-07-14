@@ -9,6 +9,7 @@ test("section presets include all required section families", () => {
   assert.equal(types.has("image_text"), true);
   assert.equal(types.has("benefit_icons"), true);
   assert.equal(types.has("promo_banner"), true);
+  assert.equal(types.has("whatsapp_cta"), true);
 });
 
 test("section presets contain names and descriptions", () => {

@@ -370,6 +370,15 @@ export const SECTION_PRESETS: SectionPreset[] = [
     defaultProps: { title: "Follow us", instagram: "", tiktok: "", facebook: "", style: "pills", tone: "white" },
   },
 
+  {
+    id: "whatsapp_cta_product_question",
+    name: "WhatsApp Banner",
+    description: "Product question banner with WhatsApp CTA",
+    sectionType: "whatsapp_cta",
+    icon: "💬",
+    defaultProps: { title: "Have a question about this product?", subtitle: "Our team is ready to help via WhatsApp", whatsappNumber: "", buttonText: "Chat Now", message: "Hi! I have a question about: {productName}", tone: "green" },
+  },
+
   // ─── Spacer ───────────────────────────────────────────────────────────────
   {
     id: "spacer_medium",

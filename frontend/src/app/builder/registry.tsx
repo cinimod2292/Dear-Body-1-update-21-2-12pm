@@ -21,6 +21,7 @@ import { StatsBarSection } from "./sections/StatsBarSection";
 import { IngredientHighlightsSection } from "./sections/IngredientHighlightsSection";
 import { ContactFormSection } from "./sections/ContactFormSection";
 import { SocialLinksSection } from "./sections/SocialLinksSection";
+import { WhatsAppCtaSection } from "./sections/WhatsAppCtaSection";
 import { DEAR_BODY_SECTION_META, DEAR_BODY_SECTION_META_LIST } from "./registry.meta";
 
 const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
@@ -45,6 +46,7 @@ const sectionComponents: Record<BuilderSectionType, ComponentType<any>> = {
   ingredient_highlights: IngredientHighlightsSection,
   contact_form: ContactFormSection,
   social_links: SocialLinksSection,
+  whatsapp_cta: WhatsAppCtaSection,
 };
 
 export const dearBodySectionRegistry = Object.fromEntries(

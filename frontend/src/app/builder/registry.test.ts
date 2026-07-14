@@ -8,4 +8,5 @@ test("builder registry metadata includes required Dear Body section types", () =
   assert.ok(DEAR_BODY_SECTION_META.image_text);
   assert.ok(DEAR_BODY_SECTION_META.benefit_icons);
   assert.ok(DEAR_BODY_SECTION_META.promo_banner);
+  assert.ok(DEAR_BODY_SECTION_META.whatsapp_cta);
 });

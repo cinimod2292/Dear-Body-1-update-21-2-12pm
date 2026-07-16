@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://mydearbody.co.za/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://mydearbody.co.za/shop</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://mydearbody.co.za/shop?category=Body%20Spray</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://mydearbody.co.za/shop?category=Body%20Lotion</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://mydearbody.co.za/shop?category=Body%20Scrub</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://mydearbody.co.za/shop?category=Body%20Butter</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://mydearbody.co.za/about</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://mydearbody.co.za/contact</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://mydearbody.co.za/faq</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://mydearbody.co.za/delivery</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://mydearbody.co.za/returns</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+</urlset>

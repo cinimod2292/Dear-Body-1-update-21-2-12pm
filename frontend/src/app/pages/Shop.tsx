@@ -5,6 +5,8 @@ import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
 import { ALL_PRODUCTS_CATEGORY, getShopCategory, setShopCategory } from "./shop-query";
 import { useSEO, buildCanonical } from "../lib/seo";
+import { SeoLandingSections } from "../components/SeoLandingSections";
+import { DEFAULT_SHOP_SEO, getCategorySeo, PRIMARY_KEYWORDS } from "../lib/seo-content";
 import { API_BASE } from "../admin/api/client";
 
 const sortOptions = [
@@ -34,35 +36,57 @@ export default function Shop() {
   const categorySlug = searchParams.get("category") || "";
   const brandSlug = searchParams.get("brand") || "";
 
+  const activeCategoryName = selectedCategory !== ALL_PRODUCTS_CATEGORY ? selectedCategory : categorySlug || "";
+  const landingSeo = getCategorySeo(activeCategoryName);
+
   const seoTitle = searchQuery
-    ? `Search: ${searchQuery}`
-    : categorySlug
-    ? categorySlug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-    : "Shop All Products";
+    ? `Search results for ${searchQuery}`
+    : landingSeo.title;
 
   const seoDescription = searchQuery
-    ? `Browse search results for "${searchQuery}" at Dear Body. Premium South African beauty and fragrance.`
-    : categorySlug
-    ? `Shop our ${categorySlug.replace(/-/g, " ")} range at Dear Body. Premium quality, fast delivery across South Africa.`
-    : "Browse Dear Body's complete range of perfumed body sprays, lotions, scrubs, butters and skincare. Premium South African beauty delivered to your door.";
+    ? `Browse search results for "${searchQuery}" at Dear Body. Premium South African beauty, fragrance and body care delivered in South Africa.`
+    : landingSeo.description;
 
   const canonicalPath = categorySlug
-    ? `/shop?category=${categorySlug}`
+    ? `/shop?category=${encodeURIComponent(categorySlug)}`
     : brandSlug
-    ? `/shop?brand=${brandSlug}`
+    ? `/shop?brand=${encodeURIComponent(brandSlug)}`
     : "/shop";
 
   useSEO({
     title: seoTitle,
     description: seoDescription,
     canonical: buildCanonical(canonicalPath),
-    structuredData: {
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      name: `${seoTitle} | Dear Body`,
-      description: seoDescription,
-      url: buildCanonical(canonicalPath),
-    },
+    noIndex: Boolean(searchQuery),
+    keywords: [...PRIMARY_KEYWORDS, activeCategoryName, "Dear Body South Africa"].filter(Boolean),
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: `${seoTitle} | Dear Body`,
+        description: seoDescription,
+        url: buildCanonical(canonicalPath),
+        isPartOf: { "@type": "WebSite", name: "Dear Body", url: buildCanonical("/") },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: landingSeo.faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: { "@type": "Answer", text: faq.answer },
+        })),
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: buildCanonical("/") },
+          { "@type": "ListItem", position: 2, name: "Shop", item: buildCanonical("/shop") },
+          ...(activeCategoryName ? [{ "@type": "ListItem", position: 3, name: activeCategoryName, item: buildCanonical(canonicalPath) }] : []),
+        ],
+      },
+    ],
   });
 
   useEffect(() => {
@@ -182,7 +206,7 @@ export default function Shop() {
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-white">
           <h1 className="mb-3" style={{ fontSize: "clamp(2rem, 6vw, 3.5rem)", fontWeight: 900 }}>
-            {initialSearch ? `Results for "${initialSearch}"` : "Shop All Products"}
+            {initialSearch ? `Results for "${initialSearch}"` : landingSeo.h1}
           </h1>
           <p className="text-white/80 text-lg">
             {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} found
@@ -362,6 +386,10 @@ export default function Shop() {
               {categoryMeta.description}
             </div>
           </div>
+        )}
+
+        {!searchQuery && (
+          <SeoLandingSections content={activeCategoryName ? landingSeo : DEFAULT_SHOP_SEO} productsCount={filteredProducts.length} />
         )}
       </div>
     </div>

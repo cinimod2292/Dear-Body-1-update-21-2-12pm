@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { deriveGalleryImages, type ProductDetailImage } from "../lib/product-detail-images";
 import { getGalleryMainSources, getLightboxSources, getThumbImageSources } from "../lib/product-images";
 import { useSEO, buildCanonical } from "../lib/seo";
+import { buildEnhancedProductDescription, productBenefits, PRIMARY_KEYWORDS } from "../lib/seo-content";
 import { trackViewItem, trackAddToCart } from "../lib/analytics";
 import { ProductReviews } from "../components/ProductReviews";
 import { ProductFaqSection } from "../components/ProductFaqSection";
@@ -22,7 +23,7 @@ function buildProductSchema(product: Product, canonicalUrl: string) {
   const productSchema: any = {
     "@type": "Product",
     name: product.name,
-    description: product.description || product.tagline,
+    description: buildEnhancedProductDescription(product),
     url: canonicalUrl,
     sku: product.id,
     image: firstImage ? [firstImage] : undefined,
@@ -30,6 +31,8 @@ function buildProductSchema(product: Product, canonicalUrl: string) {
       "@type": "Brand",
       name: product.brand,
     } : undefined,
+    category: product.category,
+    keywords: [product.category, product.scent, "Dear Body", "Fragrances South Africa"].filter(Boolean).join(", "),
     offers: {
       "@type": "Offer",
       priceCurrency: "ZAR",
@@ -83,10 +86,11 @@ export default function ProductDetail() {
 
   useSEO(product ? {
     title: product.seoTitle || product.name,
-    description: product.seoDescription || product.tagline || product.description?.slice(0, 160),
+    description: product.seoDescription || buildEnhancedProductDescription(product).slice(0, 160),
     canonical: canonicalUrl,
     ogType: "product",
     ogImage: product.seoOgImage || product.galleryImages?.[0]?.url || product.image,
+    keywords: [...PRIMARY_KEYWORDS, product.category, product.scent, product.brand || "Dear Body"].filter(Boolean),
     structuredData: productSchema || undefined,
   } : { title: "Product", noIndex: true });
 
@@ -281,6 +285,8 @@ export default function ProductDetail() {
   // don't render empty "Ingredients" / "How To Use" sections on the storefront.
   const detailTabs = resolveProductDetailTabs(product);
   const activeDetailTab = detailTabs.find((tab) => tab.key === activeTab) ?? detailTabs[0];
+  const enhancedDescription = buildEnhancedProductDescription(product);
+  const benefits = productBenefits(product);
 
   return (
     <div className="min-h-screen bg-white">
@@ -291,7 +297,7 @@ export default function ProductDetail() {
           <span>/</span>
           <Link to="/shop" className="hover:text-pink-500 transition-colors">Shop</Link>
           <span>/</span>
-          <Link to={`/shop?category=${product.category}`} className="hover:text-pink-500 transition-colors">{product.category}</Link>
+          <Link to={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:text-pink-500 transition-colors">{product.category}</Link>
           <span>/</span>
           <span className="text-gray-700 font-medium">{product.name}</span>
         </div>
@@ -497,6 +503,25 @@ export default function ProductDetail() {
               ))}
             </div>
 
+            <div className="rounded-3xl bg-pink-50/70 p-6 border border-pink-100">
+              <h2 className="text-lg font-black text-gray-900 mb-3">Why shoppers choose {product.name}</h2>
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">{enhancedDescription}</p>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {benefits.map((benefit) => (
+                  <li key={benefit} className="flex gap-2"><Check size={16} className="text-pink-500 shrink-0 mt-0.5" />{benefit}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-3xl bg-white border border-gray-100 p-6 shadow-sm">
+              <h2 className="text-lg font-black text-gray-900 mb-3">Fragrance notes, benefits and usage guidance</h2>
+              <div className="grid gap-4 sm:grid-cols-3 text-sm text-gray-600">
+                <div><h3 className="font-bold text-gray-900 mb-1">Notes</h3><p>{product.scent || product.tagline || "Fragrance-led Dear Body scent profile."}</p></div>
+                <div><h3 className="font-bold text-gray-900 mb-1">Best for</h3><p>Daily body care, gifting and fragrance layering.</p></div>
+                <div><h3 className="font-bold text-gray-900 mb-1">How to use</h3><p>{product.howToUse || "Apply as part of your daily body care routine and layer with complementary Dear Body products."}</p></div>
+              </div>
+            </div>
+
             {/* Tabs */}
             {detailTabs.length > 0 && (
               <div>
@@ -544,7 +569,7 @@ export default function ProductDetail() {
           {related.length > 0 && renderRelatedSection ? (
             <>
               <h2 className="text-gray-900 mb-8 text-center" style={{ fontSize: "2rem", fontWeight: 900 }}>
-                You Might Also Love 💕
+                Related {product.category} Products
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {related.map(p => (

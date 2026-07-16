@@ -13,11 +13,13 @@ export interface SEOProps {
   twitterImage?: string;
   noIndex?: boolean;
   structuredData?: object | object[];
+  keywords?: string[];
 }
 
 const SITE_NAME = "Dear Body";
-const DEFAULT_TITLE = "Dear Body | South African Beauty & Fragrance";
-const DEFAULT_DESC = "Discover Dear Body's luxurious range of perfumed body sprays, body lotions, scrubs and skincare. Premium South African beauty, delivered to your door.";
+const DEFAULT_TITLE = "Dear Body | Fragrances South Africa, Women's Perfume & Body Care";
+const DEFAULT_DESC = "Shop Dear Body for fragrances in South Africa, women's perfume-inspired body sprays, lotions, scrubs and body care delivered nationwide.";
+const DEFAULT_IMAGE = "/og-dear-body.svg";
 
 function setMeta(selector: string, attrName: string, attrValue: string, content: string) {
   let el = document.head.querySelector<HTMLMetaElement>(selector);
@@ -80,6 +82,7 @@ export function useSEO({
   twitterImage,
   noIndex = false,
   structuredData,
+  keywords,
 }: SEOProps) {
   useEffect(() => {
     const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
@@ -90,6 +93,11 @@ export function useSEO({
 
     // Meta description
     setMeta('meta[name="description"]', "name", "description", metaDesc);
+
+    // Keywords
+    if (keywords?.length) {
+      setMeta('meta[name="keywords"]', "name", "keywords", keywords.join(", "));
+    }
 
     // Robots
     if (noIndex) {
@@ -109,9 +117,12 @@ export function useSEO({
     setMeta('meta[property="og:title"]', "property", "og:title", ogTitle || fullTitle);
     setMeta('meta[property="og:description"]', "property", "og:description", ogDescription || metaDesc);
     setMeta('meta[property="og:type"]', "property", "og:type", ogType);
+    setMeta('meta[property="og:site_name"]', "property", "og:site_name", SITE_NAME);
+    setMeta('meta[property="og:locale"]', "property", "og:locale", "en_ZA");
     if (canonical) setMeta('meta[property="og:url"]', "property", "og:url", canonical);
-    if (ogImage) {
-      setMeta('meta[property="og:image"]', "property", "og:image", ogImage);
+    const socialImage = ogImage || DEFAULT_IMAGE;
+    if (socialImage) {
+      setMeta('meta[property="og:image"]', "property", "og:image", socialImage);
       setMeta('meta[property="og:image:width"]', "property", "og:image:width", "1200");
       setMeta('meta[property="og:image:height"]', "property", "og:image:height", "630");
     } else {
@@ -122,9 +133,7 @@ export function useSEO({
     setMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
     setMeta('meta[name="twitter:title"]', "name", "twitter:title", twitterTitle || ogTitle || fullTitle);
     setMeta('meta[name="twitter:description"]', "name", "twitter:description", twitterDescription || ogDescription || metaDesc);
-    if (twitterImage || ogImage) {
-      setMeta('meta[name="twitter:image"]', "name", "twitter:image", twitterImage || ogImage!);
-    }
+    setMeta('meta[name="twitter:image"]', "name", "twitter:image", twitterImage || ogImage || DEFAULT_IMAGE);
 
     // Structured data
     if (structuredData) {
@@ -138,7 +147,7 @@ export function useSEO({
       document.title = DEFAULT_TITLE;
       removeStructuredData();
     };
-  }, [title, description, canonical, ogTitle, ogDescription, ogImage, ogType, twitterTitle, twitterDescription, twitterImage, noIndex, structuredData]);
+  }, [title, description, canonical, ogTitle, ogDescription, ogImage, ogType, twitterTitle, twitterDescription, twitterImage, noIndex, structuredData, keywords]);
 }
 
 // Build a canonical URL from a path

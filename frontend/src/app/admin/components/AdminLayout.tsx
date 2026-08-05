@@ -22,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/operations", label: "Operations", permission: "dashboard:read" },
   { to: "/admin/shipping-methods", label: "Shipping", permission: "settings:read" },
   { to: "/admin/media", label: "Media", permission: "media:read" },
+  { to: "/admin/blog", label: "Blog CMS", permission: "blog:read" },
   { to: "/admin/email-templates", label: "Email Templates", permission: "settings:read" },
   { to: "/admin/cms", label: "Website CMS", permission: "settings:read" },
   { to: "/admin/builder", label: "Page Builder", permission: "settings:read" },

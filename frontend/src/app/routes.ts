@@ -22,6 +22,8 @@ const BuilderPreview = lazy(() => import("./pages/BuilderPreview"));
 const BuilderPage = lazy(() => import("./pages/BuilderPage"));
 const MaintenancePage = lazy(() => import("./pages/MaintenancePage"));
 const UnderConstructionPage = lazy(() => import("./pages/UnderConstructionPage"));
+const BlogIndex = lazy(() => import("./pages/BlogIndex"));
+const BlogArticlePage = lazy(() => import("./pages/BlogArticlePage"));
 
 const AdminLogin = lazy(() => import("./admin/pages/AdminLogin"));
 const AdminLayout = lazy(() => import("./admin/components/AdminLayout"));
@@ -50,6 +52,7 @@ const AdminWarehouseDashboard = lazy(() => import("./admin/pages/AdminWarehouseD
 const AdminPickOrder = lazy(() => import("./admin/pages/AdminPickOrder"));
 const AdminCollectionSchedule = lazy(() => import("./admin/pages/AdminCollectionSchedule"));
 const AdminAnalytics = lazy(() => import("./admin/pages/AdminAnalytics"));
+const AdminBlog = lazy(() => import("./admin/pages/AdminBlog"));
 
 export const router = createBrowserRouter([
   {
@@ -70,6 +73,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Home },
       { path: "shop", Component: Shop },
+      { path: "blog", Component: BlogIndex },
+      { path: "blog/category/:slug", Component: BlogIndex },
+      { path: "blog/:slug", Component: BlogArticlePage },
       { path: "product/:id", Component: ProductDetail, ErrorBoundary: ProductDetailErrorBoundary },
       { path: "brands/:slug", Component: BrandPage },
       { path: "cart", Component: Cart },
@@ -147,6 +153,7 @@ export const router = createBrowserRouter([
           { path: "warehouse/orders/:orderId", Component: AdminPickOrder },
           { path: "fulfillment/collection-schedule", Component: AdminCollectionSchedule },
           { path: "analytics", Component: AdminAnalytics },
+          { path: "blog", Component: AdminBlog },
         ],
       },
     ],

@@ -10,6 +10,8 @@ export const rolePermissions: Record<StaffRole, string[]> = {
     "media:write",
     "catalog:read",
     "catalog:write",
+    "blog:read",
+    "blog:write",
     "inventory:read",
     "inventory:write",
     "crm:read",
@@ -28,9 +30,9 @@ export const rolePermissions: Record<StaffRole, string[]> = {
     "warehouse:write",
   ],
   PICKER_PACKER: ["warehouse:read", "warehouse:write"],
-  CONTENT_EDITOR: ["dashboard:read", "media:read", "media:write", "settings:read", "catalog:read"],
+  CONTENT_EDITOR: ["dashboard:read", "media:read", "media:write", "settings:read", "catalog:read", "blog:read", "blog:write"],
   SUPPORT_AGENT: ["dashboard:read", "audit:read", "settings:read", "inventory:read", "crm:read", "crm:write", "orders:read", "orders:write"],
-  ANALYST: ["dashboard:read", "audit:read", "crm:read", "orders:read"],
+  ANALYST: ["dashboard:read", "audit:read", "crm:read", "orders:read", "blog:read"],
 };
 
 export function getPermissionsForRole(role: StaffRole): string[] {

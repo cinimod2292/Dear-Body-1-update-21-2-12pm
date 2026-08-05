@@ -1,0 +1,20 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+import { Search } from "lucide-react";
+import { BlogArticle, BlogCategory, fetchBlogIndex } from "../blog/api";
+import { ArticleCard } from "../blog/render";
+import { useSEO, buildCanonical } from "../lib/seo";
+
+export default function BlogIndex() {
+  const { slug } = useParams();
+  const [params, setParams] = useSearchParams();
+  const [articles, setArticles] = useState<BlogArticle[]>([]);
+  const [categories, setCategories] = useState<BlogCategory[]>([]);
+  const q = params.get("q") || "";
+  const sort = params.get("sort") || "newest";
+  useSEO({ title: slug ? `${slug} articles | Dear Body Blog` : "Dear Body Blog | Fragrance, Body Care & Beauty Tips", description: "SEO-focused Dear Body guides for perfume, body mist, body lotion, body cream, hand cream, deodorant and self-care routines.", canonical: buildCanonical(slug ? `/blog/category/${slug}` : "/blog") });
+  useEffect(() => { const query = new URLSearchParams(); if (slug) query.set("category", slug); if (q) query.set("q", q); if (sort) query.set("sort", sort); fetchBlogIndex(`?${query}`).then((d) => { setArticles(d.articles); setCategories(d.categories); }).catch(() => null); }, [slug, q, sort]);
+  const featured = useMemo(() => articles.find((a) => a.featured) || articles[0], [articles]);
+  const latest = articles.filter((a) => a.id !== featured?.id);
+  return <main className="bg-gradient-to-b from-pink-50/70 to-white"><section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8"><div className="max-w-3xl"><p className="font-bold uppercase tracking-wide text-pink-600">Dear Body Journal</p><h1 className="mt-3 text-5xl font-black text-gray-950">Fragrance, body care and beauty advice that helps you shop smarter.</h1><p className="mt-5 text-lg text-gray-600">Explore SEO-rich guides, routines, gift ideas and product education written to convert readers into confident Dear Body customers.</p></div><div className="mt-8 grid gap-3 md:grid-cols-[1fr_auto_auto]"><div className="relative"><Search className="absolute left-4 top-3.5 h-5 w-5 text-gray-400"/><input value={q} onChange={(e)=>setParams((p)=>{ e.target.value ? p.set("q", e.target.value) : p.delete("q"); return p; })} placeholder="Search perfume, lotion, routines..." className="w-full rounded-full border px-12 py-3"/></div><select value={sort} onChange={(e)=>setParams((p)=>{p.set("sort", e.target.value); return p;})} className="rounded-full border px-5"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="popular">Most viewed</option></select><Link to="/blog" className="rounded-full bg-gray-950 px-6 py-3 text-center font-bold text-white">All articles</Link></div></section><section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{featured && <ArticleCard article={featured} featured />}<div className="mt-10 flex gap-3 overflow-x-auto pb-2">{categories.map((c)=><Link key={c.id} to={`/blog/category/${c.slug}`} className="shrink-0 rounded-full border bg-white px-5 py-2 text-sm font-semibold hover:border-pink-300">{c.name}</Link>)}</div><div className="mt-10 grid gap-6 md:grid-cols-3"><div className="md:col-span-2 grid gap-6 sm:grid-cols-2">{latest.map((a)=><ArticleCard key={a.id} article={a}/>)}</div><aside className="space-y-6"><div className="rounded-3xl bg-gray-950 p-6 text-white"><h2 className="text-xl font-black">Newsletter CTA</h2><p className="mt-2 text-sm text-white/75">Get fragrance layering tips, seasonal skincare advice and gift guides.</p><input placeholder="Email address" className="mt-4 w-full rounded-full px-4 py-3 text-gray-900"/><button className="mt-3 w-full rounded-full bg-pink-500 px-4 py-3 font-bold">Sign up</button></div><div className="rounded-3xl border bg-white p-6"><h2 className="font-black">Trending articles</h2>{articles.slice().sort((a,b)=>(b.viewCount||0)-(a.viewCount||0)).slice(0,5).map((a)=><Link key={a.id} to={`/blog/${a.slug}`} className="block border-b py-3 text-sm font-semibold hover:text-pink-600">{a.title}</Link>)}</div></aside></div></section></main>;
+}

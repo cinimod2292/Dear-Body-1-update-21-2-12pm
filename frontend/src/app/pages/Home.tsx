@@ -11,6 +11,8 @@ import { getBuilderHeroUrls, heroPreloadDescriptor } from "../builder/hero-prelo
 import { sanitizeBuilderImageUrl } from "../builder/media-url";
 import { useSEO, buildCanonical } from "../lib/seo";
 import { PRIMARY_KEYWORDS } from "../lib/seo-content";
+import { BlogArticle, fetchBlogIndex } from "../blog/api";
+import { ArticleCard } from "../blog/render";
 
 // Lazy-load the builder renderer so the registry/charts/craftjs chunks only
 // download when a page with builder content is actually displayed
@@ -53,6 +55,13 @@ function DeferredSection({ children, minHeight = 280 }: { children: ReactNode; m
       {visible ? children : <div style={{ minHeight }} aria-hidden className="bg-transparent" />}
     </div>
   );
+}
+
+function LatestBlogHomeSection() {
+  const [articles, setArticles] = useState<BlogArticle[]>([]);
+  useEffect(() => { fetchBlogIndex("?limit=3").then((d) => setArticles(d.articles.slice(0, 3))).catch(() => null); }, []);
+  if (!articles.length) return null;
+  return <section className="bg-pink-50/50 py-16" aria-label="Latest from our Blog"><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"><div className="mb-8 flex items-end justify-between gap-4"><div><p className="text-pink-600 font-bold text-sm uppercase tracking-wider mb-3">Latest from our Blog</p><h2 className="text-3xl font-black text-gray-900">Body care tips, fragrance guides and shopping advice</h2></div><Link to="/blog" className="hidden sm:inline-flex rounded-full bg-gray-950 px-5 py-3 text-sm font-bold text-white">View All</Link></div><div className="grid gap-6 md:grid-cols-3">{articles.map((article) => <ArticleCard key={article.id} article={article} />)}</div><Link to="/blog" className="mt-6 inline-flex sm:hidden rounded-full bg-gray-950 px-5 py-3 text-sm font-bold text-white">View All</Link></div></section>;
 }
 
 function LegacyHomeContent({ products }: { products: Product[] }) {
@@ -346,6 +355,7 @@ export default function Home() {
         : builderContent
         ? <Suspense fallback={null}><BuilderPageRenderer content={builderContent} products={products} /></Suspense>
         : <LegacyHomeContent products={products} />}
+      <LatestBlogHomeSection />
       <section className="bg-white py-16" aria-label="Dear Body fragrance authority">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid gap-8 lg:grid-cols-[1.2fr_.8fr] items-start">
           <div>

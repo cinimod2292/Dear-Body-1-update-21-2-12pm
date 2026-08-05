@@ -39,6 +39,7 @@ import { sitemapRoutes } from "./modules/sitemap/sitemap.routes.js";
 import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
 import { reviewsRoutes } from "./modules/reviews/reviews.routes.js";
 import { faqsRoutes } from "./modules/faqs/faqs.routes.js";
+import { blogRoutes } from "./modules/blog/blog.routes.js";
 import { processAbandonedCarts } from "./modules/ops/ops.service.js";
 
 export async function buildApp() {
@@ -261,6 +262,7 @@ export async function buildApp() {
     await api.register(analyticsRoutes);
     await api.register(reviewsRoutes);
     await api.register(faqsRoutes);
+    await api.register(blogRoutes);
   }, { prefix: env.API_PREFIX });
 
   registerErrorHandler(app);

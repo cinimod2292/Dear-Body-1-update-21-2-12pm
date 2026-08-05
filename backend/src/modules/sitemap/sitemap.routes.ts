@@ -90,7 +90,7 @@ export async function sitemapRoutes(app: FastifyInstance) {
       return;
     }
 
-    const [products, categories, brands, cmsPages] = await Promise.all([
+    const [products, categories, brands, cmsPages, blogArticles, blogCategories] = await Promise.all([
       prisma.product.findMany({
         where: { status: "ACTIVE", visibility: "PUBLIC" },
         select: { slug: true, updatedAt: true },
@@ -110,6 +110,15 @@ export async function sitemapRoutes(app: FastifyInstance) {
         where: { scope: "cms", key: { not: "home_sections" } },
         select: { key: true, updatedAt: true, value: true },
       }),
+      prisma.blogArticle.findMany({
+        where: { status: "PUBLISHED", publishedAt: { lte: new Date() } },
+        select: { slug: true, updatedAt: true },
+        orderBy: { publishedAt: "desc" },
+      }),
+      prisma.blogCategory.findMany({
+        select: { slug: true, updatedAt: true },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
     const now = new Date();
@@ -119,6 +128,7 @@ export async function sitemapRoutes(app: FastifyInstance) {
       urlEntry(`${base}/`, now, "1.0", "daily"),
       // Shop / All Products
       urlEntry(`${base}/shop`, now, "0.9", "daily"),
+      urlEntry(`${base}/blog`, now, "0.8", "daily"),
     ];
 
     // Products — canonical URL is /product/:slug
@@ -134,6 +144,14 @@ export async function sitemapRoutes(app: FastifyInstance) {
     // Brands — dedicated landing pages
     for (const b of brands) {
       entries.push(urlEntry(`${base}/brands/${xmlEscape(b.slug)}`, b.updatedAt, "0.6", "weekly"));
+    }
+
+    for (const category of blogCategories) {
+      entries.push(urlEntry(`${base}/blog/category/${xmlEscape(category.slug)}`, category.updatedAt, "0.7", "weekly"));
+    }
+
+    for (const article of blogArticles) {
+      entries.push(urlEntry(`${base}/blog/${xmlEscape(article.slug)}`, article.updatedAt, "0.8", "weekly"));
     }
 
     // Static builder pages

@@ -207,6 +207,9 @@ model StaffUser {
   updatedAt      DateTime           @updatedAt
   refreshTokens  RefreshToken[]
   auditLogs      AuditLog[]
+  blogArticlesCreated BlogArticle[] @relation("BlogArticleCreatedBy")
+  blogArticlesUpdated BlogArticle[] @relation("BlogArticleUpdatedBy")
+  blogArticleVersions BlogArticleVersion[]
   stockMovements StockMovement[]
   customerNotes  CustomerNote[]
   customerInteractions CustomerInteraction[]
@@ -345,6 +348,7 @@ model Product {
   featuredEntries  FeaturedProduct[]
   reviews          ProductReview[]
   faqs             ProductFaq[]
+  blogArticles     BlogArticleProduct[]
 
   @@index([brandId])
   @@index([categoryId])
@@ -1131,4 +1135,150 @@ model ProductFaq {
 
   @@index([productId, position])
   @@index([isGlobal, isPublished])
+}
+
+enum BlogArticleStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+model BlogCategory {
+  id              String        @id @default(cuid())
+  name            String
+  slug            String        @unique
+  description     String?
+  seoTitle        String?
+  metaDescription String?
+  imageUrl        String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  articles        BlogArticle[]
+
+  @@index([slug])
+}
+
+model BlogTag {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  articles    BlogArticleTag[]
+}
+
+model BlogAuthor {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  photoUrl    String?
+  bio         String?
+  role        String?
+  socialLinks Json?
+  seoTitle    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  articles    BlogArticle[]
+}
+
+model BlogArticle {
+  id              String            @id @default(cuid())
+  title           String
+  slug            String            @unique
+  excerpt         String?
+  status          BlogArticleStatus @default(DRAFT)
+  featured        Boolean           @default(false)
+  pinned          Boolean           @default(false)
+  heroImageUrl    String?
+  heroImageAlt    String?
+  body            Json
+  faqs            Json?
+  seoTitle        String?
+  metaDescription String?
+  canonicalUrl    String?
+  ogTitle         String?
+  ogDescription   String?
+  ogImageUrl      String?
+  twitterTitle    String?
+  twitterDescription String?
+  metaRobots      String            @default("index,follow")
+  seoScore        Int               @default(0)
+  readingTime     Int               @default(1)
+  wordCount       Int               @default(0)
+  viewCount       Int               @default(0)
+  productClicks   Int               @default(0)
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  archivedAt      DateTime?
+  categoryId      String?
+  authorId        String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  category        BlogCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author          BlogAuthor?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdBy       StaffUser?        @relation("BlogArticleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       StaffUser?        @relation("BlogArticleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tags            BlogArticleTag[]
+  products        BlogArticleProduct[]
+  versions        BlogArticleVersion[]
+  events          BlogAnalyticsEvent[]
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status])
+  @@index([featured, pinned])
+  @@index([slug])
+}
+
+model BlogArticleTag {
+  articleId String
+  tagId     String
+  article   BlogArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag       BlogTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+}
+
+model BlogArticleProduct {
+  articleId String
+  productId String
+  role      String      @default("mentioned")
+  position  Int         @default(0)
+  article   BlogArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, productId, role])
+  @@index([productId])
+}
+
+model BlogArticleVersion {
+  id        String      @id @default(cuid())
+  articleId String
+  title     String
+  body      Json
+  seo       Json?
+  createdById String?
+  createdAt DateTime    @default(now())
+  article   BlogArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdBy StaffUser?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([articleId, createdAt])
+}
+
+model BlogAnalyticsEvent {
+  id        String      @id @default(cuid())
+  articleId String?
+  type      String
+  value     String?
+  sessionId String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+  article   BlogArticle? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, type, createdAt])
+  @@index([type, createdAt])
 }

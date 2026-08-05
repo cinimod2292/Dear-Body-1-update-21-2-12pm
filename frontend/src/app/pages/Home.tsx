@@ -74,7 +74,7 @@ function LegacyHomeContent({ products }: { products: Product[] }) {
             id: "hero-default",
             type: "hero",
             title: "Dare to be Vibrant",
-            subtitle: "Discover our bold collection of perfumed body sprays and skincare.",
+            subtitle: "Discover Eau de Parfum, fragrance mists and scented body care.",
             enabled: true,
             order: 0,
             status: "published",
@@ -184,7 +184,7 @@ const HOME_SCHEMA = [
     name: "Dear Body",
     url: typeof window !== "undefined" ? window.location.origin : "",
     logo: typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "",
-    description: "Dear Body is a South African beauty and fragrance brand offering premium body sprays, lotions, scrubs and skincare.",
+    description: "Dear Body is a South African fragrance brand offering Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and body lotions.",
     contactPoint: {
       "@type": "ContactPoint",
       contactType: "customer service",
@@ -233,11 +233,11 @@ export default function Home() {
   const [searchParams] = useSearchParams();
 
   useSEO({
-    title: "Fragrances South Africa | Women's Perfume & Body Care",
-    description: "Shop Dear Body for fragrances in South Africa, women's perfume-inspired body sprays, body lotions, scrubs and body care delivered nationwide.",
+    title: "Dear Body South Africa | Perfume, Mists & Scented Body Care",
+    description: "Shop Dear Body South Africa for Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and body lotions in matching scent families.",
     canonical: buildCanonical("/"),
     ogType: "website",
-    keywords: [...PRIMARY_KEYWORDS, "Dear Body", "South African beauty"],
+    keywords: [...PRIMARY_KEYWORDS, "Dear Body", "South African fragrance"],
     structuredData: HOME_SCHEMA,
   });
 
@@ -350,16 +350,16 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid gap-8 lg:grid-cols-[1.2fr_.8fr] items-start">
           <div>
             <p className="text-pink-600 font-bold text-sm uppercase tracking-wider mb-3">Fragrances South Africa</p>
-            <h2 className="text-3xl font-black text-gray-900 mb-4">Women's perfume-inspired body care for everyday South African routines</h2>
-            <p className="text-gray-600 leading-relaxed mb-5">Dear Body helps shoppers build a complete fragrance wardrobe with body sprays, lotions, scrubs and body butters that are easy to layer, gift and enjoy daily.</p>
+            <h2 className="text-3xl font-black text-gray-900 mb-4">Perfume, fragrance mists and scented body care for South African routines</h2>
+            <p className="text-gray-600 leading-relaxed mb-5">Dear Body helps shoppers build a matching fragrance wardrobe across Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and 500ml body lotions.</p>
             <div className="flex flex-wrap gap-3">
-              <Link to="/shop?category=Body%20Spray" className="px-5 py-2 rounded-full bg-pink-50 text-pink-700 font-bold text-sm">Shop body sprays</Link>
-              <Link to="/shop?category=Body%20Lotion" className="px-5 py-2 rounded-full bg-orange-50 text-orange-700 font-bold text-sm">Shop body lotions</Link>
-              <Link to="/shop" className="px-5 py-2 rounded-full bg-gray-900 text-white font-bold text-sm">Explore all body care</Link>
+              <Link to="/shop?category=Perfume" className="px-5 py-2 rounded-full bg-pink-50 text-pink-700 font-bold text-sm">Shop perfume</Link>
+              <Link to="/shop?category=Mist" className="px-5 py-2 rounded-full bg-orange-50 text-orange-700 font-bold text-sm">Shop fragrance mists</Link>
+              <Link to="/shop" className="px-5 py-2 rounded-full bg-gray-900 text-white font-bold text-sm">Explore all Dear Body</Link>
             </div>
           </div>
           <div className="grid gap-3">
-            {["Layer scent with moisturised skin", "Choose body sprays for daily freshness", "Prep with scrubs for smoother body care", "Gift fragrance sets across South Africa"].map((item) => (
+            {["Pair Eau de Parfum with matching mists", "Choose 30ml, 75ml or 250ml mists", "Layer 500ml lotions and 226ml creams", "Gift Dear Body scent families across South Africa"].map((item) => (
               <div key={item} className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm font-semibold text-gray-700">{item}</div>
             ))}
           </div>

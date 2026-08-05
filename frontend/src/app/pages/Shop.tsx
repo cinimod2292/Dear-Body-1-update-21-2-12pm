@@ -190,10 +190,12 @@ export default function Shop() {
 
   const categoryColors: Record<string, string> = {
     "All": "from-pink-500 to-orange-500",
-    "Body Spray": "from-pink-500 to-red-500",
-    "Body Lotion": "from-orange-400 to-yellow-400",
-    "Body Scrub": "from-lime-400 to-green-500",
-    "Body Butter": "from-sky-400 to-blue-500",
+    "Perfume": "from-pink-500 to-red-500",
+    "Mist": "from-purple-500 to-pink-500",
+    "Deodorant": "from-orange-400 to-yellow-400",
+    "Body Lotion": "from-lime-400 to-green-500",
+    "Body Cream": "from-sky-400 to-blue-500",
+    "Hand Cream": "from-rose-400 to-pink-500",
   };
 
   return (
@@ -336,8 +338,7 @@ export default function Shop() {
             <div className="max-w-2xl mx-auto text-center mb-12">
               <h2 className="text-2xl font-bold text-gray-800 mb-3">Browse Our Collection</h2>
               <p className="text-gray-500 mb-6">
-                Dear Body offers a luxurious range of South African beauty products — from perfumed body sprays and
-                hydrating lotions to exfoliating scrubs and rich body butters.
+                Dear Body offers a fragrance-led South African catalogue — from Eau de Parfum and fragrance mists to deodorants, hand creams, body creams and body lotions.
               </p>
               <button
                 onClick={() => window.location.reload()}
@@ -347,10 +348,10 @@ export default function Shop() {
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
-              {["Body Sprays", "Body Lotions", "Body Scrubs", "Body Butters"].map((cat) => (
+              {["Perfume", "Mist", "Deodorant", "Body Lotion", "Body Cream", "Hand Cream"].map((cat) => (
                 <a
                   key={cat}
-                  href={`/shop?category=${encodeURIComponent(cat.slice(0, -1))}`}
+                  href={`/shop?category=${encodeURIComponent(cat)}`}
                   className="bg-white border border-gray-200 rounded-2xl p-5 text-center hover:border-pink-300 transition group"
                 >
                   <p className="font-bold text-gray-800 text-sm group-hover:text-pink-600">{cat}</p>

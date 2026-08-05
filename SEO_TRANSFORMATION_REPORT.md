@@ -12,7 +12,7 @@ The storefront already had a React SEO hook, product image sizing, lazy-loaded r
 6. Social metadata had no guaranteed default share image.
 7. XML sitemap and robots directives were missing from the Vite public output.
 8. The homepage lacked an always-rendered authority section for fragrance/body-care topics when builder content is present.
-9. Internal linking existed in navigation/footer but not enough contextual links between body spray, lotion, scrub, body butter, and all-shop pages.
+9. Internal linking existed in navigation/footer but not enough contextual links between perfume, fragrance mist, deodorant, hand cream, body cream, body lotion, and all-shop pages.
 10. The implementation needed reusable SEO content utilities so future products/categories inherit defaults rather than requiring bespoke page code.
 
 ## Prioritised implementation plan by SEO impact
@@ -44,9 +44,9 @@ The storefront already had a React SEO hook, product image sizing, lazy-loaded r
 
 | Improvement | Expected impact |
 | --- | --- |
-| Homepage title/description now explicitly target fragrances South Africa, women's perfume, and body care. | High: improves relevance for priority non-brand head terms. |
-| Added homepage authority section with contextual links to body sprays, body lotions, and all body care. | High: increases topical authority and passes internal link equity to commercial pages. |
-| Added reusable category SEO content for Body Spray, Body Lotion, Body Scrub, and Body Butter. | High: reduces thin category pages and improves category-level keyword relevance. |
+| Homepage title/description now explicitly target Dear Body South Africa, perfume, fragrance mists and scented body care. | High: improves relevance for priority non-brand head terms. |
+| Added homepage authority section with contextual links to perfume, fragrance mists, and the full Dear Body catalogue. | High: increases topical authority and passes internal link equity to commercial pages. |
+| Added reusable category SEO content for Perfume, Mist, Deodorant, Body Lotion, Body Cream, and Hand Cream. | High: reduces thin category pages and improves category-level keyword relevance. |
 | Added buying guides and FAQs to shop/category pages. | High: improves long-tail query coverage and shopper intent matching. |
 | Added FAQPage, CollectionPage, and BreadcrumbList structured data for shop/category pages. | Medium-High: improves entity clarity and eligibility for richer search understanding. |
 | Added richer product descriptions, benefits, fragrance notes, best-for guidance, and usage guidance fallback. | High: reduces thin PDP risk and expands product long-tail visibility. |
@@ -59,9 +59,9 @@ The storefront already had a React SEO hook, product image sizing, lazy-loaded r
 ## Remaining recommendations
 
 1. Generate a dynamic sitemap from backend product/category data so every live product URL is included with last-modified dates.
-2. Move category URLs from query parameters (`/shop?category=Body%20Spray`) to clean paths such as `/collections/body-spray` with 301 redirects.
+2. Move category URLs from query parameters (`/shop?category=Perfume`) to clean paths such as `/collections/perfume` with 301 redirects.
 3. Add backend/admin fields for fragrance families, top/middle/base notes, skin type, benefit tags, and routine pairings so PDP SEO content can be fully data-driven.
 4. Add server-side rendering or prerendering for product/category pages if organic growth becomes a top acquisition channel, because this is currently a client-rendered Vite app.
 5. Add Search Console and analytics event reporting for landing-page impressions, PDP organic entrances, and category conversion rate.
 6. Replace the static sitemap with an automated build/deploy step that validates canonical URLs, sitemap freshness, and robots directives.
-7. Create editorial guides for "best body sprays in South Africa", "how to layer fragrance", and "body butter vs lotion" once a blog/content route exists.
+7. Create editorial guides for "best Dear Body fragrance mists in South Africa", "how to layer fragrance", and "body cream vs lotion" once a blog/content route exists.

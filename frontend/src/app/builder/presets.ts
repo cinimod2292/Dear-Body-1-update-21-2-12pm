@@ -177,7 +177,7 @@ export const SECTION_PRESETS: SectionPreset[] = [
     description: "Customer review grid",
     sectionType: "testimonials",
     icon: "⭐",
-    defaultProps: { title: "What our customers say", items: [{ quote: "The body sprays last all day. Absolutely love them!", author: "Sarah M.", role: "Verified Buyer", rating: 5 }, { quote: "My skin feels amazing. Best decision ever.", author: "Lerato K.", role: "Verified Buyer", rating: 5 }, { quote: "Fast delivery and gorgeous packaging.", author: "Thandi N.", role: "Verified Buyer", rating: 5 }], tone: "white" },
+    defaultProps: { title: "What our customers say", items: [{ quote: "The fragrance mists are perfect for daily top-ups. Absolutely love them!", author: "Sarah M.", role: "Verified Buyer", rating: 5 }, { quote: "My skin feels amazing. Best decision ever.", author: "Lerato K.", role: "Verified Buyer", rating: 5 }, { quote: "Fast delivery and gorgeous packaging.", author: "Thandi N.", role: "Verified Buyer", rating: 5 }], tone: "white" },
   },
 
   // ─── Trust Badges ─────────────────────────────────────────────────────────
@@ -389,20 +389,20 @@ export const SECTION_PRESETS: SectionPreset[] = [
     icon: "🔎",
     defaultProps: {
       eyebrow: "Dear Body buying guide",
-      title: "How to choose your fragrance and body care",
-      intro: "Build a complete fragrance-led routine with body sprays, lotions, scrubs and body butters designed for layering, gifting and everyday confidence.",
-      buyingGuide: `Start with a body scrub to smooth skin.
-Moisturise with lotion or body butter before fragrance.
-Choose a body spray for daily freshness and easy top-ups.`,
+      title: "How to choose your Dear Body fragrance routine",
+      intro: "Build a matching Dear Body routine with Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and 500ml body lotions in listed scent families.",
+      buyingGuide: `Start with body lotion or body cream on moisturised skin.
+Use fragrance mist for daily top-ups in 30ml, 75ml or 250ml sizes.
+Finish with Eau de Parfum when you want a polished signature scent.`,
       faqs: [
-        { question: "How do I layer fragrance and body care?", answer: "Cleanse, exfoliate when needed, moisturise, then apply body spray to pulse points and clothing." },
-        { question: "Are these products suitable for gifting?", answer: "Yes. Body sprays, lotions, scrubs and butters are easy to combine into fragrance and body care gifts." },
+        { question: "How do I build a Dear Body scent routine?", answer: "Moisturise with body lotion or body cream, add deodorant for freshness, refresh with fragrance mist, then finish with Eau de Parfum." },
+        { question: "Which Dear Body scent families are listed?", answer: "Core live ranges include Kissing Mizzle, Rocking Fantasy, Always Yours, Summer Freshes, Malibu Lemon Blossom and Wild At Kiss." },
       ],
-      linkOneText: "Shop body sprays",
-      linkOneHref: "/shop?category=Body%20Spray",
-      linkTwoText: "Shop body lotions",
-      linkTwoHref: "/shop?category=Body%20Lotion",
-      linkThreeText: "Browse all body care",
+      linkOneText: "Shop perfume",
+      linkOneHref: "/shop?category=Perfume",
+      linkTwoText: "Shop fragrance mists",
+      linkTwoHref: "/shop?category=Mist",
+      linkThreeText: "Browse all Dear Body",
       linkThreeHref: "/shop",
       tone: "white",
     },
@@ -415,17 +415,17 @@ Choose a body spray for daily freshness and easy top-ups.`,
     icon: "📈",
     defaultProps: {
       eyebrow: "Fragrances South Africa",
-      title: "Women's perfume-inspired body care for everyday South African routines",
-      body: "Dear Body helps shoppers build a complete fragrance wardrobe with body sprays, lotions, scrubs and body butters that are easy to layer, gift and enjoy daily.",
-      points: `Layer scent with moisturised skin
-Choose body sprays for daily freshness
-Prep with scrubs for smoother body care
-Gift fragrance sets across South Africa`,
-      primaryButtonText: "Shop body sprays",
-      primaryButtonHref: "/shop?category=Body%20Spray",
-      secondaryButtonText: "Shop body lotions",
-      secondaryButtonHref: "/shop?category=Body%20Lotion",
-      tertiaryButtonText: "Explore all body care",
+      title: "Perfume, fragrance mists and scented body care for South African routines",
+      body: "Dear Body helps shoppers build a matching fragrance wardrobe across Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and 500ml body lotions.",
+      points: `Pair Eau de Parfum with matching mists
+Choose 30ml, 75ml or 250ml mists
+Layer 500ml lotions and 226ml creams
+Gift Dear Body scent families across South Africa`,
+      primaryButtonText: "Shop perfume",
+      primaryButtonHref: "/shop?category=Perfume",
+      secondaryButtonText: "Shop fragrance mists",
+      secondaryButtonHref: "/shop?category=Mist",
+      tertiaryButtonText: "Explore all Dear Body",
       tertiaryButtonHref: "/shop",
       tone: "white",
     },

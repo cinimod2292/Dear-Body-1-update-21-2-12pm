@@ -5,6 +5,8 @@ import { ProductCard } from "../components/ProductCard";
 import { fetchStoreProducts, getCategories, Product } from "../data/products";
 import { ALL_PRODUCTS_CATEGORY, getShopCategory, setShopCategory } from "./shop-query";
 import { useSEO, buildCanonical } from "../lib/seo";
+import { SeoLandingSections } from "../components/SeoLandingSections";
+import { DEFAULT_SHOP_SEO, getCategorySeo, PRIMARY_KEYWORDS } from "../lib/seo-content";
 import { API_BASE } from "../admin/api/client";
 
 const sortOptions = [
@@ -34,35 +36,57 @@ export default function Shop() {
   const categorySlug = searchParams.get("category") || "";
   const brandSlug = searchParams.get("brand") || "";
 
+  const activeCategoryName = selectedCategory !== ALL_PRODUCTS_CATEGORY ? selectedCategory : categorySlug || "";
+  const landingSeo = getCategorySeo(activeCategoryName);
+
   const seoTitle = searchQuery
-    ? `Search: ${searchQuery}`
-    : categorySlug
-    ? categorySlug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-    : "Shop All Products";
+    ? `Search results for ${searchQuery}`
+    : landingSeo.title;
 
   const seoDescription = searchQuery
-    ? `Browse search results for "${searchQuery}" at Dear Body. Premium South African beauty and fragrance.`
-    : categorySlug
-    ? `Shop our ${categorySlug.replace(/-/g, " ")} range at Dear Body. Premium quality, fast delivery across South Africa.`
-    : "Browse Dear Body's complete range of perfumed body sprays, lotions, scrubs, butters and skincare. Premium South African beauty delivered to your door.";
+    ? `Browse search results for "${searchQuery}" at Dear Body. Premium South African beauty, fragrance and body care delivered in South Africa.`
+    : landingSeo.description;
 
   const canonicalPath = categorySlug
-    ? `/shop?category=${categorySlug}`
+    ? `/shop?category=${encodeURIComponent(categorySlug)}`
     : brandSlug
-    ? `/shop?brand=${brandSlug}`
+    ? `/shop?brand=${encodeURIComponent(brandSlug)}`
     : "/shop";
 
   useSEO({
     title: seoTitle,
     description: seoDescription,
     canonical: buildCanonical(canonicalPath),
-    structuredData: {
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      name: `${seoTitle} | Dear Body`,
-      description: seoDescription,
-      url: buildCanonical(canonicalPath),
-    },
+    noIndex: Boolean(searchQuery),
+    keywords: [...PRIMARY_KEYWORDS, activeCategoryName, "Dear Body South Africa"].filter(Boolean),
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: `${seoTitle} | Dear Body`,
+        description: seoDescription,
+        url: buildCanonical(canonicalPath),
+        isPartOf: { "@type": "WebSite", name: "Dear Body", url: buildCanonical("/") },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: landingSeo.faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: { "@type": "Answer", text: faq.answer },
+        })),
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: buildCanonical("/") },
+          { "@type": "ListItem", position: 2, name: "Shop", item: buildCanonical("/shop") },
+          ...(activeCategoryName ? [{ "@type": "ListItem", position: 3, name: activeCategoryName, item: buildCanonical(canonicalPath) }] : []),
+        ],
+      },
+    ],
   });
 
   useEffect(() => {
@@ -166,10 +190,12 @@ export default function Shop() {
 
   const categoryColors: Record<string, string> = {
     "All": "from-pink-500 to-orange-500",
-    "Body Spray": "from-pink-500 to-red-500",
-    "Body Lotion": "from-orange-400 to-yellow-400",
-    "Body Scrub": "from-lime-400 to-green-500",
-    "Body Butter": "from-sky-400 to-blue-500",
+    "Perfume": "from-pink-500 to-red-500",
+    "Mist": "from-purple-500 to-pink-500",
+    "Deodorant": "from-orange-400 to-yellow-400",
+    "Body Lotion": "from-lime-400 to-green-500",
+    "Body Cream": "from-sky-400 to-blue-500",
+    "Hand Cream": "from-rose-400 to-pink-500",
   };
 
   return (
@@ -182,7 +208,7 @@ export default function Shop() {
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-white">
           <h1 className="mb-3" style={{ fontSize: "clamp(2rem, 6vw, 3.5rem)", fontWeight: 900 }}>
-            {initialSearch ? `Results for "${initialSearch}"` : "Shop All Products"}
+            {initialSearch ? `Results for "${initialSearch}"` : landingSeo.h1}
           </h1>
           <p className="text-white/80 text-lg">
             {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} found
@@ -312,8 +338,7 @@ export default function Shop() {
             <div className="max-w-2xl mx-auto text-center mb-12">
               <h2 className="text-2xl font-bold text-gray-800 mb-3">Browse Our Collection</h2>
               <p className="text-gray-500 mb-6">
-                Dear Body offers a luxurious range of South African beauty products — from perfumed body sprays and
-                hydrating lotions to exfoliating scrubs and rich body butters.
+                Dear Body offers a fragrance-led South African catalogue — from Eau de Parfum and fragrance mists to deodorants, hand creams, body creams and body lotions.
               </p>
               <button
                 onClick={() => window.location.reload()}
@@ -323,10 +348,10 @@ export default function Shop() {
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
-              {["Body Sprays", "Body Lotions", "Body Scrubs", "Body Butters"].map((cat) => (
+              {["Perfume", "Mist", "Deodorant", "Body Lotion", "Body Cream", "Hand Cream"].map((cat) => (
                 <a
                   key={cat}
-                  href={`/shop?category=${encodeURIComponent(cat.slice(0, -1))}`}
+                  href={`/shop?category=${encodeURIComponent(cat)}`}
                   className="bg-white border border-gray-200 rounded-2xl p-5 text-center hover:border-pink-300 transition group"
                 >
                   <p className="font-bold text-gray-800 text-sm group-hover:text-pink-600">{cat}</p>
@@ -362,6 +387,10 @@ export default function Shop() {
               {categoryMeta.description}
             </div>
           </div>
+        )}
+
+        {!searchQuery && (
+          <SeoLandingSections content={activeCategoryName ? landingSeo : DEFAULT_SHOP_SEO} productsCount={filteredProducts.length} />
         )}
       </div>
     </div>

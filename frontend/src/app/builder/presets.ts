@@ -177,7 +177,7 @@ export const SECTION_PRESETS: SectionPreset[] = [
     description: "Customer review grid",
     sectionType: "testimonials",
     icon: "⭐",
-    defaultProps: { title: "What our customers say", items: [{ quote: "The body sprays last all day. Absolutely love them!", author: "Sarah M.", role: "Verified Buyer", rating: 5 }, { quote: "My skin feels amazing. Best decision ever.", author: "Lerato K.", role: "Verified Buyer", rating: 5 }, { quote: "Fast delivery and gorgeous packaging.", author: "Thandi N.", role: "Verified Buyer", rating: 5 }], tone: "white" },
+    defaultProps: { title: "What our customers say", items: [{ quote: "The fragrance mists are perfect for daily top-ups. Absolutely love them!", author: "Sarah M.", role: "Verified Buyer", rating: 5 }, { quote: "My skin feels amazing. Best decision ever.", author: "Lerato K.", role: "Verified Buyer", rating: 5 }, { quote: "Fast delivery and gorgeous packaging.", author: "Thandi N.", role: "Verified Buyer", rating: 5 }], tone: "white" },
   },
 
   // ─── Trust Badges ─────────────────────────────────────────────────────────
@@ -377,6 +377,58 @@ export const SECTION_PRESETS: SectionPreset[] = [
     sectionType: "whatsapp_cta",
     icon: "💬",
     defaultProps: { title: "Have a question about this product?", subtitle: "Our team is ready to help via WhatsApp", whatsappNumber: "", buttonText: "Chat Now", message: "Hi! I have a question about: {productName}", tone: "green" },
+  },
+
+
+  // ─── SEO Landing Content ─────────────────────────────────────────────────
+  {
+    id: "seo_landing_category",
+    name: "SEO · Category Landing",
+    description: "Buying guide, FAQs and internal links for collection pages",
+    sectionType: "seo_landing",
+    icon: "🔎",
+    defaultProps: {
+      eyebrow: "Dear Body buying guide",
+      title: "How to choose your Dear Body fragrance routine",
+      intro: "Build a matching Dear Body routine with Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and 500ml body lotions in listed scent families.",
+      buyingGuide: `Start with body lotion or body cream on moisturised skin.
+Use fragrance mist for daily top-ups in 30ml, 75ml or 250ml sizes.
+Finish with Eau de Parfum when you want a polished signature scent.`,
+      faqs: [
+        { question: "How do I build a Dear Body scent routine?", answer: "Moisturise with body lotion or body cream, add deodorant for freshness, refresh with fragrance mist, then finish with Eau de Parfum." },
+        { question: "Which Dear Body scent families are listed?", answer: "Core live ranges include Kissing Mizzle, Rocking Fantasy, Always Yours, Summer Freshes, Malibu Lemon Blossom and Wild At Kiss." },
+      ],
+      linkOneText: "Shop perfume",
+      linkOneHref: "/shop?category=Perfume",
+      linkTwoText: "Shop fragrance mists",
+      linkTwoHref: "/shop?category=Mist",
+      linkThreeText: "Browse all Dear Body",
+      linkThreeHref: "/shop",
+      tone: "white",
+    },
+  },
+  {
+    id: "seo_authority_home",
+    name: "SEO · Authority Block",
+    description: "Topical authority copy with collection CTAs",
+    sectionType: "seo_authority",
+    icon: "📈",
+    defaultProps: {
+      eyebrow: "Fragrances South Africa",
+      title: "Perfume, fragrance mists and scented body care for South African routines",
+      body: "Dear Body helps shoppers build a matching fragrance wardrobe across Eau de Parfum, fragrance mists, deodorants, hand creams, body creams and 500ml body lotions.",
+      points: `Pair Eau de Parfum with matching mists
+Choose 30ml, 75ml or 250ml mists
+Layer 500ml lotions and 226ml creams
+Gift Dear Body scent families across South Africa`,
+      primaryButtonText: "Shop perfume",
+      primaryButtonHref: "/shop?category=Perfume",
+      secondaryButtonText: "Shop fragrance mists",
+      secondaryButtonHref: "/shop?category=Mist",
+      tertiaryButtonText: "Explore all Dear Body",
+      tertiaryButtonHref: "/shop",
+      tone: "white",
+    },
   },
 
   // ─── Spacer ───────────────────────────────────────────────────────────────

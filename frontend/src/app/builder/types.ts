@@ -33,7 +33,9 @@ export type BuilderSectionType =
   | "ingredient_highlights"
   | "contact_form"
   | "social_links"
-  | "whatsapp_cta";
+  | "whatsapp_cta"
+  | "seo_landing"
+  | "seo_authority";
 
 export type BuilderSection = {
   id: string;

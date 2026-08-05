@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout
+Disallow: /cart
+Disallow: /favorites
+Disallow: /*?search=
+Disallow: /*?preview=
+
+Sitemap: https://mydearbody.co.za/sitemap.xml

@@ -134,7 +134,7 @@ export async function runManualMigrations() {
           `INSERT INTO "_manual_migrations" ("name") VALUES ($1)`,
           file,
         );
-      });
+      }, { timeout: 120_000, maxWait: 10_000 });
     }
 
     console.info(`[migrations] Applied ${file}`);

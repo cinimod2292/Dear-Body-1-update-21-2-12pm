@@ -10,6 +10,8 @@ test("section presets include all required section families", () => {
   assert.equal(types.has("benefit_icons"), true);
   assert.equal(types.has("promo_banner"), true);
   assert.equal(types.has("whatsapp_cta"), true);
+  assert.equal(types.has("seo_landing"), true);
+  assert.equal(types.has("seo_authority"), true);
 });
 
 test("section presets contain names and descriptions", () => {

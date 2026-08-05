@@ -379,6 +379,58 @@ export const SECTION_PRESETS: SectionPreset[] = [
     defaultProps: { title: "Have a question about this product?", subtitle: "Our team is ready to help via WhatsApp", whatsappNumber: "", buttonText: "Chat Now", message: "Hi! I have a question about: {productName}", tone: "green" },
   },
 
+
+  // ─── SEO Landing Content ─────────────────────────────────────────────────
+  {
+    id: "seo_landing_category",
+    name: "SEO · Category Landing",
+    description: "Buying guide, FAQs and internal links for collection pages",
+    sectionType: "seo_landing",
+    icon: "🔎",
+    defaultProps: {
+      eyebrow: "Dear Body buying guide",
+      title: "How to choose your fragrance and body care",
+      intro: "Build a complete fragrance-led routine with body sprays, lotions, scrubs and body butters designed for layering, gifting and everyday confidence.",
+      buyingGuide: `Start with a body scrub to smooth skin.
+Moisturise with lotion or body butter before fragrance.
+Choose a body spray for daily freshness and easy top-ups.`,
+      faqs: [
+        { question: "How do I layer fragrance and body care?", answer: "Cleanse, exfoliate when needed, moisturise, then apply body spray to pulse points and clothing." },
+        { question: "Are these products suitable for gifting?", answer: "Yes. Body sprays, lotions, scrubs and butters are easy to combine into fragrance and body care gifts." },
+      ],
+      linkOneText: "Shop body sprays",
+      linkOneHref: "/shop?category=Body%20Spray",
+      linkTwoText: "Shop body lotions",
+      linkTwoHref: "/shop?category=Body%20Lotion",
+      linkThreeText: "Browse all body care",
+      linkThreeHref: "/shop",
+      tone: "white",
+    },
+  },
+  {
+    id: "seo_authority_home",
+    name: "SEO · Authority Block",
+    description: "Topical authority copy with collection CTAs",
+    sectionType: "seo_authority",
+    icon: "📈",
+    defaultProps: {
+      eyebrow: "Fragrances South Africa",
+      title: "Women's perfume-inspired body care for everyday South African routines",
+      body: "Dear Body helps shoppers build a complete fragrance wardrobe with body sprays, lotions, scrubs and body butters that are easy to layer, gift and enjoy daily.",
+      points: `Layer scent with moisturised skin
+Choose body sprays for daily freshness
+Prep with scrubs for smoother body care
+Gift fragrance sets across South Africa`,
+      primaryButtonText: "Shop body sprays",
+      primaryButtonHref: "/shop?category=Body%20Spray",
+      secondaryButtonText: "Shop body lotions",
+      secondaryButtonHref: "/shop?category=Body%20Lotion",
+      tertiaryButtonText: "Explore all body care",
+      tertiaryButtonHref: "/shop",
+      tone: "white",
+    },
+  },
+
   // ─── Spacer ───────────────────────────────────────────────────────────────
   {
     id: "spacer_medium",

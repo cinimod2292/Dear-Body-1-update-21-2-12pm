@@ -25,6 +25,8 @@ const TYPE_TO_RESOLVED_NAME: Record<BuilderSectionType, string> = {
   contact_form: "ContactFormCraftSection",
   social_links: "SocialLinksCraftSection",
   whatsapp_cta: "WhatsAppCtaCraftSection",
+  seo_landing: "SeoLandingCraftSection",
+  seo_authority: "SeoAuthorityCraftSection",
 };
 
 const RESOLVED_NAME_TO_TYPE = Object.fromEntries(

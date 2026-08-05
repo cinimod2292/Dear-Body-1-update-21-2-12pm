@@ -61,8 +61,14 @@ export async function upsertArticle(input: any, userId?: string) {
   const body = Array.isArray(input.body) ? input.body : [];
   const metrics = analyzeArticle({ title: input.seoTitle || input.title, metaDescription: input.metaDescription, body, targetKeyword: input.targetKeyword, heroImageAlt: input.heroImageAlt });
   const slug = input.slug ? slugify(input.slug) : slugify(input.title);
-  const data: any = { ...input, slug, body, ...metrics, updatedById: userId, publishedAt: input.status === "PUBLISHED" && !input.publishedAt ? new Date() : input.publishedAt ? new Date(input.publishedAt) : undefined, scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined };
+  const { keywordDensity, ...persistedMetrics } = metrics;
+  const data: any = { ...input, slug, body, ...persistedMetrics, updatedById: userId, publishedAt: input.status === "PUBLISHED" && !input.publishedAt ? new Date() : input.publishedAt ? new Date(input.publishedAt) : undefined, scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined };
   delete data.id; delete data.tagIds; delete data.productIds; delete data.targetKeyword;
+  delete data.category; delete data.author; delete data.tags; delete data.products;
+  delete data.createdAt; delete data.updatedAt; delete data.versions; delete data.events;
+  delete data.keywordDensity;
+  if (data.categoryId === "") data.categoryId = null;
+  if (data.authorId === "") data.authorId = null;
   const article = input.id ? await prisma.blogArticle.update({ where: { id: input.id }, data }) : await prisma.blogArticle.create({ data: { ...data, createdById: userId } });
   await prisma.blogArticleVersion.create({ data: { articleId: article.id, title: article.title, body, seo: { seoScore: metrics.seoScore }, createdById: userId } });
   if (Array.isArray(input.productIds)) {

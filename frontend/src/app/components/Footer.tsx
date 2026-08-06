@@ -26,6 +26,7 @@ const DEFAULT_INFO_LINKS = [
   { label: "Returns", href: "/returns" },
   { label: "Shipping", href: "/pages/shipping" },
   { label: "Terms", href: "/pages/terms" },
+  { label: "Blog", href: "/blog" },
 ];
 
 export function Footer() {
@@ -54,7 +55,7 @@ export function Footer() {
         setSocialLinks(realSocialLinks);
         const publishedPages = bootstrap.staticPages.filter((p) => p.status === "published");
         if (publishedPages.length > 0) {
-          setInfoLinks(publishedPages.map((p) => ({ label: p.title, href: pageHref(p.slug) })));
+          setInfoLinks([...publishedPages.map((p) => ({ label: p.title, href: pageHref(p.slug) })), { label: "Blog", href: "/blog" }]);
         }
       })
       .catch(() => undefined);
